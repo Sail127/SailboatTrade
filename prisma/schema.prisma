@@ -1,0 +1,111 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")        // pooled (app)
+  directUrl = env("DIRECT_DATABASE_URL") // direct (migrate/introspect)
+}
+
+//
+// Enums
+//
+enum ListingStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ListingType {
+  MONOHULL
+  CATAMARAN
+}
+
+//
+// Models
+//
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  name      String?
+  listings  Listing[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Listing {
+  id                 Int            @id @default(autoincrement())
+  status             ListingStatus  @default(PUBLISHED)
+
+  // Core display fields used on cards & browse
+  title              String
+  description        String?
+  equipment          Json?          // <-- array of strings, e.g. ["Autopilot","Bimini"]
+
+  make               String?
+  model              String?
+  year               Int?
+
+  // Hull type (enum) — code must use equals, not contains
+  type               ListingType?
+
+  // Pricing — code currently treats these as numeric dollars and a 3-letter code
+  price              Int?
+  currency           String         @default("USD") // UI lets user pick USD/EUR/GBP/JPY
+
+  // Dimensions (DB assumed in Feet for filtering; UI can show ft/m)
+  length             Float?
+  lengthUnit         String?        @default("ft")
+
+  beam               Float?
+  beamUnit           String?        @default("ft")
+
+  draft              Float?
+  draftUnit          String?        @default("ft")
+
+  displacement       Int?
+  displacementUnit   String?        @default("lb")
+
+  engineHours        Int?
+
+  // Location
+  locationCity       String?
+  locationRegion     String?
+  locationCountry    String?
+
+  // Contact / media
+  contactEmail       String?
+  heroImageUrl       String?
+  imageUrls          Json?          // array of string URLs, e.g. ["...","..."]
+
+  // Broker (shown in top contact card)
+  brokerName         String?
+  brokerCompany      String?
+  brokerEmail        String?
+  brokerPhone        String?
+  brokerLogoUrl      String?        // e.g. "/images/burgee.png" or external URL
+
+  // Relations
+  ownerId            Int?
+  owner              User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Timestamps
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  //
+  // Indexes optimized for your browse page filters/sorts:
+  //
+  @@index([status, updatedAt])
+  @@index([status, createdAt])
+  @@index([status, type])
+  @@index([status, make])
+  @@index([status, locationCountry])
+  @@index([status, year])
+  @@index([status, length])
+  @@index([status, price])
+}

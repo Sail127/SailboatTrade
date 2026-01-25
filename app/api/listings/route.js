@@ -1,6 +1,6 @@
 // app/api/listings/route.js
 import { NextResponse } from "next/server";
-import prisma from "../../../lib/prisma.js";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ export async function GET() {
       where: { status: "PUBLISHED" },
       orderBy: { createdAt: "desc" },
     });
+
     return NextResponse.json(listings);
   } catch (error) {
     console.error("GET /api/listings error:", error);

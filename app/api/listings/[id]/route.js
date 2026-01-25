@@ -1,6 +1,6 @@
 // app/api/listings/[id]/route.js
 import { NextResponse } from "next/server";
-import prisma from "../../../lib/prisma.js";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs"; // Prisma needs Node runtime (not edge)
 

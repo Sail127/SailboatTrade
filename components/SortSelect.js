@@ -14,10 +14,12 @@ const OPTIONS = [
   { value: "year_asc", label: "Year: Oldest" },
   { value: "builder_asc", label: "Builder: A to Z" },
 ];
+import { usePathname } from "next/navigation";
 
 export default function SortSelect() {
   const router = useRouter();
   const sp = useSearchParams();
+  const pathname = usePathname();
   const current = sp.get("sort") || "updated_desc";
 
   function setSort(next) {
@@ -26,7 +28,7 @@ export default function SortSelect() {
     else params.set("sort", next);
 
     params.delete("page");
-    router.push(`/listings?${params.toString()}`);
+    router.push(`${pathname}?${params.toString()}`);
   }
 
   const labelClass =

@@ -1,13 +1,14 @@
 // components/ResultsPerPage.js
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const ALLOWED = [12, 18, 24, 36, 48];
 const DEFAULT = 24;
 
 export default function ResultsPerPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const sp = useSearchParams();
 
   const raw = parseInt(sp.get("perPage") || "", 10);
@@ -15,11 +16,14 @@ export default function ResultsPerPage() {
 
   function setPerPage(next) {
     const params = new URLSearchParams(sp.toString());
+
     if (!next || next === DEFAULT) params.delete("perPage");
     else params.set("perPage", String(next));
 
     params.delete("page");
-    router.push(`/listings?${params.toString()}`);
+
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
   const labelClass =

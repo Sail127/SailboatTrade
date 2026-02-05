@@ -2,8 +2,11 @@
 import Image from "next/image";
 import Link from "next/link";
 
-function getFirstImageSrc(listing) {
+function resolveImage(listing) {
   const candidates = [listing?.heroImageUrl, listing?.imageUrl, listing?.image].filter(Boolean);
+
+  const imageUrls = listing?.imageUrls;
+  if (Array.isArray(imageUrls) && imageUrls.length > 0) candidates.push(imageUrls[0]);
 
   const imgs = listing?.images;
   if (Array.isArray(imgs) && imgs.length > 0) {
@@ -15,22 +18,68 @@ function getFirstImageSrc(listing) {
   }
 
   let src = candidates.find((v) => typeof v === "string" && v.trim().length > 0);
+  if (!src) return "/boats/example-sailboat1.jpg";
 
-  if (!src) src = "/boats/example-sailboat1.jpg";
+  src = String(src).trim();
 
-  if (!src.startsWith("http://") && !src.startsWith("https://")) {
-    src = src.replace(/^public\//, "");
-    if (!src.startsWith("/")) src = `/${src}`;
-  }
+  // Remote URL
+  if (src.startsWith("http://") || src.startsWith("https://")) return src;
 
-  return src;
+  // Local/public path
+  if (src.startsWith("/")) return src;
+  src = src.replace(/^public\//, "");
+  if (src.startsWith("boats/") || src.startsWith("images/")) return `/${src}`;
+
+  // R2 key via your endpoint
+  const qp = new URLSearchParams({ key: src });
+  return `/api/uploads?${qp.toString()}`;
 }
 
-function SpecPill({ children }) {
+function money(value, currency = "USD") {
+  if (value == null || value === "") return null;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: String(currency || "USD"),
+      maximumFractionDigits: 0,
+    }).format(Number(value));
+  } catch {
+    return `${Number(value).toLocaleString()} ${currency}`;
+  }
+}
+
+function hullLabel(v) {
+  if (!v) return null;
+  const s = String(v).toUpperCase();
+  if (s === "MONOHULL") return "Monohull";
+  if (s === "CATAMARAN") return "Catamaran";
+  if (s === "TRIMARAN") return "Trimaran";
+  return v;
+}
+
+function Pill({ children }) {
   return (
     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
       {children}
     </span>
+  );
+}
+
+function PinIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
   );
 }
 
@@ -42,29 +91,33 @@ export default function ListingCard({ listing, variant = "default" }) {
     currency = "USD",
     year,
     builder,
-    make,
     model,
-    length,
-    lengthUnit = "ft",
-    location,
+
+    loa,
+    loaUnit,
+
+    cabins,
+    heads,
+    type,
+
     locationCity,
+    locationState,
     locationCountry,
+    location,
   } = listing || {};
 
-  const displayBuilder = builder || make;
-  const displayTitle = [displayBuilder, model].filter(Boolean).join(" ") || title || "Untitled";
-
-  const photo = getFirstImageSrc(listing);
+  const displayTitle = [builder, model].filter(Boolean).join(" ") || title || "Untitled";
+  const photo = resolveImage(listing);
   const isRemote = photo.startsWith("http://") || photo.startsWith("https://");
 
-  const priceText = price ? `${currency} ${Number(price).toLocaleString()}` : "Price on request";
+  const priceText = money(price, currency) || "Price on request";
 
-  // One-line descriptor for featured cards
-  const featuredLine = [year, displayBuilder, model].filter(Boolean).join(" ");
+  const loc =
+    location ||
+    [locationCity, locationState, locationCountry].map((x) => String(x || "").trim()).filter(Boolean).join(", ") ||
+    null;
 
-  const displayLocation =
-    location || [locationCity, locationCountry].filter(Boolean).join(", ") || null;
-
+  const hull = hullLabel(type);
   const isFeatured = variant === "featured";
 
   return (
@@ -87,43 +140,34 @@ export default function ListingCard({ listing, variant = "default" }) {
           unoptimized={isRemote}
         />
 
-        {/* Subtle darken for readability + premium look */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
 
-        {/* Soft highlight on hover */}
-        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-white/5" />
+        {/* Price badge */}
+        <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[12px] font-semibold text-[#0a2230] shadow-sm">
+          {priceText}
+        </div>
       </div>
 
       <div className="p-4">
-        {isFeatured ? (
-          <div className="text-[14px] font-semibold text-slate-900 group-hover:text-[#0a2230] line-clamp-1">
-            {featuredLine || displayTitle}
+        <h3 className="text-[15px] font-semibold text-slate-900 group-hover:text-[#0a2230] line-clamp-1">
+          {isFeatured ? [year, builder, model].filter(Boolean).join(" ") || displayTitle : displayTitle}
+        </h3>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          {year ? <Pill>{year}</Pill> : null}
+          {loa != null ? <Pill>{loa} {loaUnit || "ft"}</Pill> : null}
+          {hull ? <Pill>{hull}</Pill> : null}
+          {cabins != null ? <Pill>{cabins} cabins</Pill> : null}
+          {heads != null ? <Pill>{heads} heads</Pill> : null}
+        </div>
+
+        {loc ? (
+          <div className="mt-3 flex items-center gap-1.5 text-[12px] text-slate-500">
+            <span className="text-slate-400"><PinIcon /></span>
+            <span className="line-clamp-1">{loc}</span>
           </div>
         ) : (
-          <>
-            <h3 className="text-[15px] font-semibold text-slate-900 group-hover:text-[#0a2230] line-clamp-1">
-              {displayTitle}
-            </h3>
-
-            <div className="mt-2 flex flex-wrap gap-2">
-              {year && <SpecPill>{year}</SpecPill>}
-              {length && (
-                <SpecPill>
-                  {length} {lengthUnit}
-                </SpecPill>
-              )}
-            </div>
-
-            <div className="mt-3 text-sm font-semibold text-slate-900">
-              {priceText}
-            </div>
-
-            {displayLocation && (
-              <p className="mt-1 text-xs text-slate-500 line-clamp-1">
-                {displayLocation}
-              </p>
-            )}
-          </>
+          <div className="mt-3 text-[12px] text-slate-400"> </div>
         )}
       </div>
     </Link>

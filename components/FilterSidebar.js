@@ -16,6 +16,39 @@ const POPULAR_COUNTRIES_PREF = [
   "Australia","New Zealand","Canada","Croatia","Netherlands","Sweden","Portugal",
 ];
 
+const US_REGION_OPTIONS = [
+  { label: "West Coast", value: "WEST_COAST" },
+  { label: "East Coast", value: "EAST_COAST" },
+  { label: "Gulf Coast", value: "GULF_COAST" },
+  { label: "Great Lakes", value: "GREAT_LAKES" },
+  { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
+];
+
+function prettyUsRegion(v) {
+  const found = US_REGION_OPTIONS.find((o) => o.value === v);
+  return found ? found.label : v;
+}
+
+function normalizeCountry(raw) {
+  const s = String(raw ?? "").trim();
+  const lower = s.toLowerCase();
+  if (
+    lower === "usa" ||
+    lower === "us" ||
+    lower === "u.s." ||
+    lower === "u.s.a." ||
+    lower === "united states" ||
+    lower === "united states of america"
+  ) {
+    return "United States";
+  }
+  return s;
+}
+
+function isUSA(raw) {
+  return normalizeCountry(raw) === "United States";
+}
+
 function orderBuilders() {
   const set = new Set(RAW_BUILDERS.map((m) => m.trim()));
   const deduped = Array.from(set);
@@ -31,7 +64,7 @@ function useDebounced(fn, delay = 400) {
   };
 }
 
-export default function FilterSidebar({ initial = {}, countries = [] }) {
+export default function FilterSidebar({ initial = {}, countries = [], inDrawer = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -46,55 +79,76 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
     next.delete("page");
     router.push(`${pathname}?${next.toString()}`, { scroll: false });
   };
+
   const debounced = useDebounced(setParam, 400);
   const clearAll = () => router.push(pathname, { scroll: false });
 
-  const initialBuilder = initial.builder ?? initial.make ?? "";
+  const selectedCountry = normalizeCountry(sp.get("country") ?? initial.country ?? "");
+  const showUsRegion = isUSA(selectedCountry);
 
   useEffect(() => {
     const f = formRef.current;
     if (!f) return;
+
     [
-      "type","builder","country","yearMin","yearMax",
-      "lengthMin","lengthMax","lengthUnit","priceMin","priceMax","currency"
+      "type",
+      "builder",
+      "country",
+      "usRegion",
+      "yearMin",
+      "yearMax",
+      "loaMin",
+      "loaMax",
+      "loaUnit",
     ].forEach((k) => {
-      const v = sp.get(k) ?? (k === "builder" ? initialBuilder : initial[k]) ?? "";
+      const v = sp.get(k) ?? initial[k] ?? "";
       if (f[k] !== undefined) f[k].value = v;
     });
-  }, [sp, initial, initialBuilder]);
+  }, [sp, initial]);
+
+  useEffect(() => {
+    const countryFromUrl = sp.get("country") ?? initial.country ?? "";
+    const usa = isUSA(countryFromUrl);
+    const hasUsRegion = !!sp.get("usRegion");
+    if (!usa && hasUsRegion) setParam("usRegion", "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp]);
 
   const chips = useMemo(() => {
     const list = [];
     const gt = (k) => sp.get(k);
+
     const type = (gt("type") || initial.type || "both").toLowerCase();
     if (type && type !== "both") {
       const map = { monohull: "Monohull", catamaran: "Catamaran", trimaran: "Trimaran" };
       list.push({ k: "type", label: map[type] || type });
     }
-    const builder = gt("builder") || initialBuilder;
+
+    const builder = gt("builder") || initial.builder;
     if (builder) list.push({ k: "builder", label: builder === "Other" ? "Builder: Other" : builder });
+
     const country = gt("country");
-    if (country) list.push({ k: "country", label: country });
+    if (country) list.push({ k: "country", label: normalizeCountry(country) });
+
+    const usRegion = gt("usRegion") || initial.usRegion || "";
+    const countryNorm = normalizeCountry(country || initial.country || "");
+    if (isUSA(countryNorm) && usRegion) {
+      list.push({ k: "usRegion", label: `USA: ${prettyUsRegion(usRegion)}` });
+    }
+
     const y1 = gt("yearMin"), y2 = gt("yearMax");
     if (y1 || y2) list.push({ k: "year", label: `Year ${y1 ?? "—"}–${y2 ?? "—"}` });
-    const l1 = gt("lengthMin"), l2 = gt("lengthMax"), lu = gt("lengthUnit") || initial.lengthUnit || "ft";
-    if (l1 || l2) list.push({ k: "length", label: `Length ${l1 ?? "—"}–${l2 ?? "—"} ${lu}` });
-    const p1 = gt("priceMin"), p2 = gt("priceMax");
-    const curr = gt("currency") || initial.currency || "USD";
-    if (p1 || p2) list.push({ k: "price", label: `Price ${p1 ? Number(p1).toLocaleString() : "—"}–${p2 ? Number(p2).toLocaleString() : "—"} ${curr}` });
+
+    const l1 = gt("loaMin"), l2 = gt("loaMax"), lu = gt("loaUnit") || initial.loaUnit || "ft";
+    if (l1 || l2) list.push({ k: "loa", label: `LOA ${l1 ?? "—"}–${l2 ?? "—"} ${lu}` });
+
     return list;
-  }, [sp, initial.lengthUnit, initial.currency, initial.type, initialBuilder]);
+  }, [sp, initial]);
 
   const removeChip = (key) => {
     if (key === "year") return (setParam("yearMin",""), setParam("yearMax",""));
-    if (key === "length") return (setParam("lengthMin",""), setParam("lengthMax",""));
-    if (key === "price") return (setParam("priceMin",""), setParam("priceMax",""));
+    if (key === "loa") return (setParam("loaMin",""), setParam("loaMax",""));
     setParam(key, "");
-  };
-
-  const buildAuthHref = (action) => {
-    const q = new URLSearchParams(sp.toString());
-    return `/signin?next=${encodeURIComponent(`${pathname}?${q.toString()}`)}&action=${encodeURIComponent(action)}`;
   };
 
   const countriesSet = new Set(countries.filter(Boolean).map((c) => c.trim()));
@@ -103,17 +157,6 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
   const topGroup = preferredOrder.filter((c) => countriesSet.has(c));
   const otherGroup = uniqueCountries.filter((c) => !topGroup.includes(c));
   const orderedCountries = [...topGroup, ...otherGroup];
-
-  // ✅ GUARANTEED readable CTA style (wins against global link styles)
-  const ctaBtn =
-    "inline-flex w-full items-center justify-center h-10 rounded-full " +
-    "bg-[#0a2230] border border-[#0a2230] shadow-sm ring-1 ring-black/5 " +
-    "!text-white hover:!text-white focus:!text-white active:!text-white " +
-    "[&_*]:!text-white no-underline hover:no-underline " +
-    "text-sm font-semibold " +
-    "hover:bg-[#0f2a3b] hover:border-[#0f2a3b] " +
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a44d]/50 " +
-    "transition";
 
   const chipBtn =
     "inline-flex items-center gap-1 rounded-full bg-white text-[#0a2230] text-xs px-2.5 py-1 " +
@@ -127,23 +170,25 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
     "h-8 rounded-full border border-slate-300 bg-white px-3 text-xs text-[#0a2230] " +
     "shadow-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/30";
 
-  const selectedCurrency = sp.get("currency") || initial.currency || "USD";
-  const selectedLengthUnit = sp.get("lengthUnit") || initial.lengthUnit || "ft";
+  const selectedLoaUnit = sp.get("loaUnit") || initial.loaUnit || "ft";
+  const selectedUsRegion = sp.get("usRegion") || initial.usRegion || "";
 
-  return (
-    <div
-      className="
+  const wrapperClass = inDrawer
+    ? "rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm p-4"
+    : `
         rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm p-4
         lg:sticky lg:top-24
         lg:max-h-[calc(100vh-7rem)] lg:overflow-auto
-      "
-    >
+      `;
+
+  return (
+    <div className={wrapperClass}>
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-[#0a2230]">Applied filters</h3>
           <button
             type="button"
-            onClick={clearAll}
+            onClick={() => router.push(pathname, { scroll: false })}
             className="text-xs font-semibold text-[#0a2230]/70 hover:text-[#0a2230] underline underline-offset-2"
           >
             Reset
@@ -167,15 +212,6 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
             ))}
           </div>
         )}
-
-        <div className="mt-3 grid grid-cols-1 gap-2">
-          <a href={buildAuthHref("save-search")} className={ctaBtn}>
-            Save Search
-          </a>
-          <a href={buildAuthHref("create-email-alert")} className={ctaBtn}>
-            Create Email Alert
-          </a>
-        </div>
       </div>
 
       <form ref={formRef} className="space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -194,6 +230,30 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
             <option value="monohull">Monohull</option>
             <option value="catamaran">Catamaran</option>
             <option value="trimaran">Trimaran</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="builder" className="block text-sm font-semibold text-[#0a2230] mb-2">
+            Builder
+          </label>
+          <select
+            id="builder"
+            name="builder"
+            defaultValue={initial.builder ?? ""}
+            onChange={(e) => setParam("builder", e.target.value)}
+            className={field}
+          >
+            <option value="">All builders</option>
+            {TOP5.map((m) => (
+              <option key={`top-${m}`} value={m}>{m}</option>
+            ))}
+            <option disabled>──────────</option>
+            {builders.filter((m) => !TOP5.includes(m)).map((m) => (
+              <option key={`az-${m}`} value={m}>{m}</option>
+            ))}
+            <option disabled>──────────</option>
+            <option value="Other">Other</option>
           </select>
         </div>
 
@@ -220,39 +280,15 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
         </div>
 
         <div>
-          <label htmlFor="builder" className="block text-sm font-semibold text-[#0a2230] mb-2">
-            Builder
-          </label>
-          <select
-            id="builder"
-            name="builder"
-            defaultValue={initialBuilder}
-            onChange={(e) => setParam("builder", e.target.value)}
-            className={field}
-          >
-            <option value="">All builders</option>
-            {TOP5.map((m) => (
-              <option key={`top-${m}`} value={m}>{m}</option>
-            ))}
-            <option disabled>──────────</option>
-            {builders.filter((m) => !TOP5.includes(m)).map((m) => (
-              <option key={`az-${m}`} value={m}>{m}</option>
-            ))}
-            <option disabled>──────────</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        <div>
           <div className="flex items-center gap-2 mb-2">
-            <label className="text-sm font-semibold text-[#0a2230]" htmlFor="lengthUnit">
-              Length
+            <label className="text-sm font-semibold text-[#0a2230]" htmlFor="loaUnit">
+              LOA
             </label>
             <select
-              id="lengthUnit"
-              name="lengthUnit"
-              defaultValue={selectedLengthUnit}
-              onChange={(e) => setParam("lengthUnit", e.target.value)}
+              id="loaUnit"
+              name="loaUnit"
+              defaultValue={selectedLoaUnit}
+              onChange={(e) => setParam("loaUnit", e.target.value)}
               className={miniSelect}
               title="Unit"
             >
@@ -263,56 +299,18 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
           <div className="grid grid-cols-2 gap-2">
             <input
               type="number"
-              name="lengthMin"
+              name="loaMin"
               placeholder="Min"
-              defaultValue={initial.lengthMin}
-              onChange={(e) => debounced("lengthMin", e.target.value)}
+              defaultValue={initial.loaMin}
+              onChange={(e) => debounced("loaMin", e.target.value)}
               className={field}
             />
             <input
               type="number"
-              name="lengthMax"
+              name="loaMax"
               placeholder="Max"
-              defaultValue={initial.lengthMax}
-              onChange={(e) => debounced("lengthMax", e.target.value)}
-              className={field}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <label className="text-sm font-semibold text-[#0a2230]" htmlFor="currency">
-              Price
-            </label>
-            <select
-              id="currency"
-              name="currency"
-              defaultValue={selectedCurrency}
-              onChange={(e) => setParam("currency", e.target.value)}
-              className={miniSelect}
-              title="Currency"
-            >
-              {["USD","EUR","GBP","AUD","NZD","JPY"].map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              type="number"
-              name="priceMin"
-              placeholder="Min"
-              defaultValue={initial.priceMin}
-              onChange={(e) => debounced("priceMin", e.target.value)}
-              className={field}
-            />
-            <input
-              type="number"
-              name="priceMax"
-              placeholder="Max"
-              defaultValue={initial.priceMax}
-              onChange={(e) => debounced("priceMax", e.target.value)}
+              defaultValue={initial.loaMax}
+              onChange={(e) => debounced("loaMax", e.target.value)}
               className={field}
             />
           </div>
@@ -335,6 +333,28 @@ export default function FilterSidebar({ initial = {}, countries = [] }) {
             ))}
           </select>
         </div>
+
+        {showUsRegion && (
+          <div>
+            <label htmlFor="usRegion" className="block text-sm font-semibold text-[#0a2230] mb-2">
+              USA Region
+            </label>
+            <select
+              id="usRegion"
+              name="usRegion"
+              defaultValue={selectedUsRegion}
+              onChange={(e) => setParam("usRegion", e.target.value)}
+              className={field}
+            >
+              <option value="">All USA regions</option>
+              {US_REGION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </form>
     </div>
   );

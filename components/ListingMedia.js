@@ -1,20 +1,41 @@
 // components/ListingMedia.js
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-const INK = "#0e2230";
+const INK = "#0a2230";
 const GOLD = "#c8a44d";
 
-export default function ListingMedia({ images = [], title = "Gallery" }) {
-  const pics = Array.isArray(images) ? images.filter(Boolean) : [];
+export default function ListingMedia({ images = [], title = "Gallery", previewToken = null }) {
+  const pics = useMemo(() => {
+    const arr = Array.isArray(images) ? images.filter(Boolean) : [];
+
+    const resolve = (v) => {
+      const s = String(v).trim();
+      if (!s) return null;
+
+      if (s.startsWith("http://") || s.startsWith("https://")) return s;
+      if (s.startsWith("/")) return s;
+
+      const qp = new URLSearchParams({ key: s });
+      if (previewToken) qp.set("token", String(previewToken));
+      return `/api/uploads?${qp.toString()}`;
+    };
+
+    const resolved = arr.map(resolve).filter(Boolean);
+    return resolved.filter((v, i, a) => a.indexOf(v) === i);
+  }, [images, previewToken]);
+
   const [active, setActive] = useState(0);
   const [open, setOpen] = useState(false);
 
-  const next = () => setActive((a) => (a + 1) % pics.length);
-  const prev = () => setActive((a) => (a - 1 + pics.length) % pics.length);
+  useEffect(() => {
+    if (active >= pics.length) setActive(0);
+  }, [pics.length, active]);
 
-  // Keyboard controls (focus trap in modal; page-level when open)
+  const next = () => setActive((a) => (pics.length ? (a + 1) % pics.length : 0));
+  const prev = () => setActive((a) => (pics.length ? (a - 1 + pics.length) % pics.length : 0));
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -24,9 +45,9 @@ export default function ListingMedia({ images = [], title = "Gallery" }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pics.length]);
 
-  // Simple drag/swipe in modal
   const dragRef = useRef({ x: null, y: null });
   const begin = (x, y) => (dragRef.current = { x, y });
   const end = (x, y) => {
@@ -40,34 +61,59 @@ export default function ListingMedia({ images = [], title = "Gallery" }) {
     dragRef.current = { x: null, y: null };
   };
 
+  const fallback = "/boats/example-sailboat1.jpg";
+  const mainSrc = pics[active] || fallback;
+
   return (
-    <div className="bg-white/5 rounded-2xl p-3 ring-1 ring-white/10">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       {/* Main image */}
-      <div className="relative rounded-xl overflow-hidden bg-black/10">
+      <div className="group relative bg-slate-50">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={pics[active] || "/boats/example-sailboat1.jpg"}
+          src={mainSrc}
           alt={title}
-          className="w-full h-[52vh] md:h-[56vh] object-cover cursor-zoom-in"
+          className="w-full h-[46vh] md:h-[56vh] object-cover cursor-zoom-in"
           onClick={() => setOpen(true)}
           loading="eager"
         />
 
-        {/* Arrows on main (desktop hover) */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+
+        {/* Counter */}
+        <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[12px] font-semibold shadow-sm">
+          <span style={{ color: INK }}>
+            {Math.min(active + 1, Math.max(pics.length, 1))} / {Math.max(pics.length, 1)}
+          </span>
+        </div>
+
+        {/* Arrows */}
         {pics.length > 1 && (
           <>
             <button
-              className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-black/50 text-white backdrop-blur-sm
-                         opacity-0 hover:opacity-100 transition"
+              type="button"
               onClick={prev}
-              aria-label="Previous"
+              aria-label="Previous photo"
+              className="
+                absolute left-3 top-1/2 -translate-y-1/2
+                h-10 w-10 rounded-full
+                bg-black/45 text-white backdrop-blur-sm
+                opacity-0 group-hover:opacity-100 transition
+                hover:bg-black/55
+              "
             >
               ‹
             </button>
             <button
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-full bg-black/50 text-white backdrop-blur-sm
-                         opacity-0 hover:opacity-100 transition"
+              type="button"
               onClick={next}
-              aria-label="Next"
+              aria-label="Next photo"
+              className="
+                absolute right-3 top-1/2 -translate-y-1/2
+                h-10 w-10 rounded-full
+                bg-black/45 text-white backdrop-blur-sm
+                opacity-0 group-hover:opacity-100 transition
+                hover:bg-black/55
+              "
             >
               ›
             </button>
@@ -77,19 +123,25 @@ export default function ListingMedia({ images = [], title = "Gallery" }) {
 
       {/* Thumbnails */}
       {pics.length > 1 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-          {pics.map((src, i) => (
-            <button
-              key={i}
-              onClick={() => setActive(i)}
-              className={`relative h-16 w-24 rounded-lg overflow-hidden ring-2 ${
-                i === active ? "ring-[var(--gold,#c8a44d)]" : "ring-transparent"
-              }`}
-              aria-label={`Image ${i + 1}`}
-            >
-              <img src={src} alt="" className="h-full w-full object-cover" />
-            </button>
-          ))}
+        <div className="p-3">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {pics.map((src, i) => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => setActive(i)}
+                className={[
+                  "relative h-16 w-24 rounded-xl overflow-hidden border shrink-0",
+                  i === active ? "border-transparent ring-2" : "border-slate-200",
+                ].join(" ")}
+                style={i === active ? { boxShadow: `0 0 0 2px ${GOLD}` } : undefined}
+                aria-label={`Image ${i + 1}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -102,49 +154,48 @@ export default function ListingMedia({ images = [], title = "Gallery" }) {
           <div
             className="relative max-w-6xl w-[96vw] h-[86vh]"
             onClick={(e) => e.stopPropagation()}
-            // Mouse drag
             onMouseDown={(e) => begin(e.clientX, e.clientY)}
             onMouseUp={(e) => end(e.clientX, e.clientY)}
             onMouseLeave={(e) => end(e.clientX, e.clientY)}
-            // Touch swipe
             onTouchStart={(e) => begin(e.touches[0].clientX, e.touches[0].clientY)}
             onTouchEnd={(e) => end(e.changedTouches[0].clientX, e.changedTouches[0].clientY)}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={pics[active]}
+              src={mainSrc}
               alt={title}
               className="h-full w-full object-contain select-none"
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
             />
 
-            {/* count */}
             <div className="absolute top-3 left-1/2 -translate-x-1/2 text-white/90 text-sm">
-              {active + 1} / {pics.length}
+              {Math.min(active + 1, Math.max(pics.length, 1))} / {Math.max(pics.length, 1)}
             </div>
 
-            {/* Close */}
             <button
               className="absolute top-3 right-3 h-9 px-3 rounded-full bg-white/10 text-white hover:bg-white/20"
               onClick={() => setOpen(false)}
+              type="button"
             >
               Close ✕
             </button>
 
-            {/* Nav arrows */}
             {pics.length > 1 && (
               <>
                 <button
-                  className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 text-white hover:bg-white/25"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/15 text-white hover:bg-white/25"
                   onClick={prev}
                   aria-label="Previous"
+                  type="button"
                 >
                   ‹
                 </button>
                 <button
-                  className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-white/15 text-white hover:bg-white/25"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 h-11 w-11 rounded-full bg-white/15 text-white hover:bg-white/25"
                   onClick={next}
                   aria-label="Next"
+                  type="button"
                 >
                   ›
                 </button>

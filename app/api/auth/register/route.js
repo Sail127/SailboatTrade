@@ -21,8 +21,18 @@ export async function POST(req) {
     return Response.json({ ok: false, error: "Email and password required." }, { status: 400 });
   }
 
+  // Basic guard (optional, but helps avoid weak pw + matches your UI messaging)
+  if (String(password).length < 8) {
+    return Response.json(
+      { ok: false, error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
   const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return Response.json({ ok: false, error: "Email already in use." }, { status: 409 });
+  if (exists) {
+    return Response.json({ ok: false, error: "Email already in use." }, { status: 409 });
+  }
 
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({ data: { email, name, passwordHash } });
@@ -30,14 +40,16 @@ export async function POST(req) {
   const token = await signSession({ uid: user.id, email: user.email, name: user.name });
   setSessionCookie(token);
 
-  // Send thank-you email (do not fail registration if this fails)
+  // Send welcome email (do not fail registration if this fails)
   try {
-    const appUrl = getAppUrl();
-    const subject = "Welcome to SailboatTrade.com — you’re all set!";
+    const appUrl = getAppUrl(req); // ✅ IMPORTANT: pass req
+    const subject = "Welcome to SailboatTrade — you’re all set!";
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2 style="margin:0 0 10px;">Thanks for registering${user.name ? `, ${user.name}` : ""}!</h2>
-        <p>Welcome aboard SailboatTrade.com — a sailboat-only marketplace built by sailors, for sailors.</p>
+        <h2 style="margin:0 0 10px;">Thanks for registering${
+          user.name ? `, ${user.name}` : ""
+        }!</h2>
+        <p>Welcome aboard SailboatTrade — a sailboat-only marketplace built by sailors, for sailors.</p>
         <ul>
           <li><b>Post listings</b> with detailed sailboat-specific fields.</li>
           <li><b>Save favorites</b> and track boats you’re watching.</li>
@@ -54,11 +66,19 @@ export async function POST(req) {
         </p>
       </div>
     `;
-    const text = `Thanks for registering! Create a listing: ${appUrl}/listings/new`;
+    const text = `Thanks for registering${
+      user.name ? `, ${user.name}` : ""
+    }! Create a listing: ${appUrl}/listings/new`;
 
-    await sendEmail({ to: user.email, subject, html, text });
+    await sendEmail({
+      to: user.email,
+      subject,
+      html,
+      text,
+      tags: [{ name: "type", value: "welcome" }], // ✅ optional but useful
+    });
   } catch (e) {
-    console.error("Welcome email failed:", e);
+    console.error("Welcome email failed:", e?.message || e);
   }
 
   return Response.json({ ok: true });

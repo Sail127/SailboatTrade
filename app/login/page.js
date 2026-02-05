@@ -1,16 +1,44 @@
+// app/login/page.js
 "use client";
 
-import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
 import Link from "next/link";
 
 const GOLD = "#c8a44d";
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginSkeleton />}>
-      <LoginInner />
-    </Suspense>
+function EyeIcon({ open }) {
+  return open ? (
+    // eye-off
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M10.6 10.7a2.5 2.5 0 003.5 3.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9.5 5.4A10.6 10.6 0 0112 5c5.5 0 9.8 4.3 10.9 7-.4 1-1.2 2.4-2.5 3.7M6.1 6.1C4.2 7.5 3 9.4 2.1 12c1.1 2.7 5.4 7 9.9 7 1 0 2-.2 3-.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ) : (
+    // eye
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
+      <path
+        d="M2.1 12c1.1-2.7 5.4-7 9.9-7s8.8 4.3 9.9 7c-1.1 2.7-5.4 7-9.9 7s-8.8-4.3-9.9-7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
   );
 }
 
@@ -22,6 +50,7 @@ function LoginInner() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
 
   async function onSubmit(e) {
@@ -35,11 +64,7 @@ function LoginInner() {
     });
 
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok || !data.ok) {
-      setErr(data?.error || "Login failed.");
-      return;
-    }
+    if (!res.ok || !data.ok) return setErr(data?.error || "Login failed.");
 
     router.push(next);
     router.refresh();
@@ -77,6 +102,7 @@ function LoginInner() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
+                inputMode="email"
               />
             </div>
 
@@ -93,14 +119,26 @@ function LoginInner() {
                 </Link>
               </div>
 
-              <input
-                className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
-                placeholder="••••••••"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
+              <div className="relative">
+                <input
+                  className="h-11 w-full rounded-xl border px-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                  placeholder="••••••••"
+                  type={showPw ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-700 hover:bg-slate-100"
+                  aria-label={showPw ? "Hide password" : "Show password"}
+                  title={showPw ? "Hide password" : "Show password"}
+                >
+                  <EyeIcon open={showPw} />
+                </button>
+              </div>
             </div>
 
             <button
@@ -126,20 +164,10 @@ function LoginInner() {
   );
 }
 
-function LoginSkeleton() {
+export default function LoginPage() {
   return (
-    <main className="bg-white">
-      <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
-        <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="h-6 w-24 rounded bg-slate-100" />
-          <div className="mt-2 h-4 w-64 rounded bg-slate-100" />
-          <div className="mt-6 space-y-4">
-            <div className="h-11 w-full rounded-xl bg-slate-100" />
-            <div className="h-11 w-full rounded-xl bg-slate-100" />
-            <div className="h-11 w-full rounded-xl bg-slate-100" />
-          </div>
-        </div>
-      </div>
-    </main>
+    <Suspense fallback={<div className="mx-auto max-w-7xl px-5 md:px-8 py-14" />}>
+      <LoginInner />
+    </Suspense>
   );
 }

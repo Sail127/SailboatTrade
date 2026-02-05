@@ -1,111 +1,178 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")        // pooled (app)
-  directUrl = env("DIRECT_DATABASE_URL") // direct (migrate/introspect)
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-//
-// Enums
-//
 enum ListingStatus {
   DRAFT
+  READY_FOR_CHECKOUT
   PUBLISHED
   ARCHIVED
 }
 
-enum ListingType {
-  MONOHULL
-  CATAMARAN
+enum ListingPlan {
+  STANDARD
+  FEATURED_HOME
 }
 
-//
-// Models
-//
-model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  name      String?
-  listings  Listing[]
+enum PaymentStatus {
+  NONE
+  PENDING
+  PAID
+  FAILED
+}
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+enum HullType {
+  MONOHULL
+  CATAMARAN
+  TRIMARAN
+}
+
+enum SellerRole {
+  OWNER
+  BROKER
+}
+
+enum BoatCondition {
+  NEW
+  USED
+}
+
+enum FuelType {
+  DIESEL
+  GAS
+}
+
+enum VolumeUnit {
+  gal
+  L
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  listings  Listing[]
+  favorites Favorite[]
 }
 
 model Listing {
-  id                 Int            @id @default(autoincrement())
-  status             ListingStatus  @default(PUBLISHED)
+  id      String @id @default(cuid())
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id])
 
-  // Core display fields used on cards & browse
-  title              String
-  description        String?
-  equipment          Json?          // <-- array of strings, e.g. ["Autopilot","Bimini"]
-
-  make               String?
-  model              String?
-  year               Int?
-
-  // Hull type (enum) — code must use equals, not contains
-  type               ListingType?
-
-  // Pricing — code currently treats these as numeric dollars and a 3-letter code
-  price              Int?
-  currency           String         @default("USD") // UI lets user pick USD/EUR/GBP/JPY
-
-  // Dimensions (DB assumed in Feet for filtering; UI can show ft/m)
-  length             Float?
-  lengthUnit         String?        @default("ft")
-
-  beam               Float?
-  beamUnit           String?        @default("ft")
-
-  draft              Float?
-  draftUnit          String?        @default("ft")
-
-  displacement       Int?
-  displacementUnit   String?        @default("lb")
-
-  engineHours        Int?
+  // From form payload
+  title       String?
+  description String?
 
   // Location
-  locationCity       String?
-  locationRegion     String?
-  locationCountry    String?
+  locationCountry  String?
+  locationCity     String?
+  locationState    String?
+  locationUsRegion String?
 
-  // Contact / media
+  // Price
+  price    Int?    // whole dollars from parseWholeDollars
+  currency String?
+
+  // Boat basics
+  year          Int?
+  builder       String?
+  model         String?
+  boatCondition BoatCondition?
+
+  cabins Int?
+  heads  Int?
+
+  type HullType?
+
+  // Dimensions
+  loa         Float?
+  loaUnit     String?
+  draft       Float?
+  draftUnit   String?
+  airDraft    Float?
+  airDraftUnit String?
+
+  // Engines
+  engineFuel       FuelType?
+  engineMake       String?
+  engineModel      String?
+  propeller        String?
+  engineHorsepower Int?
+
+  engineHours      Int?
+  leftEngineHours  Int?
+  rightEngineHours Int?
+
+  // Generator
+  hasGenerator   Boolean @default(false)
+  generatorFuel  FuelType?
+  generatorMake  String?
+  generatorKw    Float?
+  generatorHours Int?
+
+  // Tanks
+  tankUnit    VolumeUnit?
+  tankFuel    Float?
+  tankWater   Float?
+  tankHolding Float?
+
+  // Dinghy
+  hasDinghy        Boolean @default(false)
+  dinghyModel      String?
+  dinghyLength     Float?
+  dinghyLengthUnit String?
+  dinghyMotor      Boolean?
+
+  // Equipment + Media
+  equipment   String[] @default([])
+  heroImageUrl String?
+  imageUrls    String[] @default([])
+
+  // Contact / seller
+  sellerRole         SellerRole?
+  listingContactName String?
   contactEmail       String?
-  heroImageUrl       String?
-  imageUrls          Json?          // array of string URLs, e.g. ["...","..."]
+  contactPhone       String?
 
-  // Broker (shown in top contact card)
-  brokerName         String?
-  brokerCompany      String?
-  brokerEmail        String?
-  brokerPhone        String?
-  brokerLogoUrl      String?        // e.g. "/images/burgee.png" or external URL
+  brokerageName    String?
+  brokerageAddress String?
+  brokerLogoUrl    String?
 
-  // Relations
-  ownerId            Int?
-  owner              User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  // Draft preview + payments (you already use these)
+  previewToken String @unique @default(cuid())
 
-  // Timestamps
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  status ListingStatus @default(DRAFT)
+  plan   ListingPlan   @default(STANDARD)
 
-  //
-  // Indexes optimized for your browse page filters/sorts:
-  //
-  @@index([status, updatedAt])
-  @@index([status, createdAt])
-  @@index([status, type])
-  @@index([status, make])
-  @@index([status, locationCountry])
-  @@index([status, year])
-  @@index([status, length])
-  @@index([status, price])
+  paymentStatus    PaymentStatus @default(NONE)
+  paymentProvider  String?
+  paymentSessionId String?
+  paidAt           DateTime?
+  publishedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  favorites Favorite[]
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id])
+  listing Listing @relation(fields: [listingId], references: [id])
+
+  @@unique([userId, listingId])
 }

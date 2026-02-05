@@ -1,15 +1,7 @@
-// ===============================================
-// 2) DROP-IN: app/register/page.js
-// - production-ready look
-// - requires First + Last name
-// - optional Business Name
-// - includes bullets: Free + Privacy (never sell info)
-// - preserves ?next= behavior
-// ===============================================
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
 import Link from "next/link";
 
 const NAVY = "#0a2230";
@@ -30,6 +22,14 @@ function CheckIcon() {
 }
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<RegisterSkeleton />}>
+      <RegisterInner />
+    </Suspense>
+  );
+}
+
+function RegisterInner() {
   const sp = useSearchParams();
   const next = sp.get("next") || "/dashboard";
   const router = useRouter();
@@ -273,6 +273,43 @@ export default function RegisterPage() {
                     .
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function RegisterSkeleton() {
+  return (
+    <main className="bg-white">
+      <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="grid gap-8 md:grid-cols-5">
+            <div className="md:col-span-2">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <div className="h-6 w-40 rounded bg-slate-100" />
+                <div className="mt-2 h-4 w-56 rounded bg-slate-100" />
+                <div className="mt-6 space-y-3">
+                  <div className="h-4 w-full rounded bg-slate-100" />
+                  <div className="h-4 w-5/6 rounded bg-slate-100" />
+                  <div className="h-10 w-full rounded bg-slate-100" />
+                </div>
+              </div>
+            </div>
+            <div className="md:col-span-3">
+              <div className="rounded-2xl border bg-white p-6 shadow-sm">
+                <div className="h-5 w-40 rounded bg-slate-100" />
+                <div className="mt-2 h-4 w-64 rounded bg-slate-100" />
+                <div className="mt-6 space-y-4">
+                  <div className="h-11 w-full rounded-xl bg-slate-100" />
+                  <div className="h-11 w-full rounded-xl bg-slate-100" />
+                  <div className="h-11 w-full rounded-xl bg-slate-100" />
+                  <div className="h-11 w-full rounded-xl bg-slate-100" />
+                  <div className="h-11 w-full rounded-xl bg-slate-100" />
+                </div>
               </div>
             </div>
           </div>

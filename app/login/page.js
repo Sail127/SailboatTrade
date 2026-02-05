@@ -1,13 +1,20 @@
-// app/login/page.js
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
 import Link from "next/link";
 
 const GOLD = "#c8a44d";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginSkeleton />}>
+      <LoginInner />
+    </Suspense>
+  );
+}
+
+function LoginInner() {
   const sp = useSearchParams();
   const next = sp.get("next") || "/dashboard";
   const reset = sp.get("reset") === "1";
@@ -112,6 +119,24 @@ export default function LoginPage() {
             >
               Register
             </Link>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function LoginSkeleton() {
+  return (
+    <main className="bg-white">
+      <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
+        <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="h-6 w-24 rounded bg-slate-100" />
+          <div className="mt-2 h-4 w-64 rounded bg-slate-100" />
+          <div className="mt-6 space-y-4">
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
           </div>
         </div>
       </div>

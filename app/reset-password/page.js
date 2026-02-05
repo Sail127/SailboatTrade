@@ -1,13 +1,20 @@
-// app/reset-password/page.js
 "use client";
 
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState } from "react";
 import Link from "next/link";
 
 const GOLD = "#c8a44d";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<ResetPasswordSkeleton />}>
+      <ResetPasswordInner />
+    </Suspense>
+  );
+}
+
+function ResetPasswordInner() {
   const sp = useSearchParams();
   const token = sp.get("token") || "";
   const router = useRouter();
@@ -15,7 +22,6 @@ export default function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState("");
-  const [ok, setOk] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e) {
@@ -38,8 +44,8 @@ export default function ResetPasswordPage() {
 
     if (!res.ok || !data.ok) return setErr(data?.error || "Reset failed.");
 
-    setOk(true);
     router.push("/login?reset=1");
+    router.refresh();
   }
 
   return (
@@ -48,6 +54,12 @@ export default function ResetPasswordPage() {
         <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
           <h1 className="text-xl font-bold text-[#0a2230]">Set a new password</h1>
           <p className="mt-1 text-sm text-slate-600">Choose a strong password (8+ characters).</p>
+
+          {!token ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Missing reset token. Please use the link from your email again.
+            </div>
+          ) : null}
 
           {err ? (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -83,7 +95,7 @@ export default function ResetPasswordPage() {
             </div>
 
             <button
-              disabled={loading}
+              disabled={loading || !token}
               className="h-11 w-full rounded-xl font-semibold text-black disabled:opacity-60"
               style={{ background: GOLD }}
             >
@@ -99,6 +111,24 @@ export default function ResetPasswordPage() {
             >
               Login
             </Link>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function ResetPasswordSkeleton() {
+  return (
+    <main className="bg-white">
+      <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
+        <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="h-6 w-48 rounded bg-slate-100" />
+          <div className="mt-2 h-4 w-72 rounded bg-slate-100" />
+          <div className="mt-6 space-y-4">
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
+            <div className="h-11 w-full rounded-xl bg-slate-100" />
           </div>
         </div>
       </div>

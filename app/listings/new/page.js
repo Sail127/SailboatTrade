@@ -17,7 +17,7 @@ export default function NewListingPage() {
           Post a Sailboat listing
         </h1>
         <p className="mt-3 text-slate-600">
-          Create your listing in a few minutes. You can publish now or save as a draft.
+          Fields marked with <span className="font-semibold">*</span> are required.
         </p>
 
         <div className="mt-8">

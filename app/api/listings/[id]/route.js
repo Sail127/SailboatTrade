@@ -1,63 +1,30 @@
-// app/api/listings/[id]/route.js
-import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-export const runtime = "nodejs"; // Prisma needs Node runtime (not edge)
-
-const toId = (params) => {
-  const raw = params?.id;
-  const id = Number.parseInt(raw, 10);
-  return Number.isFinite(id) ? id : null;
-};
-
-export async function GET(_req, { params }) {
-  try {
-    const id = toId(params);
-    if (!id) {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    }
-
-    const listing = await prisma.listing.findUnique({ where: { id } });
-
-    if (!listing) {
-      return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(listing);
-  } catch (error) {
-    console.error("GET /api/listings/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
-  }
-}
+import { requireUser } from "@/lib/auth";
 
 export async function PUT(req, { params }) {
-  try {
-    const id = toId(params);
-    if (!id) {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    }
+  const s = await requireUser();
+  const body = await req.json().catch(() => ({}));
 
-    const data = await req.json();
-    const updated = await prisma.listing.update({ where: { id }, data });
+  const listing = await prisma.listing.findFirst({ where: { id: params.id, ownerId: s.uid } });
+  if (!listing) return Response.json({ ok: false, error: "Not found." }, { status: 404 });
 
-    return NextResponse.json(updated, { status: 200 });
-  } catch (error) {
-    console.error("PUT /api/listings/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  // Don’t allow edits after publish unless you want (you can relax later)
+  if (listing.status === "PUBLISHED") {
+    return Response.json({ ok: false, error: "Published listings are read-only for now." }, { status: 400 });
   }
-}
 
-export async function DELETE(_req, { params }) {
-  try {
-    const id = toId(params);
-    if (!id) {
-      return NextResponse.json({ error: "Invalid id" }, { status: 400 });
-    }
+  const updated = await prisma.listing.update({
+    where: { id: listing.id },
+    data: {
+      title: body.title ?? listing.title,
+      description: body.description ?? listing.description,
+      year: body.year ?? listing.year,
+      builder: body.builder ?? listing.builder,
+      model: body.model ?? listing.model,
+      loa: body.loa ?? listing.loa,
+      heroImageUrl: body.heroImageUrl ?? listing.heroImageUrl,
+    },
+  });
 
-    await prisma.listing.delete({ where: { id } });
-    return new NextResponse(null, { status: 204 });
-  } catch (error) {
-    console.error("DELETE /api/listings/[id] error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
-  }
+  return Response.json({ ok: true, listing: updated });
 }

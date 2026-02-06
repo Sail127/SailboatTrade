@@ -4,6 +4,7 @@ import Header from "../components/Header.js";
 import Footer from "../components/Footer.js";
 import { Inter, Libre_Baskerville } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/next"
 
 const sans = Inter({
   subsets: ["latin"],

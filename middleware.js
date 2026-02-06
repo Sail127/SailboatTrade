@@ -1,6 +1,13 @@
+// middleware.js
 import { NextResponse } from "next/server";
 
 const PUBLIC_FILE = /\.(png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
+
+function unauthorized() {
+  const res = new NextResponse("Authentication required", { status: 401 });
+  res.headers.set("WWW-Authenticate", 'Basic realm="SailboatTrade"');
+  return res;
+}
 
 export function middleware(req) {
   const { pathname, search } = req.nextUrl;
@@ -18,10 +25,43 @@ export function middleware(req) {
     return NextResponse.next();
   }
 
-  // ✅ Protect dashboard only
+  /* ============================================
+     1) SITE-WIDE PASSWORD (BASIC AUTH)
+     Enable by setting SITE_PASSWORD_ENABLED=true
+  ============================================ */
+  const enabled = String(process.env.SITE_PASSWORD_ENABLED || "").toLowerCase() === "true";
+  if (enabled) {
+    const USER = process.env.SITE_PASSWORD_USER || "";
+    const PASS = process.env.SITE_PASSWORD || "";
+
+    // If enabled but missing env vars, fail CLOSED (protect everything)
+    if (!USER || !PASS) return unauthorized();
+
+    const auth = req.headers.get("authorization") || "";
+    const [scheme, encoded] = auth.split(" ");
+
+    if (scheme !== "Basic" || !encoded) return unauthorized();
+
+    let decoded = "";
+    try {
+      decoded = Buffer.from(encoded, "base64").toString("utf8");
+    } catch {
+      return unauthorized();
+    }
+
+    const idx = decoded.indexOf(":");
+    const u = idx >= 0 ? decoded.slice(0, idx) : "";
+    const p = idx >= 0 ? decoded.slice(idx + 1) : "";
+
+    if (u !== USER || p !== PASS) return unauthorized();
+  }
+
+  /* ============================================
+     2) DASHBOARD SESSION PROTECTION
+  ============================================ */
   if (pathname.startsWith("/dashboard")) {
     const token = req.cookies.get("sbt_session")?.value;
-    const hasSession = Boolean(token && token.length > 20); // basic sanity check
+    const hasSession = Boolean(token && token.length > 20);
 
     if (!hasSession) {
       const url = req.nextUrl.clone();

@@ -1,12 +1,23 @@
 // middleware.js
 import { NextResponse } from "next/server";
 
-const PUBLIC_FILE = /\.(png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
+const PUBLIC_FILE =
+  /\.(png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
 
 function unauthorized() {
   const res = new NextResponse("Authentication required", { status: 401 });
   res.headers.set("WWW-Authenticate", 'Basic realm="SailboatTrade"');
   return res;
+}
+
+function safeDecodeBasic(encoded) {
+  // Edge runtime-safe Base64 decode
+  // encoded is base64("user:pass")
+  try {
+    return atob(encoded);
+  } catch {
+    return "";
+  }
 }
 
 export function middleware(req) {
@@ -27,14 +38,14 @@ export function middleware(req) {
 
   /* ============================================
      1) SITE-WIDE PASSWORD (BASIC AUTH)
-     Enable by setting SITE_PASSWORD_ENABLED=true
   ============================================ */
   const enabled = String(process.env.SITE_PASSWORD_ENABLED || "").toLowerCase() === "true";
+
   if (enabled) {
     const USER = process.env.SITE_PASSWORD_USER || "";
     const PASS = process.env.SITE_PASSWORD || "";
 
-    // If enabled but missing env vars, fail CLOSED (protect everything)
+    // If enabled but missing env vars, fail CLOSED
     if (!USER || !PASS) return unauthorized();
 
     const auth = req.headers.get("authorization") || "";
@@ -42,13 +53,7 @@ export function middleware(req) {
 
     if (scheme !== "Basic" || !encoded) return unauthorized();
 
-    let decoded = "";
-    try {
-      decoded = Buffer.from(encoded, "base64").toString("utf8");
-    } catch {
-      return unauthorized();
-    }
-
+    const decoded = safeDecodeBasic(encoded);
     const idx = decoded.indexOf(":");
     const u = idx >= 0 ? decoded.slice(0, idx) : "";
     const p = idx >= 0 ? decoded.slice(idx + 1) : "";

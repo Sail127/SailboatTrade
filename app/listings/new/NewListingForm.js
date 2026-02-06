@@ -383,6 +383,11 @@ export default function NewListingForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+    // Email verification UX
+  const [needsEmailVerify, setNeedsEmailVerify] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
+
 
   /* -------------------------
      BOAT BASICS
@@ -792,6 +797,26 @@ export default function NewListingForm() {
   /* =========================================================
      SUBMIT
   ========================================================= */
+   async function resendVerificationEmail() {
+    setResendMsg("");
+    setResendBusy(true);
+    try {
+      const res = await fetch("/api/auth/resend-verification", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Could not resend verification email.");
+      if (data.alreadyVerified) {
+        setResendMsg("You’re already verified. Try submitting again.");
+        return;
+      }
+      setResendMsg("Verification email sent. Check your inbox (and spam).");
+    } catch (e) {
+      setResendMsg(e?.message || "Could not resend verification email.");
+    } finally {
+      setResendBusy(false);
+    }
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     setFormError("");
@@ -919,8 +944,23 @@ export default function NewListingForm() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
+            const data = await res.json().catch(() => ({}));
+
+      // ✅ Email verification gate
+      if (!res.ok && data?.code === "EMAIL_NOT_VERIFIED") {
+        setNeedsEmailVerify(true);
+        setFormError("Please verify your email before creating a listing.");
+        // scroll user to the message area
+        try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+        return;
+      }
+
       if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+
+      // if they were previously blocked but now succeeded
+      setNeedsEmailVerify(false);
+      setResendMsg("");
+
 
       router.push(data.previewPath || data.previewUrl || "/listings");
       router.refresh();
@@ -936,6 +976,41 @@ export default function NewListingForm() {
   ========================================================= */
   return (
     <form onSubmit={onSubmit} className="space-y-7 max-w-4xl mx-auto px-4 sm:px-0">
+            {needsEmailVerify && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[13px] text-amber-900">
+          <div className="font-semibold">Verify your email to post listings</div>
+          <div className="mt-1 text-amber-900/80">
+            We sent you a verification link during registration. Click it, then come back and submit again.
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold ${
+                resendBusy ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
+              }`}
+              disabled={resendBusy}
+              onClick={resendVerificationEmail}
+            >
+              {resendBusy ? "Sending…" : "Resend verification email"}
+            </button>
+
+            <a
+              href="/dashboard"
+              className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+            >
+              Go to dashboard
+            </a>
+          </div>
+
+          {resendMsg ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-[12px] text-slate-700">
+              {resendMsg}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {formError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
           {formError}

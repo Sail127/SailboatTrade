@@ -323,14 +323,14 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
             <div className="mt-2 grid grid-cols-2 gap-2">
               <input
                 type="number"
-                placeholder="Min"
+                placeholder="Min Length"
                 className={input}
                 value={loaMin}
                 onChange={(e) => setLoaMin(e.target.value)}
               />
               <input
                 type="number"
-                placeholder="Max"
+                placeholder="Max Length"
                 className={input}
                 value={loaMax}
                 onChange={(e) => setLoaMax(e.target.value)}

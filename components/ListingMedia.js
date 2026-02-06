@@ -5,6 +5,38 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 const INK = "#0a2230";
 const GOLD = "#c8a44d";
+const FALLBACK = "/boats/example-sailboat1.jpg";
+
+/**
+ * SafeImg
+ * - Client-only <img> with automatic fallback on load errors
+ * - IMPORTANT: Never pass event handlers from Server Components into <img>
+ *   (but this file is client, so it's fine)
+ */
+/* eslint-disable @next/next/no-img-element */
+function SafeImg({ src, alt, className = "", loading = "lazy", draggable, onClick, style }) {
+  const [cur, setCur] = useState(src || FALLBACK);
+
+  useEffect(() => {
+    setCur(src || FALLBACK);
+  }, [src]);
+
+  return (
+    <img
+      src={cur || FALLBACK}
+      alt={alt || ""}
+      className={className}
+      loading={loading}
+      draggable={draggable}
+      style={style}
+      onClick={onClick}
+      onError={() => {
+        if (cur !== FALLBACK) setCur(FALLBACK);
+      }}
+    />
+  );
+}
+/* eslint-enable @next/next/no-img-element */
 
 export default function ListingMedia({ images = [], title = "Gallery", previewToken = null }) {
   const pics = useMemo(() => {
@@ -14,15 +46,19 @@ export default function ListingMedia({ images = [], title = "Gallery", previewTo
       const s = String(v).trim();
       if (!s) return null;
 
+      // already a URL
       if (s.startsWith("http://") || s.startsWith("https://")) return s;
+      // local public asset
       if (s.startsWith("/")) return s;
 
+      // R2 key -> signed URL endpoint
       const qp = new URLSearchParams({ key: s });
       if (previewToken) qp.set("token", String(previewToken));
       return `/api/uploads?${qp.toString()}`;
     };
 
     const resolved = arr.map(resolve).filter(Boolean);
+    // de-dupe
     return resolved.filter((v, i, a) => a.indexOf(v) === i);
   }, [images, previewToken]);
 
@@ -61,20 +97,18 @@ export default function ListingMedia({ images = [], title = "Gallery", previewTo
     dragRef.current = { x: null, y: null };
   };
 
-  const fallback = "/boats/example-sailboat1.jpg";
-  const mainSrc = pics[active] || fallback;
+  const mainSrc = pics[active] || FALLBACK;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       {/* Main image */}
       <div className="group relative bg-slate-50">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <SafeImg
           src={mainSrc}
           alt={title}
           className="w-full h-[46vh] md:h-[56vh] object-cover cursor-zoom-in"
-          onClick={() => setOpen(true)}
           loading="eager"
+          onClick={() => setOpen(true)}
         />
 
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
@@ -137,8 +171,7 @@ export default function ListingMedia({ images = [], title = "Gallery", previewTo
                 style={i === active ? { boxShadow: `0 0 0 2px ${GOLD}` } : undefined}
                 aria-label={`Image ${i + 1}`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+                <SafeImg src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
               </button>
             ))}
           </div>
@@ -160,13 +193,11 @@ export default function ListingMedia({ images = [], title = "Gallery", previewTo
             onTouchStart={(e) => begin(e.touches[0].clientX, e.touches[0].clientY)}
             onTouchEnd={(e) => end(e.changedTouches[0].clientX, e.changedTouches[0].clientY)}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <SafeImg
               src={mainSrc}
               alt={title}
               className="h-full w-full object-contain select-none"
               draggable={false}
-              onDragStart={(e) => e.preventDefault()}
             />
 
             <div className="absolute top-3 left-1/2 -translate-x-1/2 text-white/90 text-sm">

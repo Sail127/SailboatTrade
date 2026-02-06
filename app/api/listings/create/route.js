@@ -97,9 +97,30 @@ export async function POST(req) {
 
     const ownerIdRaw = s?.uid ?? s?.id ?? s?.userId;
     const ownerId = ownerIdRaw ? String(ownerIdRaw) : "";
-    if (!ownerId) {
+if (!ownerId) {
+  return NextResponse.json(
+    { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
+    { status: 401 }
+  );
+}
+
+// ✅ Phase 1: require verified email to create listings
+const u = await prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { emailVerifiedAt: true, deletedAt: true, isDisabled: true },
+    });
+
+    if (!u || u.deletedAt || u.isDisabled) {
       return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
     }
+
+    if (!u.emailVerifiedAt) {
+      return NextResponse.json(
+        { ok: false, code: "EMAIL_NOT_VERIFIED", error: "Please verify your email before creating listings." },
+        { status: 403 }
+      );
+    }
+
 
     const currency = isCurrency(body.currency) ? String(body.currency).toUpperCase() : "USD";
     const plan =
@@ -129,7 +150,6 @@ export async function POST(req) {
         locationUsRegion: toStringOrNull(body.locationUsRegion),
         locationCountry: toStringOrNull(body.locationCountry),
 
-        // ✅ store whole dollars as Int
         price: toIntOrNull(body.price),
         currency,
 
@@ -153,7 +173,6 @@ export async function POST(req) {
 
         type: normalizeHullType(body.type),
 
-        // Engines
         engineFuel: normalizeFuelType(body.engineFuel),
         engineMake: toStringOrNull(body.engineMake),
         engineModel: toStringOrNull(body.engineModel),
@@ -164,20 +183,17 @@ export async function POST(req) {
         leftEngineHours: toIntOrNull(body.leftEngineHours),
         rightEngineHours: toIntOrNull(body.rightEngineHours),
 
-        // Generator
         hasGenerator,
         generatorFuel: hasGenerator ? normalizeFuelType(body.generatorFuel) : null,
         generatorMake: hasGenerator ? toStringOrNull(body.generatorMake) : null,
         generatorKw: hasGenerator ? toNumberOrNull(body.generatorKw) : null,
         generatorHours: hasGenerator ? toIntOrNull(body.generatorHours) : null,
 
-        // Tanks
         tankUnit: normalizeVolumeUnit(body.tankUnit),
         tankFuel: toNumberOrNull(body.tankFuel),
         tankWater: toNumberOrNull(body.tankWater),
         tankHolding: toNumberOrNull(body.tankHolding),
 
-        // Dinghy (only if YES)
         hasDinghy,
         dinghyModel: hasDinghy ? toStringOrNull(body.dinghyModel) : null,
         dinghyLength: hasDinghy ? toNumberOrNull(body.dinghyLength) : null,
@@ -188,12 +204,10 @@ export async function POST(req) {
           : null,
         dinghyMotor: hasDinghy ? yesNoToBoolOrNull(body.dinghyMotor) : null,
 
-        // Arrays
         equipment,
         heroImageUrl: toStringOrNull(body.heroImageUrl),
         imageUrls,
 
-        // Seller / contact
         sellerRole,
         listingContactName: toStringOrNull(body.listingContactName),
         contactEmail: toStringOrNull(body.contactEmail),

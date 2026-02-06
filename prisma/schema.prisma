@@ -4,16 +4,25 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled (runtime)
-  directUrl = env("DIRECT_URL")   // direct (migrations)
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
 
 enum ListingStatus {
   DRAFT
   READY_FOR_CHECKOUT
+  PENDING_REVIEW
+  REJECTED
   PUBLISHED
   ARCHIVED
+  REMOVED
 }
 
 enum ListingPlan {
@@ -26,6 +35,12 @@ enum PaymentStatus {
   PENDING
   PAID
   FAILED
+}
+
+enum ContentReviewStatus {
+  NONE
+  PENDING
+  REJECTED
 }
 
 enum HullType {
@@ -58,33 +73,53 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String?
-  passwordHash String
-  createdAt    DateTime @default(now())
 
-  listings  Listing[]
-  favorites Favorite[]
+  firstName    String?
+  lastName     String?
+  businessName String?
+
+  passwordHash String
+
+  // ✅ Email verification (Phase 1)
+  emailVerifiedAt          DateTime?
+  emailVerificationToken   String?   @unique
+  emailVerificationExpires DateTime?
+  emailVerificationSentAt  DateTime?
+
+  role       UserRole @default(USER)
+  isDisabled Boolean  @default(false)
+  disabledAt DateTime?
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listings                 Listing[]
+  favorites                Favorite[]
+  reviewedListings         Listing[] @relation("ListingReviewedBy")
+  removedListings          Listing[] @relation("ListingRemovedBy")
+  contentReviewedListings  Listing[] @relation("ListingContentReviewedBy")
+  auditLogs                AdminAuditLog[]
 }
+
+
 
 model Listing {
   id      String @id @default(cuid())
   ownerId String
   owner   User   @relation(fields: [ownerId], references: [id])
 
-  // From form payload
   title       String?
   description String?
 
-  // Location
   locationCountry  String?
   locationCity     String?
   locationState    String?
   locationUsRegion String?
 
-  // Price
-  price    Int?    // whole dollars from parseWholeDollars
+  price    Int?
   currency String?
 
-  // Boat basics
   year          Int?
   builder       String?
   model         String?
@@ -95,15 +130,13 @@ model Listing {
 
   type HullType?
 
-  // Dimensions
-  loa         Float?
-  loaUnit     String?
-  draft       Float?
-  draftUnit   String?
-  airDraft    Float?
+  loa          Float?
+  loaUnit      String?
+  draft        Float?
+  draftUnit    String?
+  airDraft     Float?
   airDraftUnit String?
 
-  // Engines
   engineFuel       FuelType?
   engineMake       String?
   engineModel      String?
@@ -114,32 +147,40 @@ model Listing {
   leftEngineHours  Int?
   rightEngineHours Int?
 
-  // Generator
   hasGenerator   Boolean @default(false)
   generatorFuel  FuelType?
   generatorMake  String?
   generatorKw    Float?
   generatorHours Int?
 
-  // Tanks
   tankUnit    VolumeUnit?
   tankFuel    Float?
   tankWater   Float?
   tankHolding Float?
 
-  // Dinghy
   hasDinghy        Boolean @default(false)
   dinghyModel      String?
   dinghyLength     Float?
   dinghyLengthUnit String?
   dinghyMotor      Boolean?
 
-  // Equipment + Media
-  equipment   String[] @default([])
+  equipment    String[] @default([])
   heroImageUrl String?
   imageUrls    String[] @default([])
 
-  // Contact / seller
+  // -------- Staged (pending) content changes for PUBLISHED listings --------
+  pendingTitle        String?
+  pendingDescription  String?
+  pendingHeroImageUrl String?
+  pendingImageUrls    String[] @default([])
+
+  contentReviewStatus    ContentReviewStatus @default(NONE)
+  contentSubmittedAt     DateTime?
+  contentReviewedAt      DateTime?
+  contentReviewedById    String?
+  contentReviewedBy      User? @relation("ListingContentReviewedBy", fields: [contentReviewedById], references: [id])
+  contentRejectionReason String?
+
   sellerRole         SellerRole?
   listingContactName String?
   contactEmail       String?
@@ -149,20 +190,31 @@ model Listing {
   brokerageAddress String?
   brokerLogoUrl    String?
 
-  // Draft preview + payments (you already use these)
   previewToken String @unique @default(cuid())
 
   status ListingStatus @default(DRAFT)
   plan   ListingPlan   @default(STANDARD)
 
-  paymentStatus    PaymentStatus @default(NONE)
-  paymentProvider  String?
-  paymentSessionId String?
-  paidAt           DateTime?
-  publishedAt      DateTime?
+  paymentStatus        PaymentStatus @default(NONE)
+  paymentProvider      String?
+  paymentSessionId     String?
+  paidAt               DateTime?
+  submittedForReviewAt DateTime?
+  publishedAt          DateTime?
+
+  // -------- Moderation (new listing approval / takedown) --------
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewedBy      User? @relation("ListingReviewedBy", fields: [reviewedById], references: [id])
+  rejectionReason String?
+
+  removedAt     DateTime?
+  removedById   String?
+  removedBy     User? @relation("ListingRemovedBy", fields: [removedById], references: [id])
+  removedReason String?
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @default(now()) @updatedAt
 
   favorites Favorite[]
 }
@@ -177,4 +229,19 @@ model Favorite {
   listing Listing @relation(fields: [listingId], references: [id])
 
   @@unique([userId, listingId])
+}
+
+model AdminAuditLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  actorId String
+  actor   User @relation(fields: [actorId], references: [id])
+
+  action     String
+  entityType String
+  entityId   String
+
+  reason String?
+  meta   Json?
 }

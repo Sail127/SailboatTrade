@@ -2,8 +2,27 @@
 import prisma from "@/lib/prisma";
 import { hashPassword, signSession, setSessionCookie } from "@/lib/auth";
 import { sendEmail, getAppUrl } from "@/lib/email";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
+
+function toStr(v, maxLen = 120) {
+  if (typeof v !== "string") return "";
+  const s = v.trim();
+  return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function splitName(fullName) {
+  const n = toStr(fullName, 200);
+  if (!n) return { firstName: "", lastName: "" };
+  const parts = n.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts[parts.length - 1] };
+}
+
+function newToken() {
+  return crypto.randomBytes(32).toString("hex"); // url-safe
+}
 
 export async function POST(req) {
   const body = await req.json().catch(() => null);
@@ -11,22 +30,26 @@ export async function POST(req) {
   const email = body?.email?.toLowerCase()?.trim();
   const password = body?.password;
 
-  // Backwards compatible: accept either name OR first/last
-  const firstName = (body?.firstName ?? "").toString().trim();
-  const lastName = (body?.lastName ?? "").toString().trim();
+  let firstName = toStr(body?.firstName ?? "", 60);
+  let lastName = toStr(body?.lastName ?? "", 60);
+  const businessName = toStr(body?.businessName ?? "", 120) || null;
+
+  const incomingName = toStr(body?.name ?? "", 200);
+  if ((!firstName || !lastName) && incomingName) {
+    const s = splitName(incomingName);
+    if (!firstName) firstName = s.firstName;
+    if (!lastName) lastName = s.lastName;
+  }
+
   const name =
-    (firstName && lastName ? `${firstName} ${lastName}` : body?.name?.trim()) || null;
+    (firstName && lastName ? `${firstName} ${lastName}` : incomingName) || null;
 
   if (!email || !password) {
     return Response.json({ ok: false, error: "Email and password required." }, { status: 400 });
   }
 
-  // Basic guard (optional, but helps avoid weak pw + matches your UI messaging)
   if (String(password).length < 8) {
-    return Response.json(
-      { ok: false, error: "Password must be at least 8 characters." },
-      { status: 400 }
-    );
+    return Response.json({ ok: false, error: "Password must be at least 8 characters." }, { status: 400 });
   }
 
   const exists = await prisma.user.findUnique({ where: { email } });
@@ -35,50 +58,72 @@ export async function POST(req) {
   }
 
   const passwordHash = await hashPassword(password);
-  const user = await prisma.user.create({ data: { email, name, passwordHash } });
 
-  const token = await signSession({ uid: user.id, email: user.email, name: user.name });
+  // ✅ verification token + expiry (3 days)
+  const verifyToken = newToken();
+  const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name,
+      firstName: firstName || null,
+      lastName: lastName || null,
+      businessName,
+      passwordHash,
+
+      emailVerifiedAt: null,
+      emailVerificationToken: verifyToken,
+      emailVerificationExpires: verifyExpires,
+      emailVerificationSentAt: new Date(),
+    },
+    select: { id: true, email: true, name: true, firstName: true, lastName: true },
+  });
+
+  const token = await signSession({
+    uid: user.id,
+    email: user.email,
+    name: user.name,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  });
+
   setSessionCookie(token);
 
-  // Send welcome email (do not fail registration if this fails)
+  // ✅ Send verification email (do not fail registration if this fails)
   try {
-    const appUrl = getAppUrl(req); // ✅ IMPORTANT: pass req
-    const subject = "Welcome to SailboatTrade — you’re all set!";
+    const appUrl = getAppUrl(req);
+    const displayName =
+      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.name) || "";
+
+    const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verifyToken)}`;
+
+    const subject = "Verify your email — SailboatTrade";
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2 style="margin:0 0 10px;">Thanks for registering${
-          user.name ? `, ${user.name}` : ""
-        }!</h2>
-        <p>Welcome aboard SailboatTrade — a sailboat-only marketplace built by sailors, for sailors.</p>
-        <ul>
-          <li><b>Post listings</b> with detailed sailboat-specific fields.</li>
-          <li><b>Save favorites</b> and track boats you’re watching.</li>
-          <li><b>Search smarter</b> with sailboat-focused filters.</li>
-        </ul>
+        <h2 style="margin:0 0 10px;">Welcome aboard${displayName ? `, ${displayName}` : ""}!</h2>
+        <p>Please verify your email to post listings and protect your account.</p>
         <p>
-          Ready to list your sailboat?
-          <a href="${appUrl}/listings/new" style="display:inline-block;margin-left:6px;background:#c8a44d;color:#0a2230;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;">
-            Create a listing
+          <a href="${verifyUrl}" style="display:inline-block;background:#c8a44d;color:#0a2230;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;">
+            Verify email
           </a>
         </p>
         <p style="color:#64748b;font-size:13px;margin-top:18px;">
-          We respect your privacy and will never sell your information.
+          If you didn’t create this account, you can ignore this email.
         </p>
       </div>
     `;
-    const text = `Thanks for registering${
-      user.name ? `, ${user.name}` : ""
-    }! Create a listing: ${appUrl}/listings/new`;
+    const text = `Verify your email: ${verifyUrl}`;
 
     await sendEmail({
       to: user.email,
       subject,
       html,
       text,
-      tags: [{ name: "type", value: "welcome" }], // ✅ optional but useful
+      tags: [{ name: "type", value: "verify_email" }],
     });
   } catch (e) {
-    console.error("Welcome email failed:", e?.message || e);
+    console.error("Verification email failed:", e?.message || e);
   }
 
   return Response.json({ ok: true });

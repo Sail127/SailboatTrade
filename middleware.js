@@ -1,46 +1,39 @@
-// middleware.js
 import { NextResponse } from "next/server";
 
+const PUBLIC_FILE = /\.(png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
+
 export function middleware(req) {
-  const user = process.env.SITE_USER;
-  const pass = process.env.SITE_PASS;
+  const { pathname, search } = req.nextUrl;
 
-  // If not configured, don't block anything
-  if (!user || !pass) return NextResponse.next();
-
-  const { pathname } = req.nextUrl;
-
-  // Allow Next.js internals + public static files
+  // ✅ Always allow Next internals, API routes, and public/static files
   if (
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon.ico") ||
-    pathname.startsWith("/robots.txt") ||
-    pathname.startsWith("/sitemap.xml")
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/.well-known") ||
+    pathname.startsWith("/favicon") ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml" ||
+    PUBLIC_FILE.test(pathname)
   ) {
     return NextResponse.next();
   }
 
-  // OPTIONAL: allow external webhooks (uncomment if needed)
-  // if (pathname.startsWith("/api/resend/webhook")) return NextResponse.next();
+  // ✅ Protect dashboard only
+  if (pathname.startsWith("/dashboard")) {
+    const token = req.cookies.get("sbt_session")?.value;
+    const hasSession = Boolean(token && token.length > 20); // basic sanity check
 
-  const auth = req.headers.get("authorization") || "";
-  const [scheme, encoded] = auth.split(" ");
-
-  if (scheme === "Basic" && encoded) {
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const [u, p] = decoded.split(":");
-    if (u === user && p === pass) return NextResponse.next();
+    if (!hasSession) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/login";
+      url.searchParams.set("next", pathname + (search || ""));
+      return NextResponse.redirect(url);
+    }
   }
 
-  return new NextResponse("Authentication required.", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": 'Basic realm="SailboatTrade (staging)"',
-    },
-  });
+  return NextResponse.next();
 }
 
-// Match all routes except static assets
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/:path*"],
 };

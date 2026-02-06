@@ -1,11 +1,8 @@
 // app/register/page.js
-// DROP-IN: adds "show password" toggle + confirm password (required)
-// Also keeps the Suspense boundary so Vercel builds don't fail with useSearchParams.
-
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useState, Suspense, useMemo } from "react";
 import Link from "next/link";
 
 const NAVY = "#0a2230";
@@ -27,20 +24,9 @@ function CheckIcon() {
 
 function EyeIcon({ open }) {
   return open ? (
-    // eye-off
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M3 3l18 18"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10.6 10.7a2.5 2.5 0 003.5 3.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
+      <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M10.6 10.7a2.5 2.5 0 003.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path
         d="M9.5 5.4A10.6 10.6 0 0112 5c5.5 0 9.8 4.3 10.9 7-.4 1-1.2 2.4-2.5 3.7M6.1 6.1C4.2 7.5 3 9.4 2.1 12c1.1 2.7 5.4 7 9.9 7 1 0 2-.2 3-.5"
         stroke="currentColor"
@@ -49,26 +35,23 @@ function EyeIcon({ open }) {
       />
     </svg>
   ) : (
-    // eye
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
       <path
         d="M2.1 12c1.1-2.7 5.4-7 9.9-7s8.8 4.3 9.9 7c-1.1 2.7-5.4 7-9.9 7s-8.8-4.3-9.9-7Z"
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path
-        d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
 
 function RegisterInner() {
   const sp = useSearchParams();
-  const next = sp.get("next") || "/dashboard";
   const router = useRouter();
+
+  // preserve next (including if user later adds query params)
+  const next = useMemo(() => sp.get("next") || "/dashboard", [sp]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -80,13 +63,17 @@ function RegisterInner() {
   const [showPw, setShowPw] = useState(false);
 
   const [err, setErr] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
   const mismatch = confirm.length > 0 && password !== confirm;
 
   async function onSubmit(e) {
     e.preventDefault();
+    if (loading) return;
+
     setErr("");
+    setSuccess("");
 
     const fn = firstName.trim();
     const ln = lastName.trim();
@@ -94,15 +81,16 @@ function RegisterInner() {
 
     if (!fn || !ln) return setErr("First and last name are required.");
     if (!em || !em.includes("@")) return setErr("Please enter a valid email.");
-    if (!password || password.length < 8)
-      return setErr("Password must be at least 8 characters.");
+    if (!password || password.length < 8) return setErr("Password must be at least 8 characters.");
     if (password !== confirm) return setErr("Passwords do not match.");
 
     setLoading(true);
+
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include", // ✅ ensure session cookie is set/kept
         body: JSON.stringify({
           firstName: fn,
           lastName: ln,
@@ -113,10 +101,19 @@ function RegisterInner() {
       });
 
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Register failed.");
 
-      router.push(next);
-      router.refresh();
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || "Register failed.");
+      }
+
+      // ✅ show confirmation instead of “silent reset”
+      setSuccess("Account created successfully! Redirecting to your dashboard…");
+
+      // ✅ small delay so users see the success message
+      setTimeout(() => {
+        router.replace(next);
+        router.refresh();
+      }, 700);
     } catch (e2) {
       setErr(e2?.message || "Register failed.");
     } finally {
@@ -167,8 +164,7 @@ function RegisterInner() {
                       <CheckIcon />
                     </span>
                     <span>
-                      <span className="font-semibold">Registration is free</span> — list your
-                      sailboat and reach buyers.
+                      <span className="font-semibold">Registration is free</span> — list your sailboat and reach buyers.
                     </span>
                   </li>
                   <li className="flex gap-2">
@@ -176,8 +172,7 @@ function RegisterInner() {
                       <CheckIcon />
                     </span>
                     <span>
-                      <span className="font-semibold">We respect your privacy</span> — we will
-                      never sell your information.
+                      <span className="font-semibold">We respect your privacy</span> — we will never sell your information.
                     </span>
                   </li>
                 </ul>
@@ -199,6 +194,12 @@ function RegisterInner() {
                 {err ? (
                   <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {err}
+                  </div>
+                ) : null}
+
+                {success ? (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    {success}
                   </div>
                 ) : null}
 
@@ -233,8 +234,7 @@ function RegisterInner() {
 
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                      Business name{" "}
-                      <span className="font-normal text-slate-500">(optional)</span>
+                      Business name <span className="font-normal text-slate-500">(optional)</span>
                     </label>
                     <input
                       className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
@@ -276,16 +276,14 @@ function RegisterInner() {
                       </button>
                     </div>
 
-                    <div className="relative">
-                      <input
-                        className="h-11 w-full rounded-xl border px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
-                        placeholder="8+ characters"
-                        type={showPw ? "text" : "password"}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        autoComplete="new-password"
-                      />
-                    </div>
+                    <input
+                      className="h-11 w-full rounded-xl border px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                      placeholder="8+ characters"
+                      type={showPw ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="new-password"
+                    />
                   </div>
 
                   {/* Confirm password */}
@@ -295,9 +293,7 @@ function RegisterInner() {
                     </label>
                     <input
                       className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 ${
-                        mismatch
-                          ? "border-red-300 focus:ring-red-200"
-                          : "focus:ring-[#c8a44d]/40"
+                        mismatch ? "border-red-300 focus:ring-red-200" : "focus:ring-[#c8a44d]/40"
                       }`}
                       type={showPw ? "text" : "password"}
                       value={confirm}
@@ -307,9 +303,7 @@ function RegisterInner() {
                     />
 
                     {mismatch ? (
-                      <div className="mt-2 text-xs font-semibold text-red-600">
-                        Passwords do not match.
-                      </div>
+                      <div className="mt-2 text-xs font-semibold text-red-600">Passwords do not match.</div>
                     ) : null}
                   </div>
 
@@ -354,7 +348,6 @@ function RegisterInner() {
 }
 
 export default function RegisterPage() {
-  // ✅ Important for Next.js build: useSearchParams must be inside Suspense
   return (
     <Suspense fallback={<div className="mx-auto max-w-7xl px-5 md:px-8 py-14" />}>
       <RegisterInner />

@@ -1,5 +1,10 @@
-import { clearSessionCookie } from "@/lib/auth";
+// app/api/auth/logout/route.js
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+
 export async function POST() {
-  clearSessionCookie();
-  return Response.json({ ok: true });
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set("sbt_session", "", { path: "/", maxAge: 0 });
+  return res;
 }

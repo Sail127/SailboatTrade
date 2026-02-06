@@ -1,50 +1,22 @@
 // app/listings/preview/[token]/page.js
+import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import ListingDetail from "@/components/ListingDetail";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function coerceArray(v) {
-  if (!v) return [];
-  if (Array.isArray(v)) return v;
+const ALLOWED = ["DRAFT", "READY_FOR_CHECKOUT", "PENDING_REVIEW", "REJECTED"];
 
-  // Back-compat if something was stored as JSON text at some point
-  if (typeof v === "string") {
-    try {
-      const p = JSON.parse(v);
-      return Array.isArray(p) ? p : [];
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
-export default async function PreviewListingPage({ params }) {
-  const token = String(params.token || "").trim();
-  if (!token) {
-    return <div className="mx-auto max-w-7xl px-5 md:px-8 py-12">Preview not found.</div>;
-  }
+export default async function PreviewListing({ params }) {
+  const token = params.token;
 
   const listing = await prisma.listing.findFirst({
-    where: {
-      previewToken: token,
-      status: { in: ["DRAFT", "READY_FOR_CHECKOUT"] },
-    },
+    where: { previewToken: token, status: { in: ALLOWED } },
+    include: { owner: { select: { email: true, id: true } } },
   });
 
-  if (!listing) {
-    return <div className="mx-auto max-w-7xl px-5 md:px-8 py-12">Preview not found.</div>;
-  }
+  if (!listing) return notFound();
 
-  const normalized = {
-    ...listing,
-    imageUrls: coerceArray(listing.imageUrls),
-    equipment: coerceArray(listing.equipment),
-    __previewToken: token, // required for /api/uploads?token=...
-  };
-
-  return <ListingDetail listing={normalized} />;
+  // Let ListingMedia fetch images via /api/uploads?key=...&token=...
+  return <ListingDetail listing={{ ...listing, __previewToken: token }} />;
 }

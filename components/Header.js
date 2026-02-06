@@ -1,37 +1,30 @@
 // components/Header.js
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { notifyAuthChanged, onAuthChanged } from "@/lib/auth-client";
 
 const CONTAINER = "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8";
 
-/**
- * AUTH ENDPOINTS (adjust if needed)
- * - ME_ENDPOINT should return { user: { name?, email? } } when logged in
- * - LOGOUT_ENDPOINT should clear session/cookie and return 200
- */
 const ME_ENDPOINT = "/api/auth/me";
 const LOGOUT_ENDPOINT = "/api/auth/logout";
 
 const LOGIN_HREF = "/login";
 const DASHBOARD_HREF = "/dashboard";
 
-// ✅ Match your Search button gold
 const SEARCH_GOLD = "#f3b23f";
+
+function hardNav(href) {
+  if (typeof window === "undefined") return;
+  window.location.assign(href);
+}
 
 function MenuIcon({ open }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-5 w-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
       {open ? (
         <>
           <path d="M6 6l12 12" />
@@ -48,26 +41,15 @@ function MenuIcon({ open }) {
   );
 }
 
-/* Small user silhouette icon */
 function UserIcon() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className="h-4 w-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M20 21a8 8 0 0 0-16 0" />
       <circle cx="12" cy="7" r="4" />
     </svg>
   );
 }
 
-/* Binoculars icon (big round, obvious) */
 function BinocularsIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
@@ -81,7 +63,6 @@ function BinocularsIcon() {
   );
 }
 
-/* Bold gold $ icon as SVG (aligned with binoculars) */
 function DollarIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
@@ -93,59 +74,49 @@ function DollarIcon() {
   );
 }
 
-/* ✅ Compute initials: first + last name (smart email fallback) */
 function initialsFromUser(user) {
+  const fn = (user?.firstName || "").trim();
+  const ln = (user?.lastName || "").trim();
+  if (fn && ln) return (fn[0] + ln[0]).toUpperCase();
+
   const name = (user?.name || "").trim();
   if (name) {
     const parts = name.split(/\s+/).filter(Boolean);
     if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    // single word name: use first two letters
     return parts[0].slice(0, 2).toUpperCase();
   }
 
   const email = (user?.email || "").trim();
-  if (email) {
-    const local = email.split("@")[0] || "";
-    // try adam.wright / adam_wright / adam-wright
-    const segs = local.split(/[.\-_]+/).filter(Boolean);
-    if (segs.length >= 2) return (segs[0][0] + segs[segs.length - 1][0]).toUpperCase();
-    return local.slice(0, 2).toUpperCase();
-  }
+  if (email) return email.split("@")[0].slice(0, 2).toUpperCase();
 
   return "";
 }
 
-/**
- * Account button in header:
- * - ✅ ALWAYS a true circle (enforced square)
- * - ✅ Gold matches search button
- * - ✅ initials are first + last name
- */
-function AccountCircle({ user, loading, onClick }) {
+function AccountCircle({ user, loading, onBeforeNav }) {
   const isAuthed = Boolean(user);
   const initials = isAuthed ? initialsFromUser(user) : "";
+  const href = isAuthed ? DASHBOARD_HREF : LOGIN_HREF;
 
-  // ✅ hard enforce perfect circle
   const common =
     "h-10 w-10 aspect-square flex-none p-0 rounded-full overflow-hidden " +
     "inline-flex items-center justify-center leading-none " +
     "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(243,178,63,0.45)]";
 
-  // ✅ match search button gold
-  const goldBtn =
-    "text-[#0a2230] shadow-md shadow-black/20 " +
-    "hover:brightness-105 active:brightness-95";
-
+  const goldBtn = "text-[#0a2230] shadow-md shadow-black/20 hover:brightness-105 active:brightness-95";
   const goldRing = "ring-1 ring-black/10";
 
   return (
-    <Link
-      href={isAuthed ? DASHBOARD_HREF : LOGIN_HREF}
-      onClick={onClick}
+    <a
+      href={href}
       aria-label={isAuthed ? "Go to dashboard" : "Go to login"}
       title={isAuthed ? "Dashboard" : "Login"}
       className={[common, goldBtn, goldRing].join(" ")}
       style={{ background: SEARCH_GOLD }}
+      onClick={(e) => {
+        e.preventDefault();
+        onBeforeNav?.();
+        hardNav(href);
+      }}
     >
       {loading ? (
         <span className="h-4 w-4 rounded-full bg-black/15 animate-pulse" />
@@ -153,82 +124,99 @@ function AccountCircle({ user, loading, onClick }) {
         <span className="text-[12px] font-extrabold tracking-wide">{initials}</span>
       ) : (
         <span className="translate-y-[0.5px]">
-          <svg
-            viewBox="0 0 24 24"
-            className="h-5 w-5"
-            fill="none"
-            stroke="#0a2230"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
+          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="#0a2230" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M20 21a8 8 0 0 0-16 0" />
             <circle cx="12" cy="7" r="4" />
           </svg>
         </span>
       )}
-    </Link>
+    </a>
   );
 }
 
 export default function Header() {
+  const pathname = usePathname();
+
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const menuRef = useRef(null);
 
-  // Auth state for header button
   const [meLoading, setMeLoading] = useState(true);
   const [meUser, setMeUser] = useState(null);
 
-  // Fetch current user
-  useEffect(() => {
-    let alive = true;
-
-    async function loadMe() {
-      try {
-        const res = await fetch(ME_ENDPOINT, { method: "GET", credentials: "include" });
-        if (!res.ok) throw new Error("not authed");
-        const data = await res.json().catch(() => ({}));
-        const u = data?.user || data?.me || null;
-        if (!alive) return;
-        setMeUser(u);
-      } catch {
-        if (!alive) return;
-        setMeUser(null);
-      } finally {
-        if (!alive) return;
-        setMeLoading(false);
-      }
+  const refreshMe = useCallback(async () => {
+    setMeLoading(true);
+    try {
+      const res = await fetch(ME_ENDPOINT, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "cache-control": "no-store" },
+      });
+      if (!res.ok) throw new Error("not authed");
+      const data = await res.json().catch(() => ({}));
+      setMeUser(data?.user || data?.me || null);
+    } catch {
+      setMeUser(null);
+    } finally {
+      setMeLoading(false);
     }
-
-    loadMe();
-    return () => {
-      alive = false;
-    };
   }, []);
 
-  // Logout handler (calls API then refreshes UI)
+  // initial + route changes
+  useEffect(() => {
+    refreshMe();
+  }, [pathname, refreshMe]);
+
+  // ✅ INSTANT updates with no navigation: listen to auth-change broadcasts
+  useEffect(() => {
+    return onAuthChanged(() => {
+      refreshMe();
+    });
+  }, [refreshMe]);
+
+  // extra: focus/visibility
+  useEffect(() => {
+    function onFocus() {
+      refreshMe();
+    }
+    function onVis() {
+      if (document.visibilityState === "visible") refreshMe();
+    }
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [refreshMe]);
+
   async function onLogout() {
     try {
       await fetch(LOGOUT_ENDPOINT, { method: "POST", credentials: "include" });
     } catch {
       // ignore
     } finally {
+      // optimistic
       setMeUser(null);
       setMeLoading(false);
       setOpen(false);
-      if (typeof window !== "undefined") window.location.reload();
+
+      // ✅ notify everybody (this header + other tabs)
+      notifyAuthChanged();
+
+      // ✅ then confirm truth from server
+      refreshMe();
     }
   }
 
   useEffect(() => {
-    function onClick(e) {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
+    function onDocMouseDown(e) {
+      if (open && menuRef.current && !menuRef.current.contains(e.target)) setOpen(false);
     }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
 
   useEffect(() => {
     function onKey(e) {
@@ -256,25 +244,16 @@ export default function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Menu row base
   const navLink =
     "flex items-center gap-3 px-3 py-2 rounded-lg font-medium text-white/90 hover:bg-black/10 hover:text-white transition";
-
-  // Fixed-size icon box so text aligns perfectly
   const iconBox = "inline-flex h-6 w-6 items-center justify-center shrink-0";
-
-  // Top 2 “primary” items: slightly larger + brighter + gold hover glow
   const navPrimary =
-    navLink +
-    " text-[15px] text-white/95 hover:bg-[#c8a44d]/10 hover:ring-1 hover:ring-[#c8a44d]/25";
-
-  // Lower items: smaller font
+    navLink + " text-[15px] text-white/95 hover:bg-[#c8a44d]/10 hover:ring-1 hover:ring-[#c8a44d]/25";
   const navSecondary = navLink + " text-[13px] text-white/85";
-
-  // Log out button style (menu)
   const logoutBtn =
-    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold " +
-    "text-white/90 hover:bg-white/10 transition text-left";
+    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-white/90 hover:bg-white/10 transition text-left";
+
+  const dashHref = meUser ? DASHBOARD_HREF : LOGIN_HREF;
 
   return (
     <header
@@ -289,29 +268,11 @@ export default function Header() {
 
       <div className={`${CONTAINER} h-16`}>
         <div className="relative h-full flex items-center">
-          {/* Left: burgee */}
-          <Link
-            href="/"
-            className="flex items-center shrink-0"
-            aria-label="Go to homepage"
-            onClick={() => setOpen(false)}
-          >
-            <Image
-              src="/burgee.png"
-              alt="SailboatTrade burgee"
-              width={72}
-              height={72}
-              className="h-14 w-auto object-contain"
-              priority
-            />
+          <Link href="/" className="flex items-center shrink-0" aria-label="Go to homepage" onClick={() => setOpen(false)}>
+            <Image src="/burgee.png" alt="SailboatTrade burgee" width={72} height={72} className="h-14 w-auto object-contain" priority />
           </Link>
 
-          {/* Name + slogan */}
-          <Link
-            href="/"
-            className="ml-3 leading-tight text-left hidden sm:block"
-            onClick={() => setOpen(false)}
-          >
+          <Link href="/" className="ml-3 leading-tight text-left hidden sm:block" onClick={() => setOpen(false)}>
             <div
               className="text-xl sm:text-2xl font-bold text-white leading-none whitespace-nowrap"
               style={{
@@ -321,16 +282,11 @@ export default function Header() {
               }}
             >
               Sailboat<span className="text-[#c8a44d]">Trade</span>
-              <span className="text-slate-300" style={{ letterSpacing: "0.06em" }}>
-                .com
-              </span>
+              <span className="text-slate-300" style={{ letterSpacing: "0.06em" }}>.com</span>
             </div>
-            <div className="text-[11px] text-slate-300">
-              Built by Sailors – For Sailors
-            </div>
+            <div className="text-[11px] text-slate-300">Built by Sailors – For Sailors</div>
           </Link>
 
-          {/* Right: search + account + hamburger */}
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <input
               type="search"
@@ -338,12 +294,7 @@ export default function Header() {
               className="hidden sm:block h-9 w-56 rounded-lg border border-white/15 bg-white text-[#0a2230] px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
             />
 
-            {/* ✅ Only change: perfect circle + correct gold + first/last initials */}
-            <AccountCircle
-              user={meUser}
-              loading={meLoading}
-              onClick={() => setOpen(false)}
-            />
+            <AccountCircle user={meUser} loading={meLoading} onBeforeNav={() => setOpen(false)} />
 
             <div className="relative shrink-0" ref={menuRef}>
               <button
@@ -363,44 +314,29 @@ export default function Header() {
 
               {open && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40 bg-white/10 backdrop-blur-[2px]"
-                    onClick={() => setOpen(false)}
-                    aria-hidden="true"
-                  />
+                  <div className="fixed inset-0 z-40 bg-white/10 backdrop-blur-[2px]" onClick={() => setOpen(false)} aria-hidden="true" />
 
                   <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-white/15 bg-[#0f2a3b]/98 backdrop-blur shadow-2xl shadow-black/25 p-2 z-50 text-white">
-                    {/* ===== TOP ACTIONS (PRIMARY) ===== */}
-                    <Link
-                      href="/listings"
-                      className={navPrimary}
-                      onClick={() => setOpen(false)}
-                    >
-                      <span className={iconBox}>
-                        <BinocularsIcon />
-                      </span>
+                    <Link href="/listings" className={navPrimary} onClick={() => setOpen(false)}>
+                      <span className={iconBox}><BinocularsIcon /></span>
                       Browse all Sailboats
                     </Link>
 
-                    <Link
-                      href="/listings/new"
-                      className={navPrimary}
-                      onClick={() => setOpen(false)}
-                    >
-                      <span className={iconBox}>
-                        <DollarIcon />
-                      </span>
+                    <Link href="/listings/new" className={navPrimary} onClick={() => setOpen(false)}>
+                      <span className={iconBox}><DollarIcon /></span>
                       Post a Sailboat Listing
                     </Link>
 
-                    {/* ===== ONLY DIVIDER ===== */}
                     <div className="my-2 h-px bg-white/15" />
 
-                    {/* ===== Keep only Login/Dashboard (remove extra links per request) ===== */}
-                    <Link
-                      href={meUser ? DASHBOARD_HREF : LOGIN_HREF}
+                    <a
+                      href={dashHref}
                       className={navSecondary}
-                      onClick={() => setOpen(false)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpen(false);
+                        hardNav(dashHref);
+                      }}
                     >
                       <span className={iconBox}>
                         {meUser ? (
@@ -412,25 +348,12 @@ export default function Header() {
                         )}
                       </span>
                       {meUser ? "Dashboard" : "Login"}
-                    </Link>
+                    </a>
 
-                    {/* ===== LOG OUT (only if logged in) ===== */}
                     {meUser && (
-                      <button
-                        type="button"
-                        onClick={onLogout}
-                        className={logoutBtn}
-                      >
+                      <button type="button" onClick={onLogout} className={logoutBtn}>
                         <span className={iconBox} aria-hidden="true">
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                             <path d="M16 17l5-5-5-5" />
                             <path d="M21 12H9" />

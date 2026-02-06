@@ -33,11 +33,7 @@ function EyeIcon({ open }) {
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path
-        d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
+      <path d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
@@ -52,22 +48,32 @@ function LoginInner() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr("");
+    setLoading(true);
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) return setErr(data?.error || "Login failed.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        setErr(data?.error || "Login failed.");
+        return;
+      }
 
-    router.push(next);
-    router.refresh();
+      router.push(next);
+      router.refresh();
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -75,9 +81,7 @@ function LoginInner() {
       <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
         <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
           <h1 className="text-xl font-bold text-[#0a2230]">Login</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Sign in to manage listings and favorites.
-          </p>
+          <p className="mt-1 text-sm text-slate-600">Sign in to manage listings and favorites.</p>
 
           {reset ? (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -93,12 +97,9 @@ function LoginInner() {
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                Email
-              </label>
+              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">Email</label>
               <input
                 className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
-                placeholder="you@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
@@ -107,22 +108,11 @@ function LoginInner() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-sm font-semibold text-[#0a2230]">
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-sm font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">Password</label>
 
               <div className="relative">
                 <input
                   className="h-11 w-full rounded-xl border px-3 pr-12 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
-                  placeholder="••••••••"
                   type={showPw ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -139,13 +129,23 @@ function LoginInner() {
                   <EyeIcon open={showPw} />
                 </button>
               </div>
+
+              <div className="mt-2">
+                <Link
+                  href="/forgot-password"
+                  className="text-[13px] font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
+                >
+                  Forgot password?
+                </Link>
+              </div>
             </div>
 
             <button
-              className="h-11 w-full rounded-xl font-semibold text-black"
+              className="h-11 w-full rounded-xl font-semibold text-black disabled:opacity-60"
               style={{ background: GOLD }}
+              disabled={loading}
             >
-              Login
+              {loading ? "Signing in…" : "Login"}
             </button>
           </form>
 

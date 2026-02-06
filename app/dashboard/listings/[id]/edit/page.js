@@ -1,10 +1,23 @@
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import EditForm from "./ui";
+import EditListingForm from "./ui";
 
-export default async function EditListing({ params }) {
+export const dynamic = "force-dynamic";
+
+export default async function EditListingPage({ params }) {
   const s = await requireUser();
-  const listing = await prisma.listing.findFirst({ where: { id: params.id, ownerId: s.uid } });
-  if (!listing) return <div className="p-10">Not found.</div>;
-  return <EditForm listing={listing} />;
+
+  const listing = await prisma.listing.findFirst({
+    where: { id: params.id, ownerId: s.uid },
+  });
+
+  if (!listing) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-10">
+        <div className="rounded-2xl border bg-white p-6">Listing not found.</div>
+      </div>
+    );
+  }
+
+  return <EditListingForm listing={listing} />;
 }

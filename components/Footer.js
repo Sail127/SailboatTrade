@@ -6,44 +6,55 @@ const CONTAINER = "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8";
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0a2230] border-t border-white/10">
-      <div className={CONTAINER}>
-        <div className="px-6 py-10 sm:px-10">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            {/* Brand */}
-            <div className="flex items-center gap-3">
-              <Image
-                src="/burgee.png"
-                alt="SailboatTrade burgee"
-                width={34}
-                height={34}
-                className="h-[34px] w-[34px] object-contain"
-              />
-              <div className="leading-tight">
-                <div className="text-sm font-semibold text-white">
-                  Sailboat<span className="text-[#c8a44d]">Trade</span>
-                  <span className="text-slate-300">.com</span>
-                </div>
-                <div className="text-xs text-white/70">
-                  Built by Sailors – For Sailors
-                </div>
-              </div>
-            </div>
+    <footer className="relative bg-[#0a2230] border-t border-white/10">
+      {/* ✅ Header-matching transition (subtle + tight) */}
+      {/* thin highlight line already from border-t; add the same-style fade strip */}
+      <div className="pointer-events-none absolute inset-x-0 -top-4 h-4 bg-gradient-to-t from-[#0a2230]/25 to-transparent" />
+      {/* optional micro highlight (matches header vibe) */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/5" />
 
-            {/* Links (match header) */}
-            <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/80">
-              <Link href="/login" className="hover:text-white transition">Login</Link>
-              <Link href="/why-list" className="hover:text-white transition">Why sell with us?</Link>
-              <Link href="/listings/new" className="hover:text-white transition">Post a Sailboat listing</Link>
-              <Link href="/advertise" className="hover:text-white transition">Advertise with us</Link>
-              <Link href="/about" className="hover:text-white transition">About us</Link>
-              <Link href="/contact" className="hover:text-white transition">Contact</Link>
-              <Link href="/privacy-terms" className="hover:text-white transition">Privacy &amp; Terms</Link>
-            </nav>
+      <div className={CONTAINER}>
+        <div className="px-4 py-4 sm:px-6 sm:py-4 text-center">
+          {/* Slogan: brand font, slightly smaller than header name */}
+          <div
+            className="text-[15px] sm:text-[17px] font-bold text-white leading-none"
+            style={{
+              fontFamily: "var(--font-brand, inherit)",
+              letterSpacing: "0.03em",
+              textShadow: "0 1px 0 rgba(0,0,0,0.45), 0 0 10px rgba(0,0,0,0.12)",
+            }}
+          >
+            All Sailboats, <span className="text-[#c8a44d]">All the time!</span>
           </div>
 
-          <div className="mt-8 text-center text-xs text-white/60">
-            © {new Date().getFullYear()} Sailboat Trade LLC.
+          {/* Links: slightly smaller, clean */}
+          <nav className="mt-2 flex items-center justify-center gap-4 text-[12px] text-white/80">
+            <Link href="/about" className="hover:text-white transition">
+              About Us
+            </Link>
+            <Link href="/contact" className="hover:text-white transition">
+              Contact Us
+            </Link>
+            <Link href="/privacy-terms" className="hover:text-white transition">
+              Privacy &amp; Terms
+            </Link>
+          </nav>
+
+          {/* Copyright row: burgee 200% bigger without increasing footer height */}
+          <div className="mt-2 flex items-center justify-center gap-2 text-[11px] text-white/60 leading-none">
+            <span className="relative inline-flex w-[18px] justify-center">
+              {/* Overhang upward slightly so the row height stays tight */}
+              <span className="absolute -top-[10px]">
+                <Image
+                  src="/burgee.png"
+                  alt="SailboatTrade burgee"
+                  width={28}
+                  height={28}
+                  className="h-[28px] w-[28px] object-contain"
+                />
+              </span>
+            </span>
+            <span>© {new Date().getFullYear()} Sailboat Trade LLC.</span>
           </div>
         </div>
       </div>

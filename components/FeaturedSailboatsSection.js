@@ -8,6 +8,9 @@ const GRID_SIZE = 16; // 4x4
 const ROTATION_POOL_TAKE = 400; // pull a bigger pool so refreshes rotate nicely
 const CREATE_LISTING_HREF = "/listings/new";
 
+// ✅ Filter out seeded/sample "example boat" images in /public/boats
+const SAMPLE_IMAGE_PREFIX = "/boats/example-sailboat";
+
 function shuffleInPlace(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -54,16 +57,22 @@ function PlaceholderCard({ i }) {
 }
 
 export default async function FeaturedSailboatsSection() {
-  // Ensures each request can reshuffle (no “sticky” caching)
   noStore();
 
   const published = await prisma.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: {
+      status: "PUBLISHED",
+      // ✅ exclude sample listings that point at /public/boats/example-sailboat*.jpg
+      NOT: [
+        { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } },
+        // optional extra safety if you ever used a second image field:
+        { imageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } },
+      ],
+    },
     orderBy: { createdAt: "desc" },
     take: ROTATION_POOL_TAKE,
   });
 
-  // Randomize real listings each refresh, but keep them first (placeholders last)
   const shuffled = shuffleInPlace([...published]);
   const real = shuffled.slice(0, GRID_SIZE);
 

@@ -78,6 +78,16 @@ model User {
   lastName     String?
   businessName String?
 
+  // ✅ NEW: for Listing Contact auto-fill
+  sellerRole       SellerRole?  // OWNER | BROKER
+  phoneE164        String?       // "+14155552671" (E.164)
+
+  brokerageName    String?
+  brokerageStreet  String?
+  brokerageCity    String?
+  brokerageState   String?
+  brokerageCountry String?
+
   passwordHash String
 
   // ✅ Email verification (Phase 1)
@@ -90,7 +100,6 @@ model User {
   isDisabled Boolean  @default(false)
   disabledAt DateTime?
   deletedAt  DateTime?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -101,6 +110,7 @@ model User {
   contentReviewedListings  Listing[] @relation("ListingContentReviewedBy")
   auditLogs                AdminAuditLog[]
 }
+
 
 
 

@@ -2,8 +2,23 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, Suspense, useMemo } from "react";
+import { useState, Suspense, useMemo, useEffect } from "react";
 import Link from "next/link";
+
+/**
+ * ✅ International phone input:
+ * - Uses react-international-phone for country picker + dialing code
+ * - Stores E.164 (ex: +14155552671) in the database
+ *
+ * Install:
+ *   npm i react-international-phone libphonenumber-js
+ *
+ * Also add the CSS import below (required).
+ */
+import { PhoneInput } from "react-international-phone";
+import "react-international-phone/style.css";
+
+import { parsePhoneNumberFromString } from "libphonenumber-js";
 
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
@@ -55,7 +70,21 @@ function RegisterInner() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [businessName, setBusinessName] = useState("");
+
+  // ✅ Map to your Listing Contact broker fields
+  const [sellerRole, setSellerRole] = useState("OWNER"); // OWNER | BROKER
+  const [brokerageName, setBrokerageName] = useState("");
+  const [brokerageStreet, setBrokerageStreet] = useState("");
+  const [brokerageCity, setBrokerageCity] = useState("");
+  const [brokerageState, setBrokerageState] = useState("");
+  const [brokerageCountry, setBrokerageCountry] = useState("");
+
+  // ✅ International phone
+  // PhoneInput returns a string that typically begins with + and includes digits/spaces.
+  const [phoneRaw, setPhoneRaw] = useState("");
+
+  // optional helper for display/validation feedback
+  const [phoneMsg, setPhoneMsg] = useState("");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -68,12 +97,44 @@ function RegisterInner() {
 
   const mismatch = confirm.length > 0 && password !== confirm;
 
+  // Try to default country in PhoneInput from browser locale (best-effort)
+  const [defaultCountry, setDefaultCountry] = useState("us");
+  useEffect(() => {
+    try {
+      const lang = (navigator.language || "").toLowerCase();
+      // crude mapping, good enough without geo-IP; you can improve later
+      if (lang.includes("en-gb")) setDefaultCountry("gb");
+      else if (lang.includes("en-au")) setDefaultCountry("au");
+      else if (lang.includes("en-nz")) setDefaultCountry("nz");
+      else if (lang.includes("fr")) setDefaultCountry("fr");
+      else if (lang.includes("es")) setDefaultCountry("es");
+      else if (lang.includes("it")) setDefaultCountry("it");
+      else if (lang.includes("nl")) setDefaultCountry("nl");
+      else if (lang.includes("sv")) setDefaultCountry("se");
+      else if (lang.includes("pt")) setDefaultCountry("pt");
+      else if (lang.includes("el")) setDefaultCountry("gr");
+      else if (lang.includes("hr")) setDefaultCountry("hr");
+      else if (lang.includes("en-ca") || lang.includes("fr-ca")) setDefaultCountry("ca");
+      else setDefaultCountry("us");
+    } catch {}
+  }, []);
+
+  function normalizePhoneToE164(raw) {
+    const s = String(raw || "").trim();
+    if (!s) return { e164: null, ok: true }; // optional field
+    const pn = parsePhoneNumberFromString(s);
+    if (!pn) return { e164: null, ok: false };
+    if (!pn.isValid()) return { e164: null, ok: false };
+    return { e164: pn.number, ok: true }; // pn.number is E.164
+  }
+
   async function onSubmit(e) {
     e.preventDefault();
     if (loading) return;
 
     setErr("");
     setSuccess("");
+    setPhoneMsg("");
 
     const fn = firstName.trim();
     const ln = lastName.trim();
@@ -84,6 +145,18 @@ function RegisterInner() {
     if (!password || password.length < 8) return setErr("Password must be at least 8 characters.");
     if (password !== confirm) return setErr("Passwords do not match.");
 
+    // ✅ Phone normalization (optional but must be valid if provided)
+    const { e164, ok } = normalizePhoneToE164(phoneRaw);
+    if (!ok) {
+      setPhoneMsg("Please enter a valid phone number (include country code).");
+      return;
+    }
+
+    // ✅ Broker fields: optional, but if BROKER, recommend brokerage name
+    if (sellerRole === "BROKER" && !brokerageName.trim()) {
+      return setErr("Brokerage name is recommended for brokers.");
+    }
+
     setLoading(true);
 
     try {
@@ -92,11 +165,20 @@ function RegisterInner() {
         headers: { "Content-Type": "application/json" },
         credentials: "include", // ✅ ensure session cookie is set/kept
         body: JSON.stringify({
+          // existing
           firstName: fn,
           lastName: ln,
-          businessName: businessName.trim() || null,
           email: em,
           password,
+
+          // ✅ new (for Listing Contact auto-fill)
+          sellerRole, // OWNER | BROKER
+          phone: e164, // store E.164 in DB (or null)
+          brokerageName: sellerRole === "BROKER" ? brokerageName.trim() || null : null,
+          brokerageStreet: sellerRole === "BROKER" ? brokerageStreet.trim() || null : null,
+          brokerageCity: sellerRole === "BROKER" ? brokerageCity.trim() || null : null,
+          brokerageState: sellerRole === "BROKER" ? brokerageState.trim() || null : null,
+          brokerageCountry: sellerRole === "BROKER" ? brokerageCountry.trim() || null : null,
         }),
       });
 
@@ -106,10 +188,8 @@ function RegisterInner() {
         throw new Error(data?.error || "Register failed.");
       }
 
-      // ✅ show confirmation instead of “silent reset”
       setSuccess("Account created successfully! Redirecting to your dashboard…");
 
-      // ✅ small delay so users see the success message
       setTimeout(() => {
         router.replace(next);
         router.refresh();
@@ -124,7 +204,7 @@ function RegisterInner() {
   return (
     <main className="bg-white">
       <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="mx-auto w-full max-w-4xl">
           <div className="grid gap-8 md:grid-cols-5">
             {/* Left: trust + bullets */}
             <div className="md:col-span-2">
@@ -180,6 +260,10 @@ function RegisterInner() {
                 <div className="mt-5 rounded-xl border bg-white px-4 py-3 text-xs text-slate-600">
                   Tip: Use a strong password (8+ characters). You can update your profile later.
                 </div>
+
+                <div className="mt-5 text-xs text-slate-500">
+                  We store phone numbers in international format (E.164) so they display correctly worldwide.
+                </div>
               </div>
             </div>
 
@@ -204,6 +288,41 @@ function RegisterInner() {
                 ) : null}
 
                 <form onSubmit={onSubmit} className="mt-5 space-y-4">
+                  {/* Role */}
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                      Are you an owner or broker? <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSellerRole("OWNER")}
+                        className={`h-10 rounded-full px-4 text-sm font-semibold border transition ${
+                          sellerRole === "OWNER"
+                            ? "bg-[#0a2230] text-white border-[#0a2230]"
+                            : "bg-white text-[#0a2230] border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        Owner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSellerRole("BROKER")}
+                        className={`h-10 rounded-full px-4 text-sm font-semibold border transition ${
+                          sellerRole === "BROKER"
+                            ? "bg-[#0a2230] text-white border-[#0a2230]"
+                            : "bg-white text-[#0a2230] border-slate-300 hover:bg-slate-50"
+                        }`}
+                      >
+                        Broker
+                      </button>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-600">
+                      This helps pre-fill your Listing Contact section when you create a listing.
+                    </div>
+                  </div>
+
+                  {/* Name */}
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
@@ -232,19 +351,7 @@ function RegisterInner() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                      Business name <span className="font-normal text-slate-500">(optional)</span>
-                    </label>
-                    <input
-                      className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
-                      placeholder="Brokerage / Company (optional)"
-                      value={businessName}
-                      onChange={(e) => setBusinessName(e.target.value)}
-                      autoComplete="organization"
-                    />
-                  </div>
-
+                  {/* Email */}
                   <div>
                     <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
                       Email <span className="text-red-500">*</span>
@@ -258,6 +365,113 @@ function RegisterInner() {
                       inputMode="email"
                     />
                   </div>
+
+                  {/* Phone */}
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                      Phone number <span className="font-normal text-slate-500">(optional)</span>
+                    </label>
+
+                    <div className="rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40">
+                      <PhoneInput
+                        defaultCountry={defaultCountry}
+                        value={phoneRaw}
+                        onChange={(v) => {
+                          setPhoneRaw(v);
+                          setPhoneMsg("");
+                        }}
+                        inputClassName="w-full !border-0 !shadow-none !outline-none !text-sm"
+                        countrySelectorStyleProps={{
+                          buttonClassName: "!border-0 !shadow-none",
+                        }}
+                      />
+                    </div>
+
+                    {phoneMsg ? <div className="mt-2 text-xs font-semibold text-red-600">{phoneMsg}</div> : null}
+                    <div className="mt-2 text-xs text-slate-600">
+                      Include country code. We store phone numbers in international format so they display correctly worldwide.
+                    </div>
+                  </div>
+
+                  {/* Broker fields */}
+                  {sellerRole === "BROKER" && (
+                    <div className="space-y-3 rounded-2xl border bg-slate-50 p-4">
+                      <div className="text-sm font-semibold text-[#0a2230]">Broker details (optional)</div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                          Brokerage name <span className="font-normal text-slate-500">(recommended)</span>
+                        </label>
+                        <input
+                          className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                          placeholder="Brokerage / Company"
+                          value={brokerageName}
+                          onChange={(e) => setBrokerageName(e.target.value)}
+                          autoComplete="organization"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                            Street <span className="font-normal text-slate-500">(optional)</span>
+                          </label>
+                          <input
+                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            placeholder="Street address"
+                            value={brokerageStreet}
+                            onChange={(e) => setBrokerageStreet(e.target.value)}
+                            autoComplete="street-address"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                            City <span className="font-normal text-slate-500">(optional)</span>
+                          </label>
+                          <input
+                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            placeholder="City"
+                            value={brokerageCity}
+                            onChange={(e) => setBrokerageCity(e.target.value)}
+                            autoComplete="address-level2"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                            State/Region <span className="font-normal text-slate-500">(optional)</span>
+                          </label>
+                          <input
+                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            placeholder="State / Region"
+                            value={brokerageState}
+                            onChange={(e) => setBrokerageState(e.target.value)}
+                            autoComplete="address-level1"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                            Country <span className="font-normal text-slate-500">(optional)</span>
+                          </label>
+                          <input
+                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            placeholder="Country"
+                            value={brokerageCountry}
+                            onChange={(e) => setBrokerageCountry(e.target.value)}
+                            autoComplete="country-name"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-600">
+                        These details pre-fill the broker section when you create a listing.
+                      </div>
+                    </div>
+                  )}
 
                   {/* Password + show toggle */}
                   <div>
@@ -302,9 +516,7 @@ function RegisterInner() {
                       placeholder="Type it again"
                     />
 
-                    {mismatch ? (
-                      <div className="mt-2 text-xs font-semibold text-red-600">Passwords do not match.</div>
-                    ) : null}
+                    {mismatch ? <div className="mt-2 text-xs font-semibold text-red-600">Passwords do not match.</div> : null}
                   </div>
 
                   <button
@@ -340,6 +552,11 @@ function RegisterInner() {
                 </form>
               </div>
             </div>
+          </div>
+
+          {/* Tiny note about styling PhoneInput */}
+          <div className="mt-6 text-xs text-slate-500">
+            Note: Phone input styling comes from <code>react-international-phone/style.css</code>. You can customize later.
           </div>
         </div>
       </div>

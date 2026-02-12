@@ -6,6 +6,9 @@ import crypto from "crypto";
 
 export const runtime = "nodejs";
 
+/* -----------------------------
+   Helpers
+------------------------------ */
 function toStr(v, maxLen = 120) {
   if (typeof v !== "string") return "";
   const s = v.trim();
@@ -24,6 +27,24 @@ function newToken() {
   return crypto.randomBytes(32).toString("hex"); // url-safe
 }
 
+// Very light E.164 check (frontend should build E.164; backend enforces basic shape)
+function normalizeE164(raw) {
+  const s = toStr(raw, 40);
+  if (!s) return null;
+  // Accept "+<digits>", 7-15 digits (E.164 max is 15)
+  if (!/^\+\d{7,15}$/.test(s)) return null;
+  return s;
+}
+
+function normalizeSellerRole(raw) {
+  const v = toStr(raw, 20).toUpperCase();
+  if (v === "OWNER" || v === "BROKER") return v;
+  return null;
+}
+
+/* -----------------------------
+   Route
+------------------------------ */
 export async function POST(req) {
   const body = await req.json().catch(() => null);
 
@@ -44,12 +65,35 @@ export async function POST(req) {
   const name =
     (firstName && lastName ? `${firstName} ${lastName}` : incomingName) || null;
 
+  // ✅ New listing-contact profile fields
+  const sellerRole = normalizeSellerRole(body?.sellerRole);
+  const phoneE164 = normalizeE164(body?.phone || body?.phoneE164 || body?.phoneNumber);
+
+  // Brokerage structured fields (optional)
+  const brokerageName = toStr(body?.brokerageName ?? "", 120) || null;
+  const brokerageStreet = toStr(body?.brokerageStreet ?? "", 160) || null;
+  const brokerageCity = toStr(body?.brokerageCity ?? "", 120) || null;
+  const brokerageState = toStr(body?.brokerageState ?? "", 80) || null;
+  const brokerageCountry = toStr(body?.brokerageCountry ?? "", 120) || null;
+
   if (!email || !password) {
     return Response.json({ ok: false, error: "Email and password required." }, { status: 400 });
   }
 
   if (String(password).length < 8) {
-    return Response.json({ ok: false, error: "Password must be at least 8 characters." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "Password must be at least 8 characters." },
+      { status: 400 }
+    );
+  }
+
+  // If you made phone required on the UI, enforce it here too.
+  // (Keeping it optional for now so you don’t block international users.)
+  if (body?.phone && !phoneE164) {
+    return Response.json(
+      { ok: false, error: "Please enter a valid phone number (include country code)." },
+      { status: 400 }
+    );
   }
 
   const exists = await prisma.user.findUnique({ where: { email } });
@@ -63,6 +107,9 @@ export async function POST(req) {
   const verifyToken = newToken();
   const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
 
+  // ✅ Build create data safely (only include fields that exist in schema)
+  // IMPORTANT: This assumes you added these fields to Prisma:
+  // sellerRole, phoneE164, brokerageName, brokerageStreet, brokerageCity, brokerageState, brokerageCountry
   const user = await prisma.user.create({
     data: {
       email,
@@ -72,12 +119,35 @@ export async function POST(req) {
       businessName,
       passwordHash,
 
+      // listing-contact profile fields
+      sellerRole,
+      phoneE164,
+      brokerageName,
+      brokerageStreet,
+      brokerageCity,
+      brokerageState,
+      brokerageCountry,
+
+      // email verification
       emailVerifiedAt: null,
       emailVerificationToken: verifyToken,
       emailVerificationExpires: verifyExpires,
       emailVerificationSentAt: new Date(),
     },
-    select: { id: true, email: true, name: true, firstName: true, lastName: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      firstName: true,
+      lastName: true,
+      sellerRole: true,
+      phoneE164: true,
+      brokerageName: true,
+      brokerageStreet: true,
+      brokerageCity: true,
+      brokerageState: true,
+      brokerageCountry: true,
+    },
   });
 
   const token = await signSession({
@@ -86,6 +156,9 @@ export async function POST(req) {
     name: user.name,
     firstName: user.firstName,
     lastName: user.lastName,
+
+    // optional extra session claims (harmless if your signSession ignores unknown)
+    sellerRole: user.sellerRole || undefined,
   });
 
   setSessionCookie(token);

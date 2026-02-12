@@ -1,18 +1,20 @@
 // app/listings/new/NewListingForm.js
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 /* =========================================================
-   00) SHARED UI TOKENS / CLASSES
+   SECTION 1 of 3 — UI TOKENS + HELPERS + OPTIONS + SMALL UI
 ========================================================= */
+const DRAFT_KEY = "st:newListingDraft:v1";
+const AUTOSAVE_MS = 2 * 60 * 1000; // 2 minutes
+const DRAFT_DEBOUNCE_MS = 900; // save shortly after edits (in addition to the 2-min timer)
+
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
 
-// Slightly smaller body UI type (~10% smaller), keep section titles as-is
 const helpText = "text-[11px] text-slate-600 mt-1";
-
 const labelBase = "block text-[13px] font-semibold text-[#0a2230] mb-1.5";
 
 const fieldBase =
@@ -45,9 +47,6 @@ const iconBtn =
   "inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 " +
   "bg-white text-[#0a2230] hover:bg-slate-50 transition focus:outline-none focus:ring-2 focus:ring-[#c8a44d]/40";
 
-/* =========================================================
-   01) HELPERS
-========================================================= */
 const toInt = (v) => {
   if (v === "" || v == null) return null;
   const n = Number.parseInt(String(v).replace(/[^\d-]/g, ""), 10);
@@ -116,20 +115,11 @@ function parseWholeDollars(formatted) {
 }
 
 function currencySymbolFor(code) {
-  const map = {
-    USD: "$",
-    EUR: "€",
-    GBP: "£",
-    AUD: "A$",
-    NZD: "NZ$",
-    JPY: "¥",
-  };
+  const map = { USD: "$", EUR: "€", GBP: "£", AUD: "A$", NZD: "NZ$", JPY: "¥" };
   return map[code] || "";
 }
 
-/* =========================================================
-   02) OPTIONS
-========================================================= */
+/* Options */
 const RAW_BUILDERS = [
   "Beneteau",
   "Jeanneau",
@@ -216,11 +206,46 @@ const EQUIPMENT_PRESETS = [
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"];
 
-/* =========================================================
-   03) SMALL COMPONENTS
-========================================================= */
+/* Small UI */
 function Asterisk() {
   return <span className="ml-1 font-extrabold text-[#0a2230]">*</span>;
+}
+
+function XIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = "h-3.5 w-3.5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M20 6L9 17l-5-5"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function SmallToggleInline({ value, onChange, options = ["ft", "m"] }) {
@@ -300,11 +325,11 @@ function CurrencyPill({ value, onChange }) {
 
 function SectionCard({ title, subtitle, children }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-hidden">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-visible">
       <div className="px-5 py-3 bg-[#0a2230] border-b border-black/10">
         <h2
           className="text-base sm:text-lg font-semibold tracking-tight !text-[#c8a44d]"
-          style={{ color: "#c8a44d" }}
+          style={{ color: GOLD }}
         >
           {title}
         </h2>
@@ -314,47 +339,6 @@ function SectionCard({ title, subtitle, children }) {
       </div>
       <div className="p-4 sm:p-5">{children}</div>
     </div>
-  );
-}
-
-function ChevronUpIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M6 14l6-6 6 6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M6 10l6 6 6-6"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
-      <path
-        d="M6 6l12 12M18 6L6 18"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 
@@ -375,7 +359,7 @@ function Pill({ active, children, onClick }) {
 }
 
 /* =========================================================
-   04) MAIN FORM
+   SECTION 2 of 3 — STATE + EFFECTS + LOGIC + SUBMIT
 ========================================================= */
 export default function NewListingForm() {
   const router = useRouter();
@@ -383,11 +367,15 @@ export default function NewListingForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-    // Email verification UX
+
+  // Draft UX
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState(null);
+
+  // Email verification UX
   const [needsEmailVerify, setNeedsEmailVerify] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState("");
-
 
   /* -------------------------
      BOAT BASICS
@@ -406,7 +394,7 @@ export default function NewListingForm() {
   const [builderOther, setBuilderOther] = useState("");
   const [model, setModel] = useState("");
 
-  const [boatCondition, setBoatCondition] = useState(""); // "NEW" | "USED"
+  const [boatCondition, setBoatCondition] = useState(""); // NEW | USED
 
   const [cabins, setCabins] = useState("");
   const [heads, setHeads] = useState("");
@@ -428,7 +416,7 @@ export default function NewListingForm() {
   /* -------------------------
      LOCATION
   ------------------------- */
-  const [locationCountrySel, setLocationCountrySel] = useState("United States");
+  const [locationCountrySel, setLocationCountrySel] = useState("");
   const [locationCountryOther, setLocationCountryOther] = useState("");
   const [locationUsRegion, setLocationUsRegion] = useState("");
   const [locationState, setLocationState] = useState("");
@@ -439,8 +427,7 @@ export default function NewListingForm() {
   ------------------------- */
   const isMultiEngine = type === "CATAMARAN" || type === "TRIMARAN";
 
-  // Engines
-  const [engineFuel, setEngineFuel] = useState(""); // "DIESEL" | "GAS"
+  const [engineFuel, setEngineFuel] = useState(""); // DIESEL | GAS
   const [engineMake, setEngineMake] = useState("");
   const [engineModel, setEngineModel] = useState("");
   const [propeller, setPropeller] = useState("");
@@ -450,25 +437,19 @@ export default function NewListingForm() {
   const [leftEngineHours, setLeftEngineHours] = useState("");
   const [rightEngineHours, setRightEngineHours] = useState("");
 
-  // Generator
-  const [hasGenerator, setHasGenerator] = useState("NO"); // "YES" | "NO"
+  const [hasGenerator, setHasGenerator] = useState("NO"); // YES | NO
   const [generatorFuel, setGeneratorFuel] = useState("");
   const [generatorMake, setGeneratorMake] = useState("");
   const [generatorKw, setGeneratorKw] = useState("");
   const [generatorHours, setGeneratorHours] = useState("");
 
-  // Tanks
   const [tankUnit, setTankUnit] = useState(loaUnit === "m" ? "L" : "gal");
   const [tankFuel, setTankFuel] = useState("");
   const [tankWater, setTankWater] = useState("");
   const [tankHolding, setTankHolding] = useState("");
 
-  // Dinghy
-  const [hasDinghy, setHasDinghy] = useState(""); // "YES" | "NO"
-  const [dinghyModel, setDinghyModel] = useState("");
-  const [dinghyLength, setDinghyLength] = useState("");
-  const [dinghyLengthUnit, setDinghyLengthUnit] = useState("ft");
-  const [dinghyMotor, setDinghyMotor] = useState(""); // "YES" | "NO"
+  const [hasDinghy, setHasDinghy] = useState("NO"); // YES | NO
+  const [dinghyNotes, setDinghyNotes] = useState("");
 
   useEffect(() => {
     setTankUnit(loaUnit === "m" ? "L" : "gal");
@@ -486,134 +467,6 @@ export default function NewListingForm() {
   const [additionalEquipmentInput, setAdditionalEquipmentInput] = useState("");
   const [additionalEquipment, setAdditionalEquipment] = useState([]);
 
-  /* -------------------------
-     PHOTOS
-  ------------------------- */
-  const [photoItems, setPhotoItems] = useState([]);
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
-
-  const [draggingPhotoId, setDraggingPhotoId] = useState(null);
-  const [dragOverPhotoId, setDragOverPhotoId] = useState(null);
-
-  /* -------------------------
-     LISTING CONTACT
-  ------------------------- */
-  const [sellerRole, setSellerRole] = useState("");
-  const [listingContactName, setListingContactName] = useState("");
-  const [brokerageName, setBrokerageName] = useState("");
-  const [brokerageAddress, setBrokerageAddress] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-
-  const [brokerHeroItem, setBrokerHeroItem] = useState(null);
-  const [uploadingBrokerHero, setUploadingBrokerHero] = useState(false);
-
-  /* -------------------------
-     CLEANUP OBJECT URLS ON UNMOUNT
-  ------------------------- */
-  const photoItemsRef = useRef([]);
-  const brokerHeroRef = useRef(null);
-
-  useEffect(() => {
-    photoItemsRef.current = photoItems;
-  }, [photoItems]);
-
-  useEffect(() => {
-    brokerHeroRef.current = brokerHeroItem;
-  }, [brokerHeroItem]);
-
-  useEffect(() => {
-    return () => {
-      try {
-        (photoItemsRef.current || []).forEach((p) => {
-          if (p?.previewUrl) URL.revokeObjectURL(p.previewUrl);
-        });
-      } catch {}
-      try {
-        if (brokerHeroRef.current?.previewUrl) {
-          URL.revokeObjectURL(brokerHeroRef.current.previewUrl);
-        }
-      } catch {}
-    };
-  }, []);
-
-  /* =========================================================
-     DERIVED VALUES
-  ========================================================= */
-  const effectiveCountryRaw =
-    locationCountrySel === "Other" ? locationCountryOther : locationCountrySel;
-  const effectiveCountry = normalizeCountry(effectiveCountryRaw);
-  const isUSA = effectiveCountry === "United States";
-
-  const effectiveBuilder =
-    builderSel === "Other" ? builderOther.trim() : builderSel.trim();
-
-  const yearInt = toInt(year);
-  const loaNum = toFloat(loa);
-  const draftNum = toFloat(draft);
-  const airDraftNum = toFloat(airDraft);
-
-  const cabinsInt = toInt(cabins);
-  const headsInt = toInt(heads);
-
-  const horsepowerInt = toInt(horsepower);
-
-  const engineHoursInt = toInt(engineHours);
-  const leftEngineHoursInt = toInt(leftEngineHours);
-  const rightEngineHoursInt = toInt(rightEngineHours);
-
-  const generatorHoursInt = toInt(generatorHours);
-  const generatorKwNum = toFloat(generatorKw);
-
-  const tankFuelNum = toFloat(tankFuel);
-  const tankWaterNum = toFloat(tankWater);
-  const tankHoldingNum = toFloat(tankHolding);
-
-  const dinghyLengthNum = toFloat(dinghyLength);
-
-  const priceNum = parseWholeDollars(priceDisplay);
-  const curSymbol = currencySymbolFor(currency);
-
-  const tankUnitLabel = tankUnit === "gal" ? "Gallons" : "Liters";
-
-  const [touched, setTouched] = useState({});
-  const touch = (key) => setTouched((p) => ({ ...p, [key]: true }));
-
-  const missing = {
-    sellerRole: !sellerRole,
-
-    year: yearInt == null,
-    builder: !effectiveBuilder,
-    model: !model.trim(),
-    loa: loaNum == null,
-    boatCondition: !boatCondition,
-
-    description: !description.trim(),
-    type: !type,
-    price: priceNum == null,
-    country: !effectiveCountry,
-    usRegion: isUSA && !locationUsRegion,
-    state: isUSA && !locationState.trim(),
-    listingContactName: !listingContactName.trim(),
-    contactEmail: !contactEmail.trim(),
-  };
-
-  const showErrorFor = (key) => Boolean(touched[key] && missing[key]);
-
-  const fieldBorder = (bad) =>
-    bad
-      ? "border-red-300 bg-red-50 focus:ring-red-200"
-      : "border-slate-300 bg-white";
-
-  const label = (key) =>
-    `${labelBase} ${showErrorFor(key) ? "text-red-700" : ""}`;
-  const input = (key) => `${fieldBase} ${fieldBorder(showErrorFor(key))}`;
-  const inputSm = (key) => `${fieldSmall} ${fieldBorder(showErrorFor(key))}`;
-  const textarea = (key) => `${textareaBase} ${fieldBorder(showErrorFor(key))}`;
-
-  /* =========================================================
-     EQUIPMENT
-  ========================================================= */
   function togglePreset(name) {
     setEquipmentSelected((prev) => {
       const next = new Set(prev);
@@ -632,26 +485,31 @@ export default function NewListingForm() {
 
   function removeAdditionalEquipment(name) {
     setAdditionalEquipment((prev) =>
-      prev.filter((x) => x.toLowerCase() !== name.toLowerCase())
+      prev.filter((x) => x.toLowerCase() !== String(name).toLowerCase()),
     );
   }
 
   const installedEquipment = useMemo(() => {
     const presets = Array.from(equipmentSelected);
     return dedupeStrings([...presets, ...additionalEquipment]).sort((a, b) =>
-      a.localeCompare(b)
+      a.localeCompare(b),
     );
   }, [equipmentSelected, additionalEquipment]);
 
-  /* =========================================================
+  /* -------------------------
      PHOTOS
-  ========================================================= */
+  ------------------------- */
+  const [photoItems, setPhotoItems] = useState([]);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+
+  const [draggingPhotoId, setDraggingPhotoId] = useState(null);
+  const [dragOverPhotoId, setDragOverPhotoId] = useState(null);
+
   function reorderPhotos(fromId, toId) {
     setPhotoItems((prev) => {
       const from = prev.findIndex((p) => p.id === fromId);
       const to = prev.findIndex((p) => p.id === toId);
       if (from < 0 || to < 0 || from === to) return prev;
-
       const next = prev.slice();
       const [item] = next.splice(from, 1);
       next.splice(to, 0, item);
@@ -660,7 +518,9 @@ export default function NewListingForm() {
   }
 
   function addPhotos(filesList) {
-    const files = Array.from(filesList || []).filter((f) => /^image\//i.test(f.type));
+    const files = Array.from(filesList || []).filter((f) =>
+      /^image\//i.test(f.type),
+    );
     if (!files.length) return;
 
     const next = files.map((file) => {
@@ -709,10 +569,14 @@ export default function NewListingForm() {
         const formData = new FormData();
         formData.append("file", item.file);
 
-        const res = await fetch("/api/uploads", { method: "POST", body: formData });
+        const res = await fetch("/api/uploads", {
+          method: "POST",
+          body: formData,
+        });
         const data = await res.json().catch(() => ({}));
 
-        if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+        if (!res.ok)
+          throw new Error(data?.error || `Upload failed (${res.status})`);
         if (!data?.key) throw new Error("Upload did not return a key.");
 
         uploadedKeyById[item.id] = String(data.key);
@@ -721,7 +585,7 @@ export default function NewListingForm() {
       const next = snapshot.map((p) =>
         uploadedKeyById[p.id]
           ? { ...p, status: "uploaded", uploadedKey: uploadedKeyById[p.id] }
-          : p
+          : p,
       );
 
       setPhotoItems(next);
@@ -734,9 +598,73 @@ export default function NewListingForm() {
     }
   }
 
-  /* =========================================================
+  /* -------------------------
+     LISTING CONTACT
+  ------------------------- */
+  const [sellerRole, setSellerRole] = useState("");
+
+  const [listingContactFirstName, setListingContactFirstName] = useState("");
+  const [listingContactLastName, setListingContactLastName] = useState("");
+
+  const [brokerageName, setBrokerageName] = useState("");
+  const [brokerageStreet, setBrokerageStreet] = useState("");
+  const [brokerageCity, setBrokerageCity] = useState("");
+  const [brokerageState, setBrokerageState] = useState("");
+  const [brokerageCountry, setBrokerageCountry] = useState("");
+
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+
+  const [showPhonePrivacy, setShowPhonePrivacy] = useState(false);
+
+  const [brokerHeroItem, setBrokerHeroItem] = useState(null);
+  const [uploadingBrokerHero, setUploadingBrokerHero] = useState(false);
+
+  // Track if user manually edited contact fields (don’t overwrite with autopopulate)
+  const contactTouchedRef = useRef({
+    sellerRole: false,
+    firstName: false,
+    lastName: false,
+    contactEmail: false,
+    contactPhone: false,
+    brokerageName: false,
+    brokerageStreet: false,
+    brokerageCity: false,
+    brokerageState: false,
+    brokerageCountry: false,
+  });
+
+  /* -------------------------
+     CLEANUP OBJECT URLS ON UNMOUNT (PHOTOS + BROKER HERO)
+  ------------------------- */
+  const photoItemsRef = useRef([]);
+  const brokerHeroRef = useRef(null);
+
+  useEffect(() => {
+    photoItemsRef.current = photoItems;
+  }, [photoItems]);
+
+  useEffect(() => {
+    brokerHeroRef.current = brokerHeroItem;
+  }, [brokerHeroItem]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        (photoItemsRef.current || []).forEach((p) => {
+          if (p?.previewUrl) URL.revokeObjectURL(p.previewUrl);
+        });
+      } catch {}
+      try {
+        if (brokerHeroRef.current?.previewUrl)
+          URL.revokeObjectURL(brokerHeroRef.current.previewUrl);
+      } catch {}
+    };
+  }, []);
+
+  /* -------------------------
      BROKER HERO
-  ========================================================= */
+  ------------------------- */
   function pickBrokerHero(file) {
     if (!file || !/^image\//i.test(file.type)) return;
 
@@ -765,13 +693,21 @@ export default function NewListingForm() {
       const formData = new FormData();
       formData.append("file", snapshot.file);
 
-      const res = await fetch("/api/uploads", { method: "POST", body: formData });
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+      if (!res.ok)
+        throw new Error(data?.error || `Upload failed (${res.status})`);
       if (!data?.key) throw new Error("Upload did not return a key.");
 
-      const next = { ...snapshot, status: "uploaded", uploadedKey: String(data.key) };
+      const next = {
+        ...snapshot,
+        status: "uploaded",
+        uploadedKey: String(data.key),
+      };
       setBrokerHeroItem(next);
       return next;
     } catch (e) {
@@ -783,8 +719,646 @@ export default function NewListingForm() {
   }
 
   /* =========================================================
-     TITLE
+     AUTOFILL CONTACT FROM USER PROFILE (if available)
   ========================================================= */
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMe() {
+      try {
+        const res = await fetch("/api/auth/me", { method: "GET" });
+        const data = await res.json().catch(() => null);
+        if (!alive) return;
+        if (!res.ok || !data) return;
+
+        const maybeFirst = (data?.firstName || data?.nameFirst || "")
+          .toString()
+          .trim();
+        const maybeLast = (data?.lastName || data?.nameLast || "")
+          .toString()
+          .trim();
+        const maybeEmail = (data?.email || "").toString().trim();
+        const maybePhone = (data?.phone || data?.phoneNumber || "")
+          .toString()
+          .trim();
+
+        if (
+          !contactTouchedRef.current.firstName &&
+          !listingContactFirstName.trim() &&
+          maybeFirst
+        ) {
+          setListingContactFirstName(maybeFirst);
+        }
+        if (
+          !contactTouchedRef.current.lastName &&
+          !listingContactLastName.trim() &&
+          maybeLast
+        ) {
+          setListingContactLastName(maybeLast);
+        }
+        if (
+          !contactTouchedRef.current.contactEmail &&
+          !contactEmail.trim() &&
+          maybeEmail
+        ) {
+          setContactEmail(maybeEmail);
+        }
+        if (
+          !contactTouchedRef.current.contactPhone &&
+          !contactPhone.trim() &&
+          maybePhone
+        ) {
+          setContactPhone(maybePhone);
+        }
+
+        const maybeRole = (data?.sellerRole || data?.role || "")
+          .toString()
+          .toUpperCase()
+          .trim();
+        if (
+          !contactTouchedRef.current.sellerRole &&
+          !sellerRole &&
+          (maybeRole === "OWNER" || maybeRole === "BROKER")
+        ) {
+          setSellerRole(maybeRole);
+        }
+
+        const maybeBrokerageName = (data?.brokerageName || data?.company || "")
+          .toString()
+          .trim();
+        const maybeStreet = (data?.brokerageStreet || data?.street || "")
+          .toString()
+          .trim();
+        const maybeCity = (data?.brokerageCity || data?.city || "")
+          .toString()
+          .trim();
+        const maybeState = (
+          data?.brokerageState ||
+          data?.state ||
+          data?.region ||
+          ""
+        )
+          .toString()
+          .trim();
+        const maybeCountry = (data?.brokerageCountry || data?.country || "")
+          .toString()
+          .trim();
+
+        if (
+          !contactTouchedRef.current.brokerageName &&
+          !brokerageName.trim() &&
+          maybeBrokerageName
+        ) {
+          setBrokerageName(maybeBrokerageName);
+        }
+        if (
+          !contactTouchedRef.current.brokerageStreet &&
+          !brokerageStreet.trim() &&
+          maybeStreet
+        ) {
+          setBrokerageStreet(maybeStreet);
+        }
+        if (
+          !contactTouchedRef.current.brokerageCity &&
+          !brokerageCity.trim() &&
+          maybeCity
+        ) {
+          setBrokerageCity(maybeCity);
+        }
+        if (
+          !contactTouchedRef.current.brokerageState &&
+          !brokerageState.trim() &&
+          maybeState
+        ) {
+          setBrokerageState(maybeState);
+        }
+        if (
+          !contactTouchedRef.current.brokerageCountry &&
+          !brokerageCountry.trim() &&
+          maybeCountry
+        ) {
+          setBrokerageCountry(maybeCountry);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    loadMe();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* =========================================================
+     DRAFT STORAGE (FIXED)
+     - All draft functions live INSIDE the component so they can
+       see state (no more "year is not defined" bugs).
+     - Restores once, then autosaves (debounced + interval + hide/unload).
+     - Stores ONLY uploaded photo keys (never File objects).
+  ========================================================= */
+  const restoringDraftRef = useRef(false);
+  const debounceTimerRef = useRef(null);
+
+  const buildDraftSnapshot = useCallback(() => {
+    return {
+      v: 1,
+      savedAt: Date.now(),
+
+      // Basics
+      year,
+      builderSel,
+      builderOther,
+      model,
+      boatCondition,
+      cabins,
+      heads,
+      loa,
+      loaUnit,
+      draft,
+      draftUnit,
+      airDraft,
+      airDraftUnit,
+      type,
+      priceDisplay,
+      currency,
+
+      // Location
+      locationCountrySel,
+      locationCountryOther,
+      locationUsRegion,
+      locationState,
+      locationCity,
+
+      // Additional info
+      engineFuel,
+      engineMake,
+      engineModel,
+      propeller,
+      horsepower,
+      engineHours,
+      leftEngineHours,
+      rightEngineHours,
+
+      hasGenerator,
+      generatorFuel,
+      generatorMake,
+      generatorKw,
+      generatorHours,
+
+      tankUnit,
+      tankFuel,
+      tankWater,
+      tankHolding,
+
+      hasDinghy,
+      dinghyNotes,
+
+      // Description
+      description,
+
+      // Equipment
+      equipmentSelected: Array.from(equipmentSelected || []),
+      additionalEquipmentInput,
+      additionalEquipment,
+
+      // Contact
+      sellerRole,
+      listingContactFirstName,
+      listingContactLastName,
+      brokerageName,
+      brokerageStreet,
+      brokerageCity,
+      brokerageState,
+      brokerageCountry,
+      contactEmail,
+      contactPhone,
+
+      // Photos: uploaded only
+      photoItemsUploaded: (photoItems || [])
+        .filter((p) => p?.status === "uploaded" && p?.uploadedKey)
+        .map((p) => ({
+          id: p.id,
+          uploadedKey: p.uploadedKey,
+          previewUrl: p.previewUrl || "",
+        })),
+
+      brokerHeroUploaded:
+        brokerHeroItem?.status === "uploaded" && brokerHeroItem?.uploadedKey
+          ? {
+              uploadedKey: brokerHeroItem.uploadedKey,
+              previewUrl: brokerHeroItem.previewUrl || "",
+            }
+          : null,
+    };
+  }, [
+    year,
+    builderSel,
+    builderOther,
+    model,
+    boatCondition,
+    cabins,
+    heads,
+    loa,
+    loaUnit,
+    draft,
+    draftUnit,
+    airDraft,
+    airDraftUnit,
+    type,
+    priceDisplay,
+    currency,
+    locationCountrySel,
+    locationCountryOther,
+    locationUsRegion,
+    locationState,
+    locationCity,
+    engineFuel,
+    engineMake,
+    engineModel,
+    propeller,
+    horsepower,
+    engineHours,
+    leftEngineHours,
+    rightEngineHours,
+    hasGenerator,
+    generatorFuel,
+    generatorMake,
+    generatorKw,
+    generatorHours,
+    tankUnit,
+    tankFuel,
+    tankWater,
+    tankHolding,
+    hasDinghy,
+    dinghyNotes,
+    description,
+    equipmentSelected,
+    additionalEquipmentInput,
+    additionalEquipment,
+    sellerRole,
+    listingContactFirstName,
+    listingContactLastName,
+    brokerageName,
+    brokerageStreet,
+    brokerageCity,
+    brokerageState,
+    brokerageCountry,
+    contactEmail,
+    contactPhone,
+    photoItems,
+    brokerHeroItem,
+  ]);
+
+  const saveDraftNow = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (restoringDraftRef.current) return; // don't save while applying draft
+
+    try {
+      const snapshot = buildDraftSnapshot();
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot));
+      setLastDraftSavedAt(snapshot.savedAt);
+    } catch {
+      // ignore storage errors
+    }
+  }, [buildDraftSnapshot]);
+
+  const clearDraft = useCallback(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+      setLastDraftSavedAt(null);
+    } catch {}
+  }, []);
+
+  const applyDraftSnapshot = useCallback((d) => {
+    if (!d || typeof d !== "object") return;
+
+    restoringDraftRef.current = true;
+    try {
+      // Basics
+      if (typeof d.year === "string") setYear(d.year);
+      if (typeof d.builderSel === "string") setBuilderSel(d.builderSel);
+      if (typeof d.builderOther === "string") setBuilderOther(d.builderOther);
+      if (typeof d.model === "string") setModel(d.model);
+      if (typeof d.boatCondition === "string")
+        setBoatCondition(d.boatCondition);
+
+      if (typeof d.cabins === "string") setCabins(d.cabins);
+      if (typeof d.heads === "string") setHeads(d.heads);
+
+      if (typeof d.loa === "string") setLoa(d.loa);
+      if (typeof d.loaUnit === "string") setLoaUnit(d.loaUnit);
+
+      if (typeof d.draft === "string") setDraft(d.draft);
+      if (typeof d.draftUnit === "string") setDraftUnit(d.draftUnit);
+
+      if (typeof d.airDraft === "string") setAirDraft(d.airDraft);
+      if (typeof d.airDraftUnit === "string") setAirDraftUnit(d.airDraftUnit);
+
+      if (typeof d.type === "string") setType(d.type);
+
+      if (typeof d.priceDisplay === "string") setPriceDisplay(d.priceDisplay);
+      if (typeof d.currency === "string") setCurrency(d.currency);
+
+      // Location
+      if (typeof d.locationCountrySel === "string")
+        setLocationCountrySel(d.locationCountrySel);
+      if (typeof d.locationCountryOther === "string")
+        setLocationCountryOther(d.locationCountryOther);
+      if (typeof d.locationUsRegion === "string")
+        setLocationUsRegion(d.locationUsRegion);
+      if (typeof d.locationState === "string")
+        setLocationState(d.locationState);
+      if (typeof d.locationCity === "string") setLocationCity(d.locationCity);
+
+      // Additional
+      if (typeof d.engineFuel === "string") setEngineFuel(d.engineFuel);
+      if (typeof d.engineMake === "string") setEngineMake(d.engineMake);
+      if (typeof d.engineModel === "string") setEngineModel(d.engineModel);
+      if (typeof d.propeller === "string") setPropeller(d.propeller);
+      if (typeof d.horsepower === "string") setHorsepower(d.horsepower);
+
+      if (typeof d.engineHours === "string") setEngineHours(d.engineHours);
+      if (typeof d.leftEngineHours === "string")
+        setLeftEngineHours(d.leftEngineHours);
+      if (typeof d.rightEngineHours === "string")
+        setRightEngineHours(d.rightEngineHours);
+
+      if (typeof d.hasGenerator === "string") setHasGenerator(d.hasGenerator);
+      if (typeof d.generatorFuel === "string")
+        setGeneratorFuel(d.generatorFuel);
+      if (typeof d.generatorMake === "string")
+        setGeneratorMake(d.generatorMake);
+      if (typeof d.generatorKw === "string") setGeneratorKw(d.generatorKw);
+      if (typeof d.generatorHours === "string")
+        setGeneratorHours(d.generatorHours);
+
+      if (typeof d.tankUnit === "string") setTankUnit(d.tankUnit);
+      if (typeof d.tankFuel === "string") setTankFuel(d.tankFuel);
+      if (typeof d.tankWater === "string") setTankWater(d.tankWater);
+      if (typeof d.tankHolding === "string") setTankHolding(d.tankHolding);
+
+      if (typeof d.hasDinghy === "string") setHasDinghy(d.hasDinghy);
+      if (typeof d.dinghyNotes === "string") setDinghyNotes(d.dinghyNotes);
+
+      // Description
+      if (typeof d.description === "string") setDescription(d.description);
+
+      // Equipment
+      if (Array.isArray(d.equipmentSelected))
+        setEquipmentSelected(new Set(d.equipmentSelected));
+      if (typeof d.additionalEquipmentInput === "string")
+        setAdditionalEquipmentInput(d.additionalEquipmentInput);
+      if (Array.isArray(d.additionalEquipment))
+        setAdditionalEquipment(d.additionalEquipment);
+
+      // Contact
+      if (typeof d.sellerRole === "string") setSellerRole(d.sellerRole);
+      if (typeof d.listingContactFirstName === "string")
+        setListingContactFirstName(d.listingContactFirstName);
+      if (typeof d.listingContactLastName === "string")
+        setListingContactLastName(d.listingContactLastName);
+
+      if (typeof d.brokerageName === "string")
+        setBrokerageName(d.brokerageName);
+      if (typeof d.brokerageStreet === "string")
+        setBrokerageStreet(d.brokerageStreet);
+      if (typeof d.brokerageCity === "string")
+        setBrokerageCity(d.brokerageCity);
+      if (typeof d.brokerageState === "string")
+        setBrokerageState(d.brokerageState);
+      if (typeof d.brokerageCountry === "string")
+        setBrokerageCountry(d.brokerageCountry);
+
+      if (typeof d.contactEmail === "string") setContactEmail(d.contactEmail);
+      if (typeof d.contactPhone === "string") setContactPhone(d.contactPhone);
+
+      // Photos (uploaded only)
+      if (Array.isArray(d.photoItemsUploaded) && d.photoItemsUploaded.length) {
+        setPhotoItems((prev) => {
+          const keepLocal = (prev || []).filter((p) => p?.status === "local"); // keep what user selected this session
+          const restored = d.photoItemsUploaded.map((x) => ({
+            id: x.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            file: null,
+            previewUrl: x.previewUrl || "",
+            status: "uploaded",
+            uploadedKey: x.uploadedKey,
+          }));
+          return [...restored, ...keepLocal];
+        });
+      }
+
+      if (d.brokerHeroUploaded?.uploadedKey) {
+        setBrokerHeroItem({
+          file: null,
+          previewUrl: d.brokerHeroUploaded.previewUrl || "",
+          uploadedKey: d.brokerHeroUploaded.uploadedKey,
+          status: "uploaded",
+        });
+      }
+
+      if (typeof d.savedAt === "number") setLastDraftSavedAt(d.savedAt);
+    } finally {
+      // give React a tick before allowing autosave
+      setTimeout(() => {
+        restoringDraftRef.current = false;
+      }, 0);
+    }
+  }, []);
+
+  // Restore draft ONCE
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        applyDraftSnapshot(parsed);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [applyDraftSnapshot]);
+
+  // Debounced autosave on edits (after draft has loaded)
+  useEffect(() => {
+    if (!draftLoaded) return;
+    if (restoringDraftRef.current) return;
+
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      saveDraftNow();
+    }, DRAFT_DEBOUNCE_MS);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+    // NOTE: intentionally broad deps so *any* edit saves
+  }, [
+    draftLoaded,
+    saveDraftNow,
+    year,
+    builderSel,
+    builderOther,
+    model,
+    boatCondition,
+    cabins,
+    heads,
+    loa,
+    loaUnit,
+    draft,
+    draftUnit,
+    airDraft,
+    airDraftUnit,
+    type,
+    priceDisplay,
+    currency,
+    locationCountrySel,
+    locationCountryOther,
+    locationUsRegion,
+    locationState,
+    locationCity,
+    engineFuel,
+    engineMake,
+    engineModel,
+    propeller,
+    horsepower,
+    engineHours,
+    leftEngineHours,
+    rightEngineHours,
+    hasGenerator,
+    generatorFuel,
+    generatorMake,
+    generatorKw,
+    generatorHours,
+    tankUnit,
+    tankFuel,
+    tankWater,
+    tankHolding,
+    hasDinghy,
+    dinghyNotes,
+    description,
+    equipmentSelected,
+    additionalEquipmentInput,
+    additionalEquipment,
+    sellerRole,
+    listingContactFirstName,
+    listingContactLastName,
+    brokerageName,
+    brokerageStreet,
+    brokerageCity,
+    brokerageState,
+    brokerageCountry,
+    contactEmail,
+    contactPhone,
+    photoItems,
+    brokerHeroItem,
+  ]);
+
+  // Interval + visibility/unload saves
+  useEffect(() => {
+    if (!draftLoaded) return;
+
+    const interval = setInterval(() => {
+      saveDraftNow();
+    }, AUTOSAVE_MS);
+
+    function onVisibility() {
+      if (document.visibilityState === "hidden") saveDraftNow();
+    }
+    function onBeforeUnload() {
+      saveDraftNow();
+    }
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("beforeunload", onBeforeUnload);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [draftLoaded, saveDraftNow]);
+
+  /* -------------------------
+     DERIVED VALUES + VALIDATION
+  ------------------------- */
+  const effectiveCountryRaw =
+    locationCountrySel === "Other" ? locationCountryOther : locationCountrySel;
+  const effectiveCountry = normalizeCountry(effectiveCountryRaw);
+  const isUSA = effectiveCountry === "United States";
+
+  const effectiveBuilder =
+    builderSel === "Other" ? builderOther.trim() : builderSel.trim();
+
+  const yearInt = toInt(year);
+  const loaNum = toFloat(loa);
+  const draftNum = toFloat(draft);
+  const airDraftNum = toFloat(airDraft);
+
+  const cabinsInt = toInt(cabins);
+  const headsInt = toInt(heads);
+
+  const horsepowerInt = toInt(horsepower);
+  const engineHoursInt = toInt(engineHours);
+  const leftEngineHoursInt = toInt(leftEngineHours);
+  const rightEngineHoursInt = toInt(rightEngineHours);
+
+  const generatorHoursInt = toInt(generatorHours);
+  const generatorKwNum = toFloat(generatorKw);
+
+  const tankFuelNum = toFloat(tankFuel);
+  const tankWaterNum = toFloat(tankWater);
+  const tankHoldingNum = toFloat(tankHolding);
+
+  const priceNum = parseWholeDollars(priceDisplay);
+  const curSymbol = currencySymbolFor(currency);
+  const tankUnitLabel = tankUnit === "gal" ? "Gallons" : "Liters";
+
+  const [touched, setTouched] = useState({});
+  const touch = (key) => setTouched((p) => ({ ...p, [key]: true }));
+
+  const missing = {
+    sellerRole: !sellerRole,
+
+    year: yearInt == null,
+    builder: !effectiveBuilder,
+    model: !model.trim(),
+    loa: loaNum == null,
+    boatCondition: !boatCondition,
+
+    description: !description.trim(),
+    type: !type,
+    price: priceNum == null,
+    country: !effectiveCountry,
+    city: !locationCity.trim(),
+    usRegion: isUSA && !locationUsRegion,
+    state: isUSA && !locationState.trim(),
+
+    firstName: !listingContactFirstName.trim(),
+    lastName: !listingContactLastName.trim(),
+    contactEmail: !contactEmail.trim(),
+  };
+
+  const showErrorFor = (key) => Boolean(touched[key] && missing[key]);
+
+  const fieldBorder = (bad) =>
+    bad
+      ? "border-red-300 bg-red-50 focus:ring-red-200"
+      : "border-slate-300 bg-white";
+  const label = (key) =>
+    `${labelBase} ${showErrorFor(key) ? "text-red-700" : ""}`;
+  const input = (key) => `${fieldBase} ${fieldBorder(showErrorFor(key))}`;
+  const inputSm = (key) => `${fieldSmall} ${fieldBorder(showErrorFor(key))}`;
+  const textarea = (key) => `${textareaBase} ${fieldBorder(showErrorFor(key))}`;
+
+  /* -------------------------
+     TITLE
+  ------------------------- */
   function autoTitle() {
     const parts = [];
     if (yearInt) parts.push(String(yearInt));
@@ -794,17 +1368,19 @@ export default function NewListingForm() {
     return built || "Sailboat Listing";
   }
 
-  /* =========================================================
-     SUBMIT
-  ========================================================= */
-   async function resendVerificationEmail() {
+  /* -------------------------
+     EMAIL VERIFY RESEND
+  ------------------------- */
+  async function resendVerificationEmail() {
     setResendMsg("");
     setResendBusy(true);
     try {
-      const res = await fetch("/api/auth/resend-verification", { method: "POST" });
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+      });
       const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.ok) throw new Error(data?.error || "Could not resend verification email.");
+      if (!res.ok || !data.ok)
+        throw new Error(data?.error || "Could not resend verification email.");
       if (data.alreadyVerified) {
         setResendMsg("You’re already verified. Try submitting again.");
         return;
@@ -817,6 +1393,9 @@ export default function NewListingForm() {
     }
   }
 
+  /* -------------------------
+     SUBMIT
+  ------------------------- */
   async function onSubmit(e) {
     e.preventDefault();
     setFormError("");
@@ -835,15 +1414,45 @@ export default function NewListingForm() {
       type: true,
       price: true,
       country: true,
+      city: true,
       usRegion: true,
       state: true,
-      listingContactName: true,
+
+      firstName: true,
+      lastName: true,
       contactEmail: true,
     }));
 
     const anyMissing = Object.values(missing).some(Boolean);
     if (anyMissing) {
       setFormError("Please complete the highlighted required fields.");
+      return;
+    }
+
+    const hasLocalPhotos = (photoItems || []).some(
+      (p) => p?.status === "local",
+    );
+    if (photoItems.length > 0 && hasLocalPhotos) {
+      setFormError(
+        "You selected photos. Please press Upload in the Photos section before submitting.",
+      );
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {}
+      return;
+    }
+
+    if (
+      sellerRole === "BROKER" &&
+      brokerHeroItem &&
+      brokerHeroItem.status === "local"
+    ) {
+      setFormError(
+        "You selected a Broker / Business Hero Image. Please press Upload in the Listing Contact section before submitting.",
+      );
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {}
       return;
     }
 
@@ -867,7 +1476,6 @@ export default function NewListingForm() {
         boatCondition: boatCondition || null,
         cabins: cabinsInt,
         heads: headsInt,
-
         type,
 
         // Price
@@ -894,15 +1502,15 @@ export default function NewListingForm() {
         engineModel: engineModel.trim() || null,
         propeller: propeller.trim() || null,
         engineHorsepower: horsepowerInt,
-
         engineHours: !isMultiEngine ? engineHoursInt : null,
         leftEngineHours: isMultiEngine ? leftEngineHoursInt : null,
         rightEngineHours: isMultiEngine ? rightEngineHoursInt : null,
 
-        // Generator (send YES/NO so the API can safely coerce)
+        // Generator
         hasGenerator,
         generatorFuel: hasGenerator === "YES" ? generatorFuel || null : null,
-        generatorMake: hasGenerator === "YES" ? generatorMake.trim() || null : null,
+        generatorMake:
+          hasGenerator === "YES" ? generatorMake.trim() || null : null,
         generatorKw: hasGenerator === "YES" ? generatorKwNum : null,
         generatorHours: hasGenerator === "YES" ? generatorHoursInt : null,
 
@@ -912,14 +1520,15 @@ export default function NewListingForm() {
         tankWater: tankWaterNum,
         tankHolding: tankHoldingNum,
 
-        // Dinghy
+        // Dinghy (stored as dinghyModel to avoid schema changes)
         hasDinghy: hasDinghy || null,
-        dinghyModel: dinghyModel.trim() || null,
-        dinghyLength: dinghyLengthNum,
-        dinghyLengthUnit,
-        dinghyMotor: dinghyMotor || null,
+        dinghyModel:
+          hasDinghy === "YES" ? (dinghyNotes || "").trim() || null : null,
+        dinghyLength: null,
+        dinghyLengthUnit: null,
+        dinghyMotor: null,
 
-        // Equipment (always array)
+        // Equipment
         equipment: installedEquipment,
 
         // Photos
@@ -928,14 +1537,25 @@ export default function NewListingForm() {
 
         // Contact
         sellerRole,
-        listingContactName: listingContactName.trim(),
+        listingContactName:
+          `${listingContactFirstName} ${listingContactLastName}`.trim(),
         contactEmail: contactEmail.trim(),
         contactPhone: contactPhone.trim() || null,
 
         // Broker fields
-        brokerageName: sellerRole === "BROKER" ? brokerageName.trim() || null : null,
-        brokerageAddress: sellerRole === "BROKER" ? brokerageAddress.trim() || null : null,
-        brokerLogoUrl: brokerAfterUpload?.uploadedKey || null,
+        brokerageName:
+          sellerRole === "BROKER" ? brokerageName.trim() || null : null,
+        brokerageAddress:
+          sellerRole === "BROKER"
+            ? [brokerageStreet, brokerageCity, brokerageState, brokerageCountry]
+                .map((s) => (s || "").trim())
+                .filter(Boolean)
+                .join(", ") || null
+            : null,
+        brokerLogoUrl:
+          sellerRole === "BROKER"
+            ? brokerAfterUpload?.uploadedKey || null
+            : null,
       };
 
       const res = await fetch("/api/listings/create", {
@@ -944,50 +1564,61 @@ export default function NewListingForm() {
         body: JSON.stringify(payload),
       });
 
-            const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({}));
 
-      // ✅ Email verification gate
       if (!res.ok && data?.code === "EMAIL_NOT_VERIFIED") {
         setNeedsEmailVerify(true);
         setFormError("Please verify your email before creating a listing.");
-        // scroll user to the message area
-        try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch {}
+        try {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {}
         return;
       }
 
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+      if (!res.ok)
+        throw new Error(data?.error || `Request failed (${res.status})`);
 
-      // if they were previously blocked but now succeeded
       setNeedsEmailVerify(false);
       setResendMsg("");
 
+      clearDraft();
 
       router.push(data.previewPath || data.previewUrl || "/listings");
       router.refresh();
     } catch (e2) {
       setFormError(e2?.message || "Failed to create listing.");
+      // keep draft intact on failure
+      saveDraftNow();
     } finally {
       setSubmitting(false);
     }
   }
 
   /* =========================================================
-     RENDER
+     SECTION 3 of 3 — RENDER
   ========================================================= */
   return (
-    <form onSubmit={onSubmit} className="space-y-7 max-w-4xl mx-auto px-4 sm:px-0">
-            {needsEmailVerify && (
+    <form
+      onSubmit={onSubmit}
+      className="space-y-7 max-w-4xl mx-auto px-4 sm:px-0"
+    >
+      {needsEmailVerify && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[13px] text-amber-900">
-          <div className="font-semibold">Verify your email to post listings</div>
+          <div className="font-semibold">
+            Verify your email to post listings
+          </div>
           <div className="mt-1 text-amber-900/80">
-            We sent you a verification link during registration. Click it, then come back and submit again.
+            We sent you a verification link during registration. Click it, then
+            come back and submit again.
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               className={`inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold ${
-                resendBusy ? "bg-slate-200 text-slate-500 cursor-not-allowed" : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
+                resendBusy
+                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                  : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
               }`}
               disabled={resendBusy}
               onClick={resendVerificationEmail}
@@ -1017,12 +1648,35 @@ export default function NewListingForm() {
         </div>
       )}
 
+      {/* Draft status */}
+      {lastDraftSavedAt ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-700 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            Draft saved{" "}
+            <span className="font-semibold">
+              {new Date(lastDraftSavedAt).toLocaleString(undefined, {
+                month: "short",
+                day: "2-digit",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="text-[12px] font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+            onClick={clearDraft}
+          >
+            Clear draft
+          </button>
+        </div>
+      ) : null}
+
       {/* =====================================================
           1) BOAT BASICS
       ====================================================== */}
       <SectionCard title="Boat Basics">
         <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-12 items-end">
-          {/* Condition */}
           <div className="sm:col-span-12">
             <label className={label("boatCondition")}>
               Condition <Asterisk />
@@ -1047,14 +1701,8 @@ export default function NewListingForm() {
                 Used
               </Pill>
             </div>
-            {showErrorFor("boatCondition") && (
-              <div className="mt-2 text-[12px] font-semibold text-red-700">
-                Please select New or Used.
-              </div>
-            )}
           </div>
 
-          {/* Year (dropdown) */}
           <div className="sm:col-span-3 md:col-span-2">
             <label className={label("year")}>
               Year <Asterisk />
@@ -1076,7 +1724,6 @@ export default function NewListingForm() {
             </div>
           </div>
 
-          {/* Builder */}
           <div className="sm:col-span-9 md:col-span-10">
             <label className={label("builder")}>
               Builder <Asterisk />
@@ -1121,15 +1768,8 @@ export default function NewListingForm() {
                 </div>
               )}
             </div>
-
-            {showErrorFor("builder") && (
-              <div className="mt-2 text-[12px] font-semibold text-red-700">
-                Builder is required.
-              </div>
-            )}
           </div>
 
-          {/* Model */}
           <div className="sm:col-span-6">
             <label className={label("model")}>
               Model <Asterisk />
@@ -1145,7 +1785,6 @@ export default function NewListingForm() {
             </div>
           </div>
 
-          {/* Hull Type */}
           <div className="sm:col-span-6">
             <label className={label("type")}>
               Hull Type <Asterisk />
@@ -1164,13 +1803,12 @@ export default function NewListingForm() {
             </div>
           </div>
 
-          {/* LOA / Draft / Air Draft — unit buttons next to label */}
           <div className="sm:col-span-12">
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
               <div className="sm:col-span-4">
                 <div className="flex items-center gap-2">
-                  <label className={labelBase}>
-                    LOA (Length Overall) <Asterisk />
+                  <label className={label("loa")}>
+                    Length <Asterisk />
                   </label>
                   <SmallToggleInline value={loaUnit} onChange={setLoaUnit} />
                 </div>
@@ -1184,17 +1822,15 @@ export default function NewListingForm() {
                     placeholder="Length overall"
                   />
                 </div>
-                {showErrorFor("loa") && (
-                  <div className="mt-2 text-[12px] font-semibold text-red-700">
-                    LOA is required.
-                  </div>
-                )}
               </div>
 
               <div className="sm:col-span-4">
                 <div className="flex items-center gap-2">
                   <label className={labelBase}>Draft (min keel depth)</label>
-                  <SmallToggleInline value={draftUnit} onChange={setDraftUnit} />
+                  <SmallToggleInline
+                    value={draftUnit}
+                    onChange={setDraftUnit}
+                  />
                 </div>
                 <div className="max-w-[220px]">
                   <input
@@ -1202,7 +1838,6 @@ export default function NewListingForm() {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     inputMode="decimal"
-                    placeholder="Optional"
                   />
                 </div>
               </div>
@@ -1210,7 +1845,10 @@ export default function NewListingForm() {
               <div className="sm:col-span-4">
                 <div className="flex items-center gap-2">
                   <label className={labelBase}>Air Draft</label>
-                  <SmallToggleInline value={airDraftUnit} onChange={setAirDraftUnit} />
+                  <SmallToggleInline
+                    value={airDraftUnit}
+                    onChange={setAirDraftUnit}
+                  />
                 </div>
                 <div className="max-w-[220px]">
                   <input
@@ -1218,14 +1856,12 @@ export default function NewListingForm() {
                     value={airDraft}
                     onChange={(e) => setAirDraft(e.target.value)}
                     inputMode="decimal"
-                    placeholder="Optional"
                   />
                 </div>
               </div>
             </div>
           </div>
 
-          {/* # of Cabins / # of Heads */}
           <div className="sm:col-span-6">
             <div className="grid grid-cols-2 gap-4 items-end">
               <div className="max-w-[180px]">
@@ -1235,7 +1871,6 @@ export default function NewListingForm() {
                   value={cabins}
                   onChange={(e) => setCabins(e.target.value)}
                   inputMode="numeric"
-                  placeholder="Optional"
                 />
               </div>
               <div className="max-w-[180px]">
@@ -1245,13 +1880,11 @@ export default function NewListingForm() {
                   value={heads}
                   onChange={(e) => setHeads(e.target.value)}
                   inputMode="numeric"
-                  placeholder="Optional"
                 />
               </div>
             </div>
           </div>
 
-          {/* Price */}
           <div className="sm:col-span-6">
             <div className="flex items-center gap-2">
               <label className={label("price")}>
@@ -1264,10 +1897,12 @@ export default function NewListingForm() {
               <input
                 className={input("price")}
                 value={priceDisplay}
-                onChange={(e) => setPriceDisplay(formatWholeDollars(e.target.value))}
+                onChange={(e) =>
+                  setPriceDisplay(formatWholeDollars(e.target.value))
+                }
                 onBlur={() => touch("price")}
                 inputMode="numeric"
-                placeholder={`${curSymbol}125,000`}
+                placeholder={`${curSymbol}`}
               />
             </div>
           </div>
@@ -1277,7 +1912,10 @@ export default function NewListingForm() {
       {/* =====================================================
           2) BOAT LOCATION
       ====================================================== */}
-      <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located.">
+      <SectionCard
+        title="Boat Location"
+        subtitle="Enter where the boat is physically located."
+      >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-12 items-end">
           <div className="sm:col-span-6">
             <label className={label("country")}>
@@ -1287,7 +1925,7 @@ export default function NewListingForm() {
             <div className="max-w-[420px]">
               <select
                 className={input("country")}
-                value={locationCountrySel}
+                value={locationCountrySel || ""}
                 onChange={(e) => {
                   const nextVal = e.target.value;
                   setLocationCountrySel(nextVal);
@@ -1305,6 +1943,7 @@ export default function NewListingForm() {
                 }}
                 onBlur={() => touch("country")}
               >
+                <option value="">Select…</option>
                 {COUNTRY_OPTIONS.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -1330,13 +1969,16 @@ export default function NewListingForm() {
           </div>
 
           <div className="sm:col-span-6">
-            <label className={labelBase}>City</label>
+            <label className={label("city")}>
+              City <Asterisk />
+            </label>
             <div className="max-w-[420px]">
               <input
-                className={`${fieldBase} border-slate-300 bg-white`}
+                className={input("city")}
                 value={locationCity}
                 onChange={(e) => setLocationCity(e.target.value)}
-                placeholder="Optional"
+                onBlur={() => touch("city")}
+                placeholder="Miami"
               />
             </div>
           </div>
@@ -1383,323 +2025,6 @@ export default function NewListingForm() {
       </SectionCard>
 
       {/* =====================================================
-          2.5) ADDITIONAL INFORMATION
-      ====================================================== */}
-      <SectionCard
-        title="Additional Information"
-        subtitle="Engines, generator, tanks, and dinghy details (optional)."
-      >
-        <div className="space-y-6">
-          {/* ENGINES */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-[#0a2230] underline underline-offset-4 mb-3">
-              Engines
-            </div>
-
-            {/* Fuel at top */}
-            <div className="mb-4">
-              <label className={labelBase}>Fuel</label>
-              <div className="flex items-center gap-2">
-                <Pill active={engineFuel === "DIESEL"} onClick={() => setEngineFuel("DIESEL")}>
-                  Diesel
-                </Pill>
-                <Pill active={engineFuel === "GAS"} onClick={() => setEngineFuel("GAS")}>
-                  Gas
-                </Pill>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-              {/* Hours: single OR left/right based on hull type */}
-              {!isMultiEngine ? (
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Engine Hours</label>
-                  <div className="max-w-[220px]">
-                    <input
-                      className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                      value={engineHours}
-                      onChange={(e) => setEngineHours(e.target.value)}
-                      inputMode="numeric"
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="sm:col-span-4">
-                    <label className={labelBase}>Left Engine Hours</label>
-                    <div className="max-w-[220px]">
-                      <input
-                        className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                        value={leftEngineHours}
-                        onChange={(e) => setLeftEngineHours(e.target.value)}
-                        inputMode="numeric"
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-                  <div className="sm:col-span-4">
-                    <label className={labelBase}>Right Engine Hours</label>
-                    <div className="max-w-[220px]">
-                      <input
-                        className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                        value={rightEngineHours}
-                        onChange={(e) => setRightEngineHours(e.target.value)}
-                        inputMode="numeric"
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Make</label>
-                <div className="max-w-[320px]">
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={engineMake}
-                    onChange={(e) => setEngineMake(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Model</label>
-                <div className="max-w-[320px]">
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={engineModel}
-                    onChange={(e) => setEngineModel(e.target.value)}
-                    placeholder="Optional"
-                  />
-                </div>
-              </div>
-
-              {/* Propeller + Horsepower */}
-              <div className="sm:col-span-12">
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                  <div className="sm:col-span-7">
-                    <label className={labelBase}>Propeller</label>
-                    <div className="max-w-[420px]">
-                      <input
-                        className={`${fieldBase} border-slate-300 bg-white`}
-                        value={propeller}
-                        onChange={(e) => setPropeller(e.target.value)}
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-5">
-                    <label className={labelBase}>Horsepower</label>
-                    <div className="max-w-[220px]">
-                      <input
-                        className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                        value={horsepower}
-                        onChange={(e) => setHorsepower(e.target.value)}
-                        inputMode="numeric"
-                        placeholder="Optional"
-                      />
-                    </div>
-                    <div className={helpText}>Optional</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* GENERATOR */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-[#0a2230] underline underline-offset-4">
-              Generator
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-[12px] font-semibold text-slate-700">Generator?</span>
-              <Pill active={hasGenerator === "YES"} onClick={() => setHasGenerator("YES")}>
-                Yes
-              </Pill>
-              <Pill active={hasGenerator === "NO"} onClick={() => setHasGenerator("NO")}>
-                No
-              </Pill>
-            </div>
-
-            {hasGenerator === "YES" && (
-              <>
-                <div className="mt-4 mb-4">
-                  <label className={labelBase}>Fuel</label>
-                  <div className="flex items-center gap-2">
-                    <Pill
-                      active={generatorFuel === "DIESEL"}
-                      onClick={() => setGeneratorFuel("DIESEL")}
-                    >
-                      Diesel
-                    </Pill>
-                    <Pill active={generatorFuel === "GAS"} onClick={() => setGeneratorFuel("GAS")}>
-                      Gas
-                    </Pill>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                  <div className="sm:col-span-5">
-                    <label className={labelBase}>Make</label>
-                    <div className="max-w-[360px]">
-                      <input
-                        className={`${fieldBase} border-slate-300 bg-white`}
-                        value={generatorMake}
-                        onChange={(e) => setGeneratorMake(e.target.value)}
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className={labelBase}>kW rating</label>
-                    <div className="max-w-[160px]">
-                      <input
-                        className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                        value={generatorKw}
-                        onChange={(e) => setGeneratorKw(e.target.value)}
-                        inputMode="decimal"
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className={labelBase}>Hours</label>
-                    <div className="max-w-[160px]">
-                      <input
-                        className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                        value={generatorHours}
-                        onChange={(e) => setGeneratorHours(e.target.value)}
-                        inputMode="numeric"
-                        placeholder="Optional"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* TANKS */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-[#0a2230] underline underline-offset-4">
-                Total Tank Capacities
-              </div>
-              <SmallToggleInline value={tankUnit} onChange={setTankUnit} options={["gal", "L"]} />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Fuel</label>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                    value={tankFuel}
-                    onChange={(e) => setTankFuel(e.target.value)}
-                    inputMode="decimal"
-                    placeholder={tankUnitLabel}
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Water</label>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                    value={tankWater}
-                    onChange={(e) => setTankWater(e.target.value)}
-                    inputMode="decimal"
-                    placeholder={tankUnitLabel}
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Holding</label>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                    value={tankHolding}
-                    onChange={(e) => setTankHolding(e.target.value)}
-                    inputMode="decimal"
-                    placeholder={tankUnitLabel}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* DINGHY */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-[#0a2230] underline underline-offset-4 mb-3">
-              Dinghy Included?
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Pill active={hasDinghy === "YES"} onClick={() => setHasDinghy("YES")}>
-                Yes
-              </Pill>
-              <Pill active={hasDinghy === "NO"} onClick={() => setHasDinghy("NO")}>
-                No
-              </Pill>
-            </div>
-
-            {hasDinghy === "YES" && (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                <div className="sm:col-span-7">
-                  <label className={labelBase}>Dinghy model</label>
-                  <div className="max-w-[520px]">
-                    <input
-                      className={`${fieldBase} border-slate-300 bg-white`}
-                      value={dinghyModel}
-                      onChange={(e) => setDinghyModel(e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-
-                <div className="sm:col-span-5">
-                  <div className="flex items-center gap-2">
-                    <label className={labelBase}>Length</label>
-                    <SmallToggleInline value={dinghyLengthUnit} onChange={setDinghyLengthUnit} />
-                  </div>
-                  <div className="max-w-[220px]">
-                    <input
-                      className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                      value={dinghyLength}
-                      onChange={(e) => setDinghyLength(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="Optional"
-                    />
-                  </div>
-                </div>
-
-                <div className="sm:col-span-12">
-                  <label className={labelBase}>Dinghy motor</label>
-                  <div className="flex items-center gap-2">
-                    <Pill active={dinghyMotor === "YES"} onClick={() => setDinghyMotor("YES")}>
-                      Yes
-                    </Pill>
-                    <Pill active={dinghyMotor === "NO"} onClick={() => setDinghyMotor("NO")}>
-                      No
-                    </Pill>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
           3) DESCRIPTION
       ====================================================== */}
       <SectionCard title="Description">
@@ -1708,7 +2033,7 @@ export default function NewListingForm() {
             Description <Asterisk />
           </label>
           <textarea
-            className={textarea("description")}
+            className={`${textarea("description")} !min-h-[285px]`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={() => touch("description")}
@@ -1718,260 +2043,529 @@ export default function NewListingForm() {
       </SectionCard>
 
       {/* =====================================================
-          4) EQUIPMENT
+          3.5) ADDITIONAL INFORMATION
       ====================================================== */}
-      <SectionCard title="Equipment" subtitle="Select installed equipment, then add additional equipment.">
-        <div className="space-y-5">
+      <SectionCard
+        title="Additional Information"
+        subtitle="Engines, generator, tanks, and dinghy details (optional)."
+      >
+        <div className="space-y-4">
+          {/* Engines */}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-2">Installed equipment</div>
+            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
+              Engines
+            </div>
 
-            {installedEquipment.length === 0 ? (
-              <div className="text-[13px] text-slate-600">None added yet.</div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {installedEquipment.map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[13px] text-slate-800"
+            <div className="space-y-4">
+              <div>
+                <div className="text-[12px] font-semibold text-[#0a2230] mb-2">
+                  Fuel
+                </div>
+                <div className="flex items-center gap-2">
+                  <Pill
+                    active={engineFuel === "DIESEL"}
+                    onClick={() => setEngineFuel("DIESEL")}
                   >
-                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#0a2230] text-white text-[12px]">
-                      ✓
-                    </span>
-                    {name}
-                    <button
-                      type="button"
-                      className="ml-1 text-slate-400 hover:text-slate-700"
-                      title="Remove"
-                      onClick={() => {
-                        if (equipmentSelected.has(name)) togglePreset(name);
-                        else removeAdditionalEquipment(name);
-                      }}
+                    Diesel
+                  </Pill>
+                  <Pill
+                    active={engineFuel === "GAS"}
+                    onClick={() => setEngineFuel("GAS")}
+                  >
+                    Gas
+                  </Pill>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                {!isMultiEngine ? (
+                  <div className="sm:col-span-4">
+                    <label className={labelBase}>Engine Hours</label>
+                    <input
+                      className={`${fieldBase} border-slate-300 bg-white`}
+                      value={engineHours}
+                      onChange={(e) => setEngineHours(e.target.value)}
+                      inputMode="numeric"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="sm:col-span-4">
+                      <label className={labelBase}>Left Engine Hours</label>
+                      <input
+                        className={`${fieldBase} border-slate-300 bg-white`}
+                        value={leftEngineHours}
+                        onChange={(e) => setLeftEngineHours(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div className="sm:col-span-4">
+                      <label className={labelBase}>Right Engine Hours</label>
+                      <input
+                        className={`${fieldBase} border-slate-300 bg-white`}
+                        value={rightEngineHours}
+                        onChange={(e) => setRightEngineHours(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>Make</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={engineMake}
+                    onChange={(e) => setEngineMake(e.target.value)}
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>Model</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={engineModel}
+                    onChange={(e) => setEngineModel(e.target.value)}
+                  />
+                </div>
+
+                <div className="sm:col-span-8">
+                  <label className={labelBase}>Propeller</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={propeller}
+                    onChange={(e) => setPropeller(e.target.value)}
+                    placeholder="3-Blade, 4-blade, folding, feathering, etc."
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>Horsepower</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={horsepower}
+                    onChange={(e) => setHorsepower(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Generator */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
+              Generator
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="text-[12px] font-semibold text-[#0a2230] mr-2">
+                Generator?
+              </div>
+              <Pill
+                active={hasGenerator === "YES"}
+                onClick={() => setHasGenerator("YES")}
+              >
+                Yes
+              </Pill>
+              <Pill
+                active={hasGenerator === "NO"}
+                onClick={() => {
+                  setHasGenerator("NO");
+                  setGeneratorFuel("");
+                  setGeneratorMake("");
+                  setGeneratorKw("");
+                  setGeneratorHours("");
+                }}
+              >
+                No
+              </Pill>
+            </div>
+
+            {hasGenerator === "YES" && (
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                <div className="sm:col-span-12">
+                  <div className="text-[12px] font-semibold text-[#0a2230] mb-2">
+                    Fuel
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Pill
+                      active={generatorFuel === "DIESEL"}
+                      onClick={() => setGeneratorFuel("DIESEL")}
                     >
-                      ✕
-                    </button>
-                  </span>
-                ))}
+                      Diesel
+                    </Pill>
+                    <Pill
+                      active={generatorFuel === "GAS"}
+                      onClick={() => setGeneratorFuel("GAS")}
+                    >
+                      Gas
+                    </Pill>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>Make</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={generatorMake}
+                    onChange={(e) => setGeneratorMake(e.target.value)}
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>kW</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={generatorKw}
+                    onChange={(e) => setGeneratorKw(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+
+                <div className="sm:col-span-4">
+                  <label className={labelBase}>Hours</label>
+                  <input
+                    className={`${fieldBase} border-slate-300 bg-white`}
+                    value={generatorHours}
+                    onChange={(e) => setGeneratorHours(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
               </div>
             )}
           </div>
 
-          <div>
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-3">Common equipment</div>
+          {/* Tanks */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[13px] font-semibold text-[#0a2230] underline underline-offset-2">
+                Total Tank Capacities
+              </div>
+              <SmallToggleInline
+                value={tankUnit}
+                onChange={(u) => setTankUnit(u)}
+                options={["gal", "L"]}
+              />
+            </div>
 
-            <div className="columns-1 sm:columns-2 lg:columns-3 gap-x-3">
-              {EQUIPMENT_PRESETS.map((name) => {
-                const checked = equipmentSelected.has(name);
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+              <div className="sm:col-span-4">
+                <label className={labelBase}>Fuel</label>
+                <input
+                  className={`${fieldBase} border-slate-300 bg-white`}
+                  value={tankFuel}
+                  onChange={(e) => setTankFuel(e.target.value)}
+                  inputMode="decimal"
+                  placeholder={tankUnitLabel}
+                />
+              </div>
 
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => togglePreset(name)}
-                    className={[
-                      "text-left w-full",
-                      "rounded-xl border transition",
-                      "px-3 py-2.5",
-                      "flex items-center gap-3",
-                      checked
-                        ? "border-[#0a2230]/25 bg-[#0a2230]/5"
-                        : "border-slate-200 bg-white hover:bg-slate-50",
-                      "focus:outline-none focus:ring-2 focus:ring-[#c8a44d]/40",
-                      "mb-3 break-inside-avoid",
-                    ].join(" ")}
-                    aria-pressed={checked}
-                  >
-                    <div
-                      className={[
-                        "h-5 w-5 rounded-md border flex items-center justify-center shrink-0",
-                        checked ? "bg-[#0a2230] border-[#0a2230]" : "bg-white border-slate-300",
-                      ].join(" ")}
-                      aria-hidden="true"
-                    >
-                      {checked ? (
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-                          <path
-                            d="M20 6L9 17l-5-5"
-                            stroke="white"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      ) : null}
-                    </div>
+              <div className="sm:col-span-4">
+                <label className={labelBase}>Water</label>
+                <input
+                  className={`${fieldBase} border-slate-300 bg-white`}
+                  value={tankWater}
+                  onChange={(e) => setTankWater(e.target.value)}
+                  inputMode="decimal"
+                  placeholder={tankUnitLabel}
+                />
+              </div>
 
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold text-slate-900 leading-tight">
-                        {name}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+              <div className="sm:col-span-4">
+                <label className={labelBase}>Holding</label>
+                <input
+                  className={`${fieldBase} border-slate-300 bg-white`}
+                  value={tankHolding}
+                  onChange={(e) => setTankHolding(e.target.value)}
+                  inputMode="decimal"
+                  placeholder={tankUnitLabel}
+                />
+              </div>
             </div>
           </div>
 
-          <div>
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-2">Additional equipment</div>
-
-            <div className="flex items-center gap-2 max-w-[720px]">
-              <input
-                className={`${fieldBase} border-slate-300 bg-white`}
-                value={additionalEquipmentInput}
-                onChange={(e) => setAdditionalEquipmentInput(e.target.value)}
-                placeholder="Type an item (press Enter)…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addAdditionalEquipment(additionalEquipmentInput);
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className={btnMini}
-                onClick={() => addAdditionalEquipment(additionalEquipmentInput)}
-              >
-                Add
-              </button>
+          {/* Dinghy */}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
+              Dinghy Included?
             </div>
+
+            <div className="flex items-center gap-2">
+              <Pill
+                active={hasDinghy === "YES"}
+                onClick={() => setHasDinghy("YES")}
+              >
+                Yes
+              </Pill>
+
+              <Pill
+                active={hasDinghy === "NO"}
+                onClick={() => {
+                  setHasDinghy("NO");
+                  setDinghyNotes("");
+                }}
+              >
+                No
+              </Pill>
+            </div>
+
+            {hasDinghy === "YES" && (
+              <div className="mt-4">
+                <label className={labelBase}>Dinghy details</label>
+                <textarea
+                  className={`${textareaBase} border-slate-300 bg-white !min-h-[120px]`}
+                  value={dinghyNotes}
+                  onChange={(e) => setDinghyNotes(e.target.value)}
+                  placeholder="Example: 2021 10' inflatable, Honda 5hp 4-stroke, etc…"
+                />
+                <div className={helpText}>
+                  Enter size, make/model, and outboard details (optional).
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </SectionCard>
 
       {/* =====================================================
+      4) EQUIPMENT
+====================================================== */}
+<SectionCard
+  title="Equipment"
+  subtitle="Select installed equipment, then add additional equipment."
+>
+  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    {/* Installed equipment chips */}
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="text-[13px] font-semibold text-[#0a2230] mb-3">
+        Installed equipment
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {installedEquipment.length === 0 ? (
+          <div className="text-[12px] text-slate-600">None selected yet.</div>
+        ) : (
+          installedEquipment.map((name) => (
+            <span
+              key={`sel-${name}`}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-[#0a2230]"
+            >
+              {/* ✅ checkmark circle (matches screenshot) */}
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#0a2230] text-white">
+                <CheckIcon className="h-3.5 w-3.5" />
+              </span>
+
+              <span className="font-semibold">{name}</span>
+
+              <button
+                type="button"
+                className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100 text-slate-500"
+                onClick={() => {
+                  if (equipmentSelected.has(name)) togglePreset(name);
+                  else removeAdditionalEquipment(name);
+                }}
+                aria-label={`Remove ${name}`}
+              >
+                <XIcon />
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+
+    {/* Common equipment presets */}
+    <div className="mt-5">
+      <div className="text-[13px] font-semibold text-[#0a2230] mb-3">
+        Common equipment
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {EQUIPMENT_PRESETS.map((name) => {
+          const active = equipmentSelected.has(name);
+          return (
+            <button
+              key={`preset-${name}`}
+              type="button"
+              onClick={() => togglePreset(name)}
+              className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                active
+                  ? "border-slate-300 bg-slate-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+            >
+              {/* ✅ checkbox square */}
+              <span
+                className={`inline-flex h-5 w-5 items-center justify-center rounded-md border transition ${
+                  active
+                    ? "bg-[#0a2230] border-[#0a2230] text-white"
+                    : "bg-white border-slate-300 text-transparent"
+                }`}
+                aria-hidden="true"
+              >
+                <CheckIcon className="h-3.5 w-3.5" />
+              </span>
+
+              <span className="text-[13px] font-semibold text-[#0a2230]">
+                {name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
+    {/* Additional equipment input */}
+    <div className="mt-6">
+      <div className="text-[13px] font-semibold text-[#0a2230] mb-2">
+        Additional equipment
+      </div>
+
+      <div className="flex items-center gap-2">
+        <input
+          className={`${fieldBase} border-slate-300 bg-white`}
+          value={additionalEquipmentInput}
+          onChange={(e) => setAdditionalEquipmentInput(e.target.value)}
+          placeholder="Type an item (press Enter)…"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addAdditionalEquipment(additionalEquipmentInput);
+            }
+          }}
+        />
+
+        <button
+          type="button"
+          className={btnMini}
+          onClick={() => addAdditionalEquipment(additionalEquipmentInput)}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  </div>
+</SectionCard>
+
+
+      {/* =====================================================
           5) PHOTOS
       ====================================================== */}
-      <SectionCard title="Photos">
-        <div className="grid grid-cols-1 gap-4">
-          <div>
-            <label className={labelBase}>Upload photos</label>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              className="block w-full text-[13px] text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-[#0a2230] hover:file:bg-slate-200"
-              onChange={(e) => addPhotos(e.target.files)}
-            />
-          </div>
+      <SectionCard
+        title="Photos"
+        subtitle="Add photos, then press Upload. First photo becomes the hero image."
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className={`${btnGhost} cursor-pointer`}>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => addPhotos(e.target.files)}
+              />
+              Add photos
+            </label>
 
-          {photoItems.length > 0 && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {photoItems.map((p, idx) => {
-                const isDragOver =
-                  dragOverPhotoId === p.id && draggingPhotoId && draggingPhotoId !== p.id;
-
-                return (
-                  <div
-                    key={p.id}
-                    draggable
-                    onDragStart={() => {
-                      setDraggingPhotoId(p.id);
-                      setDragOverPhotoId(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggingPhotoId(null);
-                      setDragOverPhotoId(null);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      if (draggingPhotoId && draggingPhotoId !== p.id) setDragOverPhotoId(p.id);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverPhotoId === p.id) setDragOverPhotoId(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (!draggingPhotoId || draggingPhotoId === p.id) return;
-                      reorderPhotos(draggingPhotoId, p.id);
-                      setDragOverPhotoId(null);
-                    }}
-                    className={[
-                      "rounded-2xl border bg-white shadow-sm overflow-hidden cursor-grab active:cursor-grabbing",
-                      isDragOver ? "border-[#c8a44d] ring-2 ring-[#c8a44d]/30" : "border-slate-200",
-                    ].join(" ")}
-                  >
-                    <div className="relative aspect-square bg-slate-50">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.previewUrl}
-                        alt={`Photo ${idx + 1}`}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-
-                      {idx === 0 && (
-                        <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
-                          HERO
-                        </div>
-                      )}
-                      {p.status === "uploaded" && (
-                        <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
-                          ✓
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-[12px] font-semibold text-slate-700">#{idx + 1}</div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className={iconBtn}
-                            onClick={() => movePhoto(p.id, -1)}
-                            disabled={idx === 0}
-                            aria-label="Move photo up"
-                            title="Up"
-                          >
-                            <ChevronUpIcon />
-                          </button>
-                          <button
-                            type="button"
-                            className={iconBtn}
-                            onClick={() => movePhoto(p.id, +1)}
-                            disabled={idx === photoItems.length - 1}
-                            aria-label="Move photo down"
-                            title="Down"
-                          >
-                            <ChevronDownIcon />
-                          </button>
-                          <button
-                            type="button"
-                            className={iconBtn}
-                            onClick={() => removePhoto(p.id)}
-                            aria-label="Remove photo"
-                            title="Remove"
-                          >
-                            <XIcon />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
-              className={`inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold ${
-                uploadingPhotos || photoItems.length === 0
-                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                  : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
-              }`}
+              className={`${btnPrimary} ${uploadingPhotos ? "opacity-70 cursor-not-allowed" : ""}`}
               disabled={uploadingPhotos || photoItems.length === 0}
               onClick={() => uploadAllPhotosIfNeeded(photoItems)}
             >
               {uploadingPhotos ? "Uploading…" : "Upload"}
             </button>
 
-            <div className="text-[13px] text-slate-600">
-              {photoItems.length ? `${photoItems.length} photo(s)` : ""}
+            <div className="text-[12px] text-slate-600">
+              Tip: Drag to reorder. The first photo will be the hero image.
             </div>
           </div>
+
+          {photoItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-[13px] text-slate-600">
+              No photos yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {photoItems.map((p, idx) => (
+                <div
+                  key={p.id}
+                  className={`relative rounded-2xl border overflow-hidden bg-white shadow-sm ${dragOverPhotoId === p.id ? "border-[#c8a44d]" : "border-slate-200"}`}
+                  draggable
+                  onDragStart={() => setDraggingPhotoId(p.id)}
+                  onDragEnd={() => {
+                    setDraggingPhotoId(null);
+                    setDragOverPhotoId(null);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverPhotoId(p.id);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggingPhotoId && draggingPhotoId !== p.id)
+                      reorderPhotos(draggingPhotoId, p.id);
+                    setDraggingPhotoId(null);
+                    setDragOverPhotoId(null);
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={p.previewUrl}
+                    alt="Photo preview"
+                    className="w-full h-36 object-contain bg-slate-100"
+                    loading="lazy"
+                  />
+
+                  {idx === 0 && (
+                    <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
+                      Hero
+                    </div>
+                  )}
+
+                  {p.status === "uploaded" && (
+                    <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
+                      ✓
+                    </div>
+                  )}
+
+                  <div className="p-2 flex items-center justify-between gap-2">
+                    <div className="text-[12px] text-slate-600">
+                      {p.status === "uploaded" ? "Uploaded" : "Local"}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => movePhoto(p.id, -1)}
+                        aria-label="Move up"
+                      >
+                        <span className="text-[12px]">↑</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => movePhoto(p.id, 1)}
+                        aria-label="Move down"
+                      >
+                        <span className="text-[12px]">↓</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => removePhoto(p.id)}
+                        aria-label="Remove photo"
+                      >
+                        <XIcon />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </SectionCard>
 
@@ -1989,8 +2583,16 @@ export default function NewListingForm() {
               <Pill
                 active={sellerRole === "OWNER"}
                 onClick={() => {
+                  contactTouchedRef.current.sellerRole = true;
                   setSellerRole("OWNER");
                   touch("sellerRole");
+
+                  if (brokerHeroItem?.previewUrl) {
+                    try {
+                      URL.revokeObjectURL(brokerHeroItem.previewUrl);
+                    } catch {}
+                  }
+                  setBrokerHeroItem(null);
                 }}
               >
                 Owner
@@ -1999,6 +2601,7 @@ export default function NewListingForm() {
               <Pill
                 active={sellerRole === "BROKER"}
                 onClick={() => {
+                  contactTouchedRef.current.sellerRole = true;
                   setSellerRole("BROKER");
                   touch("sellerRole");
                 }}
@@ -2006,24 +2609,41 @@ export default function NewListingForm() {
                 Broker
               </Pill>
             </div>
-
-            {showErrorFor("sellerRole") && (
-              <div className="mt-2 text-[13px] text-red-700">Please choose Owner or Broker.</div>
-            )}
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-12 items-end">
             <div className="sm:col-span-6">
-              <label className={label("listingContactName")}>
-                Listing Contact Name <Asterisk />
+              <label className={label("firstName")}>
+                First Name <Asterisk />
               </label>
               <div className="max-w-[520px]">
                 <input
-                  className={input("listingContactName")}
-                  value={listingContactName}
-                  onChange={(e) => setListingContactName(e.target.value)}
-                  onBlur={() => touch("listingContactName")}
-                  placeholder="John Smith"
+                  className={input("firstName")}
+                  value={listingContactFirstName}
+                  onChange={(e) => {
+                    contactTouchedRef.current.firstName = true;
+                    setListingContactFirstName(e.target.value);
+                  }}
+                  onBlur={() => touch("firstName")}
+                  placeholder="John"
+                />
+              </div>
+            </div>
+
+            <div className="sm:col-span-6">
+              <label className={label("lastName")}>
+                Last Name <Asterisk />
+              </label>
+              <div className="max-w-[520px]">
+                <input
+                  className={input("lastName")}
+                  value={listingContactLastName}
+                  onChange={(e) => {
+                    contactTouchedRef.current.lastName = true;
+                    setListingContactLastName(e.target.value);
+                  }}
+                  onBlur={() => touch("lastName")}
+                  placeholder="Smith"
                 />
               </div>
             </div>
@@ -2036,7 +2656,10 @@ export default function NewListingForm() {
                 <input
                   className={input("contactEmail")}
                   value={contactEmail}
-                  onChange={(e) => setContactEmail(e.target.value)}
+                  onChange={(e) => {
+                    contactTouchedRef.current.contactEmail = true;
+                    setContactEmail(e.target.value);
+                  }}
                   onBlur={() => touch("contactEmail")}
                   inputMode="email"
                   placeholder="you@example.com"
@@ -2045,14 +2668,26 @@ export default function NewListingForm() {
             </div>
 
             <div className="sm:col-span-6">
-              <label className={labelBase}>Phone Number</label>
+              <div className="flex items-center justify-between">
+                <label className={labelBase}>Phone Number</label>
+                <button
+                  type="button"
+                  onClick={() => setShowPhonePrivacy(true)}
+                  className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                >
+                  How ST protects your number
+                </button>
+              </div>
+
               <div className="max-w-[320px]">
                 <input
                   className={`${fieldBase} border-slate-300 bg-white`}
                   value={contactPhone}
-                  onChange={(e) => setContactPhone(e.target.value)}
+                  onChange={(e) => {
+                    contactTouchedRef.current.contactPhone = true;
+                    setContactPhone(e.target.value);
+                  }}
                   inputMode="tel"
-                  placeholder="Optional"
                 />
               </div>
             </div>
@@ -2065,101 +2700,205 @@ export default function NewListingForm() {
                     <input
                       className={`${fieldBase} border-slate-300 bg-white`}
                       value={brokerageName}
-                      onChange={(e) => setBrokerageName(e.target.value)}
-                      placeholder="Optional"
+                      onChange={(e) => {
+                        contactTouchedRef.current.brokerageName = true;
+                        setBrokerageName(e.target.value);
+                      }}
                     />
                   </div>
                 </div>
 
                 <div className="sm:col-span-12">
-                  <label className={labelBase}>Brokerage Address</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+                    <div className="sm:col-span-7">
+                      <label className={labelBase}>Street Address</label>
+                      <div className="max-w-[720px]">
+                        <input
+                          className={`${fieldBase} border-slate-300 bg-white`}
+                          value={brokerageStreet}
+                          onChange={(e) => {
+                            contactTouchedRef.current.brokerageStreet = true;
+                            setBrokerageStreet(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-5">
+                      <label className={labelBase}>City</label>
+                      <div className="max-w-[420px]">
+                        <input
+                          className={`${fieldBase} border-slate-300 bg-white`}
+                          value={brokerageCity}
+                          onChange={(e) => {
+                            contactTouchedRef.current.brokerageCity = true;
+                            setBrokerageCity(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className={labelBase}>State / Region</label>
+                      <div className="max-w-[240px]">
+                        <input
+                          className={`${fieldSmall} border-slate-300 bg-white w-full`}
+                          value={brokerageState}
+                          onChange={(e) => {
+                            contactTouchedRef.current.brokerageState = true;
+                            setBrokerageState(e.target.value);
+                          }}
+                        />
+                      </div>
+                      <div className={helpText}>
+                        Use province/region if not in the U.S.
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className={labelBase}>Country</label>
+                      <div className="max-w-[320px]">
+                        <input
+                          className={`${fieldBase} border-slate-300 bg-white`}
+                          value={brokerageCountry}
+                          onChange={(e) => {
+                            contactTouchedRef.current.brokerageCountry = true;
+                            setBrokerageCountry(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-12">
+                  <label className={labelBase}>
+                    Broker / Business Hero Image (optional)
+                  </label>
                   <div className="max-w-[720px]">
                     <input
-                      className={`${fieldBase} border-slate-300 bg-white`}
-                      value={brokerageAddress}
-                      onChange={(e) => setBrokerageAddress(e.target.value)}
-                      placeholder="Optional"
+                      type="file"
+                      accept="image/*"
+                      className="block w-full text-[13px] text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-[#0a2230] hover:file:bg-slate-200"
+                      onChange={(e) => pickBrokerHero(e.target.files?.[0])}
                     />
                   </div>
+
+                  {brokerHeroItem?.previewUrl && (
+                    <div className="mt-4 flex items-start gap-4">
+                      <div className="relative w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={brokerHeroItem.previewUrl}
+                          alt="Broker hero preview"
+                          className="w-full h-28 object-contain bg-slate-100"
+                          loading="lazy"
+                        />
+
+                        {brokerHeroItem.status === "uploaded" && (
+                          <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
+                            ✓
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="text-[13px] font-semibold text-[#0a2230]">
+                          {brokerHeroItem.status === "uploaded"
+                            ? "Uploaded"
+                            : "Ready"}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-3">
+                          <button
+                            type="button"
+                            className={`inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold ${
+                              uploadingBrokerHero || !brokerHeroItem
+                                ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                                : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
+                            }`}
+                            disabled={uploadingBrokerHero || !brokerHeroItem}
+                            onClick={() =>
+                              uploadBrokerHeroIfNeeded(brokerHeroItem)
+                            }
+                          >
+                            {uploadingBrokerHero ? "Uploading…" : "Upload"}
+                          </button>
+
+                          <button
+                            type="button"
+                            className={btnGhost}
+                            onClick={() => {
+                              if (brokerHeroItem?.previewUrl) {
+                                try {
+                                  URL.revokeObjectURL(
+                                    brokerHeroItem.previewUrl,
+                                  );
+                                } catch {}
+                              }
+                              setBrokerHeroItem(null);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
-
-            <div className="sm:col-span-12">
-              <label className={labelBase}>Broker / Business Hero Image (optional)</label>
-              <div className="max-w-[720px]">
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="block w-full text-[13px] text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-[#0a2230] hover:file:bg-slate-200"
-                  onChange={(e) => pickBrokerHero(e.target.files?.[0])}
-                />
-              </div>
-
-              {brokerHeroItem?.previewUrl && (
-                <div className="mt-4 flex items-start gap-4">
-                  <div className="w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={brokerHeroItem.previewUrl}
-                      alt="Broker hero preview"
-                      className="w-full h-28 object-cover"
-                      loading="lazy"
-                    />
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="text-[13px] font-semibold text-[#0a2230]">
-                      {brokerHeroItem.status === "uploaded" ? "Uploaded" : "Ready"}
-                    </div>
-
-                    <div className="mt-3 flex items-center gap-3">
-                      <button
-                        type="button"
-                        className={`inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold ${
-                          uploadingBrokerHero || !brokerHeroItem
-                            ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                            : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
-                        }`}
-                        disabled={uploadingBrokerHero || !brokerHeroItem}
-                        onClick={() => uploadBrokerHeroIfNeeded(brokerHeroItem)}
-                      >
-                        {uploadingBrokerHero ? "Uploading…" : "Upload"}
-                      </button>
-
-                      <button
-                        type="button"
-                        className={btnGhost}
-                        onClick={() => {
-                          if (brokerHeroItem?.previewUrl) {
-                            try {
-                              URL.revokeObjectURL(brokerHeroItem.previewUrl);
-                            } catch {}
-                          }
-                          setBrokerHeroItem(null);
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </SectionCard>
 
-      {formError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
-          {formError}
+      {/* Phone privacy modal */}
+      {showPhonePrivacy && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setShowPhonePrivacy(false);
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-3 bg-[#0a2230]">
+              <div className="text-[14px] font-semibold text-white">
+                How ST protects your number
+              </div>
+            </div>
+            <div className="p-5 text-[13px] text-slate-700">
+              ST.com values your privacy and will only display a phone number if
+              a valid user is logged in.
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  className={btnPrimary}
+                  onClick={() => setShowPhonePrivacy(false)}
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* Submit buttons */}
       <div className="flex items-center justify-end gap-3">
-        <button type="button" className={btnGhost} onClick={() => router.push("/listings")}>
+        <button
+          type="button"
+          className={btnGhost}
+          onClick={() => router.push("/listings")}
+        >
           Cancel
         </button>
+
+        <button type="button" className={btnGhost} onClick={saveDraftNow}>
+          Save draft
+        </button>
+
         <button type="submit" className={btnPrimary} disabled={submitting}>
           {submitting ? "Saving…" : "Create listing"}
         </button>

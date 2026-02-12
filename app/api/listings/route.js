@@ -26,11 +26,17 @@ export async function GET() {
  * POST /api/listings
  * Creates a new listing as DRAFT (private until published).
  *
- * This route accepts the NewListingForm payload shape.
- * (Your form currently posts to /api/listings/create, but keeping this aligned prevents future breakage.)
+ * ✅ Requires authentication.
  */
 export async function POST(req) {
   try {
+    // ✅ Require login
+    const { requireUser } = await import("@/lib/auth"); // avoids client bundling mistakes
+    const s = await requireUser().catch(() => null);
+    if (!s?.uid) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
@@ -75,7 +81,6 @@ export async function POST(req) {
     };
 
     const coerceYesNoToBool = (v) => {
-      // accepts true/false, "YES"/"NO", "yes"/"no", "true"/"false", 1/0
       if (typeof v === "boolean") return v;
       if (typeof v === "number") return v === 1 ? true : v === 0 ? false : null;
       const s = toStr(v).toUpperCase();
@@ -199,6 +204,9 @@ export async function POST(req) {
     // ---------------- create ----------------
     const created = await prisma.listing.create({
       data: {
+        // ✅ owner of the listing
+        userId: s.uid,
+
         status: "DRAFT",
 
         title,
@@ -275,3 +283,4 @@ export async function POST(req) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
+

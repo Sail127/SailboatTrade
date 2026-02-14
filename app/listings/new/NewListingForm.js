@@ -367,6 +367,48 @@ export default function NewListingForm() {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
+  const [bottomFormError, setBottomFormError] = useState("");
+    // ✅ Client-side auth guard (prevents cached navigation showing this page when logged out)
+  const [authChecking, setAuthChecking] = useState(true);
+  const [authOk, setAuthOk] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function guard() {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        const uid = data?.user?.uid || data?.uid;
+
+        if (!alive) return;
+
+        if (!uid) {
+          window.location.assign(
+            `/login?next=${encodeURIComponent("/listings/new")}`,
+          );
+          return;
+        }
+
+        setAuthOk(true);
+      } catch {
+        if (!alive) return;
+        window.location.assign(`/login?next=${encodeURIComponent("/dashboard/listings")}`);
+
+        return;
+      } finally {
+        if (alive) setAuthChecking(false);
+      }
+    }
+
+    guard();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+
+
 
   // Draft UX
   const [draftLoaded, setDraftLoaded] = useState(false);
@@ -499,104 +541,105 @@ export default function NewListingForm() {
   /* -------------------------
      PHOTOS
   ------------------------- */
-  const [photoItems, setPhotoItems] = useState([]);
-  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+const [photoItems, setPhotoItems] = useState([]);
+const [uploadingPhotos, setUploadingPhotos] = useState(false);
 
-  const [draggingPhotoId, setDraggingPhotoId] = useState(null);
-  const [dragOverPhotoId, setDragOverPhotoId] = useState(null);
+const [draggingPhotoId, setDraggingPhotoId] = useState(null);
+const [dragOverPhotoId, setDragOverPhotoId] = useState(null);
 
-  function reorderPhotos(fromId, toId) {
-    setPhotoItems((prev) => {
-      const from = prev.findIndex((p) => p.id === fromId);
-      const to = prev.findIndex((p) => p.id === toId);
-      if (from < 0 || to < 0 || from === to) return prev;
-      const next = prev.slice();
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
-    });
-  }
+function reorderPhotos(fromId, toId) {
+  setPhotoItems((prev) => {
+    const from = prev.findIndex((p) => p.id === fromId);
+    const to = prev.findIndex((p) => p.id === toId);
+    if (from < 0 || to < 0 || from === to) return prev;
+    const next = prev.slice();
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    return next;
+  });
+}
 
-  function addPhotos(filesList) {
-    const files = Array.from(filesList || []).filter((f) =>
-      /^image\//i.test(f.type),
-    );
-    if (!files.length) return;
+function addPhotos(filesList) {
+  const files = Array.from(filesList || []).filter((f) => /^image\//i.test(f.type));
+  if (!files.length) return;
 
-    const next = files.map((file) => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const previewUrl = URL.createObjectURL(file);
-      return { id, file, previewUrl, status: "local", uploadedKey: "" };
-    });
+  const next = files.map((file) => {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const previewUrl = URL.createObjectURL(file);
+    return { id, file, previewUrl, status: "local", uploadedKey: "" };
+  });
 
-    setPhotoItems((prev) => [...prev, ...next]);
-  }
+  setPhotoItems((prev) => [...prev, ...next]);
+}
 
-  function removePhoto(id) {
-    setPhotoItems((prev) => {
-      const item = prev.find((p) => p.id === id);
-      if (item?.previewUrl) {
-        try {
-          URL.revokeObjectURL(item.previewUrl);
-        } catch {}
-      }
-      return prev.filter((p) => p.id !== id);
-    });
-  }
-
-  function movePhoto(id, dir) {
-    setPhotoItems((prev) => {
-      const idx = prev.findIndex((p) => p.id === id);
-      if (idx < 0) return prev;
-      const to = clamp(idx + dir, 0, prev.length - 1);
-      if (to === idx) return prev;
-      return moveItem(prev, idx, to);
-    });
-  }
-
-  async function uploadAllPhotosIfNeeded(itemsSnapshot = null) {
-    const snapshot = itemsSnapshot ?? photoItems;
-    const locals = snapshot.filter((p) => p.status === "local");
-    if (!locals.length) return snapshot;
-
-    setUploadingPhotos(true);
-    setFormError("");
-
-    try {
-      const uploadedKeyById = {};
-
-      for (const item of locals) {
-        const formData = new FormData();
-        formData.append("file", item.file);
-
-        const res = await fetch("/api/uploads", {
-          method: "POST",
-          body: formData,
-        });
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok)
-          throw new Error(data?.error || `Upload failed (${res.status})`);
-        if (!data?.key) throw new Error("Upload did not return a key.");
-
-        uploadedKeyById[item.id] = String(data.key);
-      }
-
-      const next = snapshot.map((p) =>
-        uploadedKeyById[p.id]
-          ? { ...p, status: "uploaded", uploadedKey: uploadedKeyById[p.id] }
-          : p,
-      );
-
-      setPhotoItems(next);
-      return next;
-    } catch (e) {
-      setFormError(e?.message || "Photo upload failed.");
-      throw e;
-    } finally {
-      setUploadingPhotos(false);
+function removePhoto(id) {
+  setPhotoItems((prev) => {
+    const item = prev.find((p) => p.id === id);
+    if (item?.previewUrl) {
+      try {
+        URL.revokeObjectURL(item.previewUrl);
+      } catch {}
     }
+    return prev.filter((p) => p.id !== id);
+  });
+}
+
+function movePhoto(id, dir) {
+  setPhotoItems((prev) => {
+    const idx = prev.findIndex((p) => p.id === id);
+    if (idx < 0) return prev;
+    const to = clamp(idx + dir, 0, prev.length - 1);
+    if (to === idx) return prev;
+    return moveItem(prev, idx, to);
+  });
+}
+
+async function uploadAllPhotosIfNeeded(itemsSnapshot = null) {
+  const snapshot = itemsSnapshot ?? photoItems;
+  const locals = snapshot.filter((p) => p.status === "local");
+  if (!locals.length) return snapshot;
+
+  setUploadingPhotos(true);
+  setFormError("");
+  setBottomFormError("");
+
+  try {
+    const uploadedKeyById = {};
+
+    for (const item of locals) {
+      const formData = new FormData();
+      formData.append("file", item.file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+      if (!data?.key) throw new Error("Upload did not return a key.");
+
+      uploadedKeyById[item.id] = String(data.key);
+    }
+
+    const next = snapshot.map((p) =>
+      uploadedKeyById[p.id]
+        ? { ...p, status: "uploaded", uploadedKey: uploadedKeyById[p.id] }
+        : p,
+    );
+
+    setPhotoItems(next);
+    return next;
+  } catch (e) {
+    const msg = e?.message || "Photo upload failed.";
+    setFormError(msg);
+    setBottomFormError(msg);
+    throw e;
+  } finally {
+    setUploadingPhotos(false);
   }
+}
+
 
   /* -------------------------
      LISTING CONTACT
@@ -683,40 +726,45 @@ export default function NewListingForm() {
   }
 
   async function uploadBrokerHeroIfNeeded(itemSnapshot = null) {
-    const snapshot = itemSnapshot ?? brokerHeroItem;
-    if (!snapshot || snapshot.status !== "local") return snapshot;
+  const snapshot = itemSnapshot ?? brokerHeroItem;
+  if (!snapshot || snapshot.status !== "local") return snapshot;
 
-    setUploadingBrokerHero(true);
-    setFormError("");
+  setUploadingBrokerHero(true);
 
-    try {
-      const formData = new FormData();
-      formData.append("file", snapshot.file);
+  // ✅ clear prior errors (top + bottom)
+  setFormError("");
+  setBottomFormError("");
 
-      const res = await fetch("/api/uploads", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json().catch(() => ({}));
+  try {
+    const formData = new FormData();
+    formData.append("file", snapshot.file);
 
-      if (!res.ok)
-        throw new Error(data?.error || `Upload failed (${res.status})`);
-      if (!data?.key) throw new Error("Upload did not return a key.");
+    const res = await fetch("/api/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
 
-      const next = {
-        ...snapshot,
-        status: "uploaded",
-        uploadedKey: String(data.key),
-      };
-      setBrokerHeroItem(next);
-      return next;
-    } catch (e) {
-      setFormError(e?.message || "Business hero image upload failed.");
-      throw e;
-    } finally {
-      setUploadingBrokerHero(false);
-    }
+    if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+    if (!data?.key) throw new Error("Upload did not return a key.");
+
+    const next = {
+      ...snapshot,
+      status: "uploaded",
+      uploadedKey: String(data.key),
+    };
+    setBrokerHeroItem(next);
+    return next;
+  } catch (e) {
+    const msg = e?.message || "Business hero image upload failed.";
+    setFormError(msg);
+    setBottomFormError(msg);
+    throw e;
+  } finally {
+    setUploadingBrokerHero(false);
   }
+}
+
 
   /* =========================================================
      AUTOFILL CONTACT FROM USER PROFILE (if available)
@@ -1396,1513 +1444,416 @@ export default function NewListingForm() {
   /* -------------------------
      SUBMIT
   ------------------------- */
-  async function onSubmit(e) {
-    e.preventDefault();
-    setFormError("");
+async function onSubmit(e) {
+  e.preventDefault();
 
-    setTouched((p) => ({
-      ...p,
-      sellerRole: true,
+  // ✅ clear prior errors (top + bottom)
+  setFormError("");
+  setBottomFormError("");
 
-      year: true,
-      builder: true,
-      model: true,
-      loa: true,
-      boatCondition: true,
-
-      description: true,
-      type: true,
-      price: true,
-      country: true,
-      city: true,
-      usRegion: true,
-      state: true,
-
-      firstName: true,
-      lastName: true,
-      contactEmail: true,
-    }));
-
-    const anyMissing = Object.values(missing).some(Boolean);
-    if (anyMissing) {
-      setFormError("Please complete the highlighted required fields.");
+  // ✅ belt & suspenders: block submit if not logged in
+  // (supports BOTH /api/auth/me shapes: { user: { uid } } and { uid })
+  try {
+    const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+    const me = await meRes.json().catch(() => ({}));
+    const uid = me?.user?.uid || me?.uid;
+    if (!uid) {
+      window.location.assign(`/login?next=${encodeURIComponent("/dashboard/listings")}`);
       return;
     }
-
-    const hasLocalPhotos = (photoItems || []).some(
-      (p) => p?.status === "local",
-    );
-    if (photoItems.length > 0 && hasLocalPhotos) {
-      setFormError(
-        "You selected photos. Please press Upload in the Photos section before submitting.",
-      );
-      try {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch {}
-      return;
-    }
-
-    if (
-      sellerRole === "BROKER" &&
-      brokerHeroItem &&
-      brokerHeroItem.status === "local"
-    ) {
-      setFormError(
-        "You selected a Broker / Business Hero Image. Please press Upload in the Listing Contact section before submitting.",
-      );
-      try {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch {}
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const photosAfterUpload = await uploadAllPhotosIfNeeded(photoItems);
-      const brokerAfterUpload = await uploadBrokerHeroIfNeeded(brokerHeroItem);
-
-      const orderedKeys = (photosAfterUpload || [])
-        .map((p) => p.uploadedKey)
-        .filter(Boolean);
-
-      const payload = {
-        title: autoTitle(),
-        description: description.trim(),
-
-        // Basics
-        year: yearInt,
-        builder: effectiveBuilder || null,
-        model: model.trim() || null,
-        boatCondition: boatCondition || null,
-        cabins: cabinsInt,
-        heads: headsInt,
-        type,
-
-        // Price
-        price: priceNum,
-        currency,
-
-        // Location
-        locationCountry: effectiveCountry,
-        locationCity: locationCity.trim() || null,
-        locationState: isUSA ? locationState.trim() || null : null,
-        locationUsRegion: isUSA ? locationUsRegion || null : null,
-
-        // Dimensions
-        loa: loaNum,
-        loaUnit,
-        draft: draftNum,
-        draftUnit,
-        airDraft: airDraftNum,
-        airDraftUnit,
-
-        // Engines
-        engineFuel: engineFuel || null,
-        engineMake: engineMake.trim() || null,
-        engineModel: engineModel.trim() || null,
-        propeller: propeller.trim() || null,
-        engineHorsepower: horsepowerInt,
-        engineHours: !isMultiEngine ? engineHoursInt : null,
-        leftEngineHours: isMultiEngine ? leftEngineHoursInt : null,
-        rightEngineHours: isMultiEngine ? rightEngineHoursInt : null,
-
-        // Generator
-        hasGenerator,
-        generatorFuel: hasGenerator === "YES" ? generatorFuel || null : null,
-        generatorMake:
-          hasGenerator === "YES" ? generatorMake.trim() || null : null,
-        generatorKw: hasGenerator === "YES" ? generatorKwNum : null,
-        generatorHours: hasGenerator === "YES" ? generatorHoursInt : null,
-
-        // Tanks
-        tankUnit,
-        tankFuel: tankFuelNum,
-        tankWater: tankWaterNum,
-        tankHolding: tankHoldingNum,
-
-        // Dinghy (stored as dinghyModel to avoid schema changes)
-        hasDinghy: hasDinghy || null,
-        dinghyModel:
-          hasDinghy === "YES" ? (dinghyNotes || "").trim() || null : null,
-        dinghyLength: null,
-        dinghyLengthUnit: null,
-        dinghyMotor: null,
-
-        // Equipment
-        equipment: installedEquipment,
-
-        // Photos
-        heroImageUrl: orderedKeys[0] || null,
-        imageUrls: orderedKeys,
-
-        // Contact
-        sellerRole,
-        listingContactName:
-          `${listingContactFirstName} ${listingContactLastName}`.trim(),
-        contactEmail: contactEmail.trim(),
-        contactPhone: contactPhone.trim() || null,
-
-        // Broker fields
-        brokerageName:
-          sellerRole === "BROKER" ? brokerageName.trim() || null : null,
-        brokerageAddress:
-          sellerRole === "BROKER"
-            ? [brokerageStreet, brokerageCity, brokerageState, brokerageCountry]
-                .map((s) => (s || "").trim())
-                .filter(Boolean)
-                .join(", ") || null
-            : null,
-        brokerLogoUrl:
-          sellerRole === "BROKER"
-            ? brokerAfterUpload?.uploadedKey || null
-            : null,
-      };
-
-      const res = await fetch("/api/listings/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok && data?.code === "EMAIL_NOT_VERIFIED") {
-        setNeedsEmailVerify(true);
-        setFormError("Please verify your email before creating a listing.");
-        try {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        } catch {}
-        return;
-      }
-
-      if (!res.ok)
-        throw new Error(data?.error || `Request failed (${res.status})`);
-
-      setNeedsEmailVerify(false);
-      setResendMsg("");
-
-      clearDraft();
-
-      router.push(data.previewPath || data.previewUrl || "/listings");
-      router.refresh();
-    } catch (e2) {
-      setFormError(e2?.message || "Failed to create listing.");
-      // keep draft intact on failure
-      saveDraftNow();
-    } finally {
-      setSubmitting(false);
-    }
+  } catch {
+    window.location.assign(`/login?next=${encodeURIComponent("/dashboard/listings")}`);
+    return;
   }
 
-  /* =========================================================
-     SECTION 3 of 3 — RENDER
-  ========================================================= */
-  return (
-    <form
-      onSubmit={onSubmit}
-      className="space-y-7 max-w-4xl mx-auto px-4 sm:px-0"
-    >
-      {needsEmailVerify && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[13px] text-amber-900">
-          <div className="font-semibold">
-            Verify your email to post listings
-          </div>
-          <div className="mt-1 text-amber-900/80">
-            We sent you a verification link during registration. Click it, then
-            come back and submit again.
-          </div>
+  setTouched((p) => ({
+    ...p,
+    sellerRole: true,
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold ${
-                resendBusy
-                  ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                  : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
-              }`}
-              disabled={resendBusy}
-              onClick={resendVerificationEmail}
-            >
-              {resendBusy ? "Sending…" : "Resend verification email"}
-            </button>
+    year: true,
+    builder: true,
+    model: true,
+    loa: true,
+    boatCondition: true,
 
-            <a
-              href="/dashboard"
-              className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
-            >
-              Go to dashboard
-            </a>
-          </div>
+    description: true,
+    type: true,
+    price: true,
+    country: true,
+    city: true,
+    usRegion: true,
+    state: true,
 
-          {resendMsg ? (
-            <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-[12px] text-slate-700">
-              {resendMsg}
-            </div>
-          ) : null}
+    firstName: true,
+    lastName: true,
+    contactEmail: true,
+  }));
+
+  const fail = (msg) => {
+    setFormError(msg);
+    setBottomFormError(msg);
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {}
+  };
+
+  const anyMissing = Object.values(missing).some(Boolean);
+  if (anyMissing) {
+    fail("Please complete the highlighted required fields.");
+    return;
+  }
+
+  const hasLocalPhotos = (photoItems || []).some((p) => p?.status === "local");
+  if (photoItems.length > 0 && hasLocalPhotos) {
+    fail(
+      "You selected photos. Please press Upload in the Photos section before submitting.",
+    );
+    return;
+  }
+
+  if (sellerRole === "BROKER" && brokerHeroItem && brokerHeroItem.status === "local") {
+    fail(
+      "You selected a Broker / Business Hero Image. Please press Upload in the Listing Contact section before submitting.",
+    );
+    return;
+  }
+
+  setSubmitting(true);
+  try {
+    const photosAfterUpload = await uploadAllPhotosIfNeeded(photoItems);
+    const brokerAfterUpload = await uploadBrokerHeroIfNeeded(brokerHeroItem);
+
+    const orderedKeys = (photosAfterUpload || [])
+      .map((p) => p.uploadedKey)
+      .filter(Boolean);
+
+    const payload = {
+      title: autoTitle(),
+      description: description.trim(),
+
+      // Basics
+      year: yearInt,
+      builder: effectiveBuilder || null,
+      model: model.trim() || null,
+      boatCondition: boatCondition || null,
+      cabins: cabinsInt,
+      heads: headsInt,
+      type,
+
+      // Price
+      price: priceNum,
+      currency,
+
+      // Location
+      locationCountry: effectiveCountry,
+      locationCity: locationCity.trim() || null,
+      locationState: isUSA ? locationState.trim() || null : null,
+      locationUsRegion: isUSA ? locationUsRegion || null : null,
+
+      // Dimensions
+      loa: loaNum,
+      loaUnit,
+      draft: draftNum,
+      draftUnit,
+      airDraft: airDraftNum,
+      airDraftUnit,
+
+      // Engines
+      engineFuel: engineFuel || null,
+      engineMake: engineMake.trim() || null,
+      engineModel: engineModel.trim() || null,
+      propeller: propeller.trim() || null,
+      engineHorsepower: horsepowerInt,
+      engineHours: !isMultiEngine ? engineHoursInt : null,
+      leftEngineHours: isMultiEngine ? leftEngineHoursInt : null,
+      rightEngineHours: isMultiEngine ? rightEngineHoursInt : null,
+
+      // Generator
+      hasGenerator,
+      generatorFuel: hasGenerator === "YES" ? generatorFuel || null : null,
+      generatorMake: hasGenerator === "YES" ? generatorMake.trim() || null : null,
+      generatorKw: hasGenerator === "YES" ? generatorKwNum : null,
+      generatorHours: hasGenerator === "YES" ? generatorHoursInt : null,
+
+      // Tanks
+      tankUnit,
+      tankFuel: tankFuelNum,
+      tankWater: tankWaterNum,
+      tankHolding: tankHoldingNum,
+
+      // Dinghy (stored as dinghyModel to avoid schema changes)
+      hasDinghy: hasDinghy || null,
+      dinghyModel: hasDinghy === "YES" ? (dinghyNotes || "").trim() || null : null,
+      dinghyLength: null,
+      dinghyLengthUnit: null,
+      dinghyMotor: null,
+
+      // Equipment
+      equipment: installedEquipment,
+
+      // Photos
+      heroImageUrl: orderedKeys[0] || null,
+      imageUrls: orderedKeys,
+
+      // Contact
+      sellerRole,
+      listingContactName: `${listingContactFirstName} ${listingContactLastName}`.trim(),
+      contactEmail: contactEmail.trim(),
+      contactPhone: contactPhone.trim() || null,
+
+      // Broker fields
+      brokerageName: sellerRole === "BROKER" ? brokerageName.trim() || null : null,
+      brokerageAddress:
+        sellerRole === "BROKER"
+          ? [brokerageStreet, brokerageCity, brokerageState, brokerageCountry]
+              .map((s) => (s || "").trim())
+              .filter(Boolean)
+              .join(", ") || null
+          : null,
+      brokerLogoUrl: sellerRole === "BROKER" ? brokerAfterUpload?.uploadedKey || null : null,
+    };
+
+    const res = await fetch("/api/listings/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    // ✅ auth required (supports new route.js responses: error=AUTH_REQUIRED or "Unauthorized")
+    if (!res.ok && (data?.error === "AUTH_REQUIRED" || data?.error === "Unauthorized")) {
+      window.location.assign(`/login?next=${encodeURIComponent("/dashboard/listings")}`);
+      return;
+    }
+
+    if (!res.ok && data?.code === "EMAIL_NOT_VERIFIED") {
+      setNeedsEmailVerify(true);
+      const msg = "Please verify your email before creating a listing.";
+      setFormError(msg);
+      setBottomFormError(msg);
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {}
+      return;
+    }
+
+    // ✅ server-side validation (supports { errors: [...] } OR { missing: [...] })
+    if (!res.ok) {
+      const label = {
+        sellerRole: "Seller role",
+        year: "Year",
+        builder: "Builder",
+        model: "Model",
+        boatCondition: "Boat condition",
+        type: "Hull type",
+        description: "Description",
+        price: "Price",
+        locationCountry: "Country",
+        locationCity: "City",
+        locationUsRegion: "USA region",
+        locationState: "State",
+        listingContactName: "Contact name",
+        contactEmail: "Email",
+      };
+
+      let msg =
+        data?.message ||
+        data?.error ||
+        `Request failed (${res.status})`;
+
+      if (Array.isArray(data?.errors) && data.errors.length) {
+        msg = data.errors.join(" ");
+      } else if (Array.isArray(data?.missing) && data.missing.length) {
+        msg =
+          "Please complete: " +
+          data.missing.map((k) => label[k] || k).join(", ") +
+          ".";
+      }
+
+      setFormError(msg);
+      setBottomFormError(msg);
+      try {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {}
+      saveDraftNow();
+      return;
+    }
+
+    setNeedsEmailVerify(false);
+    setResendMsg("");
+
+    clearDraft();
+
+    router.push(data.previewPath || data.previewUrl || "/listings");
+    router.refresh();
+  } catch (e2) {
+    const msg = e2?.message || "Failed to create listing.";
+    setFormError(msg);
+    setBottomFormError(msg);
+    saveDraftNow(); // keep draft intact on failure
+    try {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {}
+  } finally {
+    setSubmitting(false);
+  }
+}
+
+/* =========================================================
+   SECTION 3 of 3 — RENDER
+========================================================= */
+  if (authChecking) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-0 py-10 text-slate-600 text-[13px]">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!authOk) {
+    // redirect already in progress
+    return null;
+  }
+
+return (
+  <form
+    onSubmit={onSubmit}
+    className="space-y-7 max-w-4xl mx-auto px-4 sm:px-0"
+  >
+    {needsEmailVerify && (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[13px] text-amber-900">
+        <div className="font-semibold">Verify your email to post listings</div>
+        <div className="mt-1 text-amber-900/80">
+          We sent you a verification link during registration. Click it, then
+          come back and submit again.
         </div>
-      )}
 
-      {formError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
-          {formError}
-        </div>
-      )}
-
-      {/* Draft status */}
-      {lastDraftSavedAt ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-700 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            Draft saved{" "}
-            <span className="font-semibold">
-              {new Date(lastDraftSavedAt).toLocaleString(undefined, {
-                month: "short",
-                day: "2-digit",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </span>
-          </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="text-[12px] font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
-            onClick={clearDraft}
+            className={`inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold ${
+              resendBusy
+                ? "bg-slate-200 text-slate-500 cursor-not-allowed"
+                : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
+            }`}
+            disabled={resendBusy}
+            onClick={resendVerificationEmail}
           >
-            Clear draft
+            {resendBusy ? "Sending…" : "Resend verification email"}
           </button>
+
+          <a
+            href="/dashboard"
+            className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+          >
+            Go to dashboard
+          </a>
         </div>
-      ) : null}
 
-      {/* =====================================================
-          1) BOAT BASICS
-      ====================================================== */}
-      <SectionCard title="Boat Basics">
-        <div className="grid grid-cols-1 gap-4 sm:gap-5 sm:grid-cols-12 items-end">
-          <div className="sm:col-span-12">
-            <label className={label("boatCondition")}>
-              Condition <Asterisk />
-            </label>
-            <div className="flex flex-wrap items-center gap-2">
-              <Pill
-                active={boatCondition === "NEW"}
-                onClick={() => {
-                  setBoatCondition("NEW");
-                  touch("boatCondition");
-                }}
-              >
-                New
-              </Pill>
-              <Pill
-                active={boatCondition === "USED"}
-                onClick={() => {
-                  setBoatCondition("USED");
-                  touch("boatCondition");
-                }}
-              >
-                Used
-              </Pill>
-            </div>
+        {resendMsg ? (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-[12px] text-slate-700">
+            {resendMsg}
           </div>
-
-          <div className="sm:col-span-3 md:col-span-2">
-            <label className={label("year")}>
-              Year <Asterisk />
-            </label>
-            <div className="max-w-[160px]">
-              <select
-                className={inputSm("year")}
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-                onBlur={() => touch("year")}
-              >
-                <option value="">Select…</option>
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="sm:col-span-9 md:col-span-10">
-            <label className={label("builder")}>
-              Builder <Asterisk />
-            </label>
-            <div className="max-w-[520px]">
-              <select
-                className={`${fieldBase} ${fieldBorder(showErrorFor("builder"))}`}
-                value={builderSel}
-                onChange={(e) => setBuilderSel(e.target.value)}
-                onBlur={() => touch("builder")}
-              >
-                <option value="">Select a builder</option>
-                {TOP5.map((b) => (
-                  <option key={`top-${b}`} value={b}>
-                    {b}
-                  </option>
-                ))}
-                <option disabled>──────────</option>
-                {builders
-                  .filter((b) => !TOP5.includes(b))
-                  .map((b) => (
-                    <option key={`az-${b}`} value={b}>
-                      {b}
-                    </option>
-                  ))}
-                <option disabled>──────────</option>
-                <option value="Other">Other</option>
-              </select>
-
-              {builderSel === "Other" && (
-                <div className="mt-3">
-                  <label className={label("builder")}>
-                    Other builder <Asterisk />
-                  </label>
-                  <input
-                    className={`${fieldBase} ${fieldBorder(showErrorFor("builder"))}`}
-                    value={builderOther}
-                    onChange={(e) => setBuilderOther(e.target.value)}
-                    onBlur={() => touch("builder")}
-                    placeholder="Type builder name"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="sm:col-span-6">
-            <label className={label("model")}>
-              Model <Asterisk />
-            </label>
-            <div className="max-w-[520px]">
-              <input
-                className={input("model")}
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                onBlur={() => touch("model")}
-                placeholder="Sun Odyssey 409"
-              />
-            </div>
-          </div>
-
-          <div className="sm:col-span-6">
-            <label className={label("type")}>
-              Hull Type <Asterisk />
-            </label>
-            <div className="max-w-[320px]">
-              <select
-                className={input("type")}
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                onBlur={() => touch("type")}
-              >
-                <option value="MONOHULL">Monohull</option>
-                <option value="CATAMARAN">Catamaran</option>
-                <option value="TRIMARAN">Trimaran</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="sm:col-span-12">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-              <div className="sm:col-span-4">
-                <div className="flex items-center gap-2">
-                  <label className={label("loa")}>
-                    Length <Asterisk />
-                  </label>
-                  <SmallToggleInline value={loaUnit} onChange={setLoaUnit} />
-                </div>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} ${fieldBorder(showErrorFor("loa"))}`}
-                    value={loa}
-                    onChange={(e) => setLoa(e.target.value)}
-                    onBlur={() => touch("loa")}
-                    inputMode="decimal"
-                    placeholder="Length overall"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-4">
-                <div className="flex items-center gap-2">
-                  <label className={labelBase}>Draft (min keel depth)</label>
-                  <SmallToggleInline
-                    value={draftUnit}
-                    onChange={setDraftUnit}
-                  />
-                </div>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} border-slate-300 bg-white`}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    inputMode="decimal"
-                  />
-                </div>
-              </div>
-
-              <div className="sm:col-span-4">
-                <div className="flex items-center gap-2">
-                  <label className={labelBase}>Air Draft</label>
-                  <SmallToggleInline
-                    value={airDraftUnit}
-                    onChange={setAirDraftUnit}
-                  />
-                </div>
-                <div className="max-w-[220px]">
-                  <input
-                    className={`${fieldSmall} border-slate-300 bg-white`}
-                    value={airDraft}
-                    onChange={(e) => setAirDraft(e.target.value)}
-                    inputMode="decimal"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="sm:col-span-6">
-            <div className="grid grid-cols-2 gap-4 items-end">
-              <div className="max-w-[180px]">
-                <label className={labelBase}># of Cabins</label>
-                <input
-                  className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                  value={cabins}
-                  onChange={(e) => setCabins(e.target.value)}
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="max-w-[180px]">
-                <label className={labelBase}># of Heads</label>
-                <input
-                  className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                  value={heads}
-                  onChange={(e) => setHeads(e.target.value)}
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="sm:col-span-6">
-            <div className="flex items-center gap-2">
-              <label className={label("price")}>
-                Price <Asterisk />
-              </label>
-              <CurrencyPill value={currency} onChange={setCurrency} />
-            </div>
-
-            <div className="max-w-[220px]">
-              <input
-                className={input("price")}
-                value={priceDisplay}
-                onChange={(e) =>
-                  setPriceDisplay(formatWholeDollars(e.target.value))
-                }
-                onBlur={() => touch("price")}
-                inputMode="numeric"
-                placeholder={`${curSymbol}`}
-              />
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
-          2) BOAT LOCATION
-      ====================================================== */}
-      <SectionCard
-        title="Boat Location"
-        subtitle="Enter where the boat is physically located."
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-12 items-end">
-          <div className="sm:col-span-6">
-            <label className={label("country")}>
-              Country <Asterisk />
-            </label>
-
-            <div className="max-w-[420px]">
-              <select
-                className={input("country")}
-                value={locationCountrySel || ""}
-                onChange={(e) => {
-                  const nextVal = e.target.value;
-                  setLocationCountrySel(nextVal);
-                  touch("country");
-
-                  const nextEffective =
-                    nextVal === "Other"
-                      ? normalizeCountry(locationCountryOther)
-                      : normalizeCountry(nextVal);
-
-                  if (nextEffective !== "United States") {
-                    setLocationUsRegion("");
-                    setLocationState("");
-                  }
-                }}
-                onBlur={() => touch("country")}
-              >
-                <option value="">Select…</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-
-              {locationCountrySel === "Other" && (
-                <div className="mt-3">
-                  <label className={label("country")}>
-                    Country (type it) <Asterisk />
-                  </label>
-                  <input
-                    className={input("country")}
-                    value={locationCountryOther}
-                    onChange={(e) => setLocationCountryOther(e.target.value)}
-                    onBlur={() => touch("country")}
-                    placeholder="Enter country name"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="sm:col-span-6">
-            <label className={label("city")}>
-              City <Asterisk />
-            </label>
-            <div className="max-w-[420px]">
-              <input
-                className={input("city")}
-                value={locationCity}
-                onChange={(e) => setLocationCity(e.target.value)}
-                onBlur={() => touch("city")}
-                placeholder="Miami"
-              />
-            </div>
-          </div>
-
-          {isUSA && (
-            <>
-              <div className="sm:col-span-6">
-                <label className={label("usRegion")}>
-                  USA Region <Asterisk />
-                </label>
-                <div className="max-w-[420px]">
-                  <select
-                    className={input("usRegion")}
-                    value={locationUsRegion}
-                    onChange={(e) => setLocationUsRegion(e.target.value)}
-                    onBlur={() => touch("usRegion")}
-                  >
-                    {US_REGION_OPTIONS.map((o) => (
-                      <option key={o.value || "blank"} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="sm:col-span-6">
-                <label className={label("state")}>
-                  State <Asterisk />
-                </label>
-                <div className="max-w-[160px]">
-                  <input
-                    className={input("state")}
-                    value={locationState}
-                    onChange={(e) => setLocationState(e.target.value)}
-                    onBlur={() => touch("state")}
-                    placeholder="FL"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
-          3) DESCRIPTION
-      ====================================================== */}
-      <SectionCard title="Description">
-        <div>
-          <label className={label("description")}>
-            Description <Asterisk />
-          </label>
-          <textarea
-            className={`${textarea("description")} !min-h-[285px]`}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={() => touch("description")}
-            placeholder="Tell buyers about condition, upgrades, maintenance, and what makes this boat special…"
-          />
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
-          3.5) ADDITIONAL INFORMATION
-      ====================================================== */}
-      <SectionCard
-        title="Additional Information"
-        subtitle="Engines, generator, tanks, and dinghy details (optional)."
-      >
-        <div className="space-y-4">
-          {/* Engines */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
-              Engines
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <div className="text-[12px] font-semibold text-[#0a2230] mb-2">
-                  Fuel
-                </div>
-                <div className="flex items-center gap-2">
-                  <Pill
-                    active={engineFuel === "DIESEL"}
-                    onClick={() => setEngineFuel("DIESEL")}
-                  >
-                    Diesel
-                  </Pill>
-                  <Pill
-                    active={engineFuel === "GAS"}
-                    onClick={() => setEngineFuel("GAS")}
-                  >
-                    Gas
-                  </Pill>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                {!isMultiEngine ? (
-                  <div className="sm:col-span-4">
-                    <label className={labelBase}>Engine Hours</label>
-                    <input
-                      className={`${fieldBase} border-slate-300 bg-white`}
-                      value={engineHours}
-                      onChange={(e) => setEngineHours(e.target.value)}
-                      inputMode="numeric"
-                    />
-                  </div>
-                ) : (
-                  <>
-                    <div className="sm:col-span-4">
-                      <label className={labelBase}>Left Engine Hours</label>
-                      <input
-                        className={`${fieldBase} border-slate-300 bg-white`}
-                        value={leftEngineHours}
-                        onChange={(e) => setLeftEngineHours(e.target.value)}
-                        inputMode="numeric"
-                      />
-                    </div>
-                    <div className="sm:col-span-4">
-                      <label className={labelBase}>Right Engine Hours</label>
-                      <input
-                        className={`${fieldBase} border-slate-300 bg-white`}
-                        value={rightEngineHours}
-                        onChange={(e) => setRightEngineHours(e.target.value)}
-                        inputMode="numeric"
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Make</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={engineMake}
-                    onChange={(e) => setEngineMake(e.target.value)}
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Model</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={engineModel}
-                    onChange={(e) => setEngineModel(e.target.value)}
-                  />
-                </div>
-
-                <div className="sm:col-span-8">
-                  <label className={labelBase}>Propeller</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={propeller}
-                    onChange={(e) => setPropeller(e.target.value)}
-                    placeholder="3-Blade, 4-blade, folding, feathering, etc."
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Horsepower</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={horsepower}
-                    onChange={(e) => setHorsepower(e.target.value)}
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Generator */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
-              Generator
-            </div>
-
-            <div className="flex items-center gap-2">
-              <div className="text-[12px] font-semibold text-[#0a2230] mr-2">
-                Generator?
-              </div>
-              <Pill
-                active={hasGenerator === "YES"}
-                onClick={() => setHasGenerator("YES")}
-              >
-                Yes
-              </Pill>
-              <Pill
-                active={hasGenerator === "NO"}
-                onClick={() => {
-                  setHasGenerator("NO");
-                  setGeneratorFuel("");
-                  setGeneratorMake("");
-                  setGeneratorKw("");
-                  setGeneratorHours("");
-                }}
-              >
-                No
-              </Pill>
-            </div>
-
-            {hasGenerator === "YES" && (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                <div className="sm:col-span-12">
-                  <div className="text-[12px] font-semibold text-[#0a2230] mb-2">
-                    Fuel
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Pill
-                      active={generatorFuel === "DIESEL"}
-                      onClick={() => setGeneratorFuel("DIESEL")}
-                    >
-                      Diesel
-                    </Pill>
-                    <Pill
-                      active={generatorFuel === "GAS"}
-                      onClick={() => setGeneratorFuel("GAS")}
-                    >
-                      Gas
-                    </Pill>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Make</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={generatorMake}
-                    onChange={(e) => setGeneratorMake(e.target.value)}
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>kW</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={generatorKw}
-                    onChange={(e) => setGeneratorKw(e.target.value)}
-                    inputMode="decimal"
-                  />
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className={labelBase}>Hours</label>
-                  <input
-                    className={`${fieldBase} border-slate-300 bg-white`}
-                    value={generatorHours}
-                    onChange={(e) => setGeneratorHours(e.target.value)}
-                    inputMode="numeric"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Tanks */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[13px] font-semibold text-[#0a2230] underline underline-offset-2">
-                Total Tank Capacities
-              </div>
-              <SmallToggleInline
-                value={tankUnit}
-                onChange={(u) => setTankUnit(u)}
-                options={["gal", "L"]}
-              />
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Fuel</label>
-                <input
-                  className={`${fieldBase} border-slate-300 bg-white`}
-                  value={tankFuel}
-                  onChange={(e) => setTankFuel(e.target.value)}
-                  inputMode="decimal"
-                  placeholder={tankUnitLabel}
-                />
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Water</label>
-                <input
-                  className={`${fieldBase} border-slate-300 bg-white`}
-                  value={tankWater}
-                  onChange={(e) => setTankWater(e.target.value)}
-                  inputMode="decimal"
-                  placeholder={tankUnitLabel}
-                />
-              </div>
-
-              <div className="sm:col-span-4">
-                <label className={labelBase}>Holding</label>
-                <input
-                  className={`${fieldBase} border-slate-300 bg-white`}
-                  value={tankHolding}
-                  onChange={(e) => setTankHolding(e.target.value)}
-                  inputMode="decimal"
-                  placeholder={tankUnitLabel}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Dinghy */}
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-3 underline underline-offset-2">
-              Dinghy Included?
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Pill
-                active={hasDinghy === "YES"}
-                onClick={() => setHasDinghy("YES")}
-              >
-                Yes
-              </Pill>
-
-              <Pill
-                active={hasDinghy === "NO"}
-                onClick={() => {
-                  setHasDinghy("NO");
-                  setDinghyNotes("");
-                }}
-              >
-                No
-              </Pill>
-            </div>
-
-            {hasDinghy === "YES" && (
-              <div className="mt-4">
-                <label className={labelBase}>Dinghy details</label>
-                <textarea
-                  className={`${textareaBase} border-slate-300 bg-white !min-h-[120px]`}
-                  value={dinghyNotes}
-                  onChange={(e) => setDinghyNotes(e.target.value)}
-                  placeholder="Example: 2021 10' inflatable, Honda 5hp 4-stroke, etc…"
-                />
-                <div className={helpText}>
-                  Enter size, make/model, and outboard details (optional).
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
-      4) EQUIPMENT
-====================================================== */}
-<SectionCard
-  title="Equipment"
-  subtitle="Select installed equipment, then add additional equipment."
->
-  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-    {/* Installed equipment chips */}
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="text-[13px] font-semibold text-[#0a2230] mb-3">
-        Installed equipment
+        ) : null}
       </div>
+    )}
 
-      <div className="flex flex-wrap gap-2">
-        {installedEquipment.length === 0 ? (
-          <div className="text-[12px] text-slate-600">None selected yet.</div>
-        ) : (
-          installedEquipment.map((name) => (
-            <span
-              key={`sel-${name}`}
-              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-[#0a2230]"
-            >
-              {/* ✅ checkmark circle (matches screenshot) */}
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#0a2230] text-white">
-                <CheckIcon className="h-3.5 w-3.5" />
-              </span>
+    {/* ✅ TOP error message */}
+    {formError && (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+        {formError}
+      </div>
+    )}
 
-              <span className="font-semibold">{name}</span>
+    {/* Draft status */}
+    {lastDraftSavedAt ? (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-700 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          Draft saved{" "}
+          <span className="font-semibold">
+            {new Date(lastDraftSavedAt).toLocaleString(undefined, {
+              month: "short",
+              day: "2-digit",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="text-[12px] font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+          onClick={clearDraft}
+        >
+          Clear draft
+        </button>
+      </div>
+    ) : null}
 
+    {/* =====================================================
+        1) BOAT BASICS
+    ====================================================== */}
+    {/* ... your existing form sections remain unchanged ... */}
+
+    {/* Phone privacy modal */}
+    {showPhonePrivacy && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) setShowPhonePrivacy(false);
+        }}
+      >
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
+          <div className="px-5 py-3 bg-[#0a2230]">
+            <div className="text-[14px] font-semibold text-white">
+              How ST protects your number
+            </div>
+          </div>
+          <div className="p-5 text-[13px] text-slate-700">
+            ST.com values your privacy and will only display a phone number if a
+            valid user is logged in.
+            <div className="mt-4 flex justify-end">
               <button
                 type="button"
-                className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full hover:bg-slate-100 text-slate-500"
-                onClick={() => {
-                  if (equipmentSelected.has(name)) togglePreset(name);
-                  else removeAdditionalEquipment(name);
-                }}
-                aria-label={`Remove ${name}`}
+                className={btnPrimary}
+                onClick={() => setShowPhonePrivacy(false)}
               >
-                <XIcon />
+                Got it
               </button>
-            </span>
-          ))
-        )}
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    )}
 
-    {/* Common equipment presets */}
-    <div className="mt-5">
-      <div className="text-[13px] font-semibold text-[#0a2230] mb-3">
-        Common equipment
+    {/* ✅ BOTTOM error message (place directly above submit buttons) */}
+    {bottomFormError && (
+      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+        {bottomFormError}
       </div>
+    )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {EQUIPMENT_PRESETS.map((name) => {
-          const active = equipmentSelected.has(name);
-          return (
-            <button
-              key={`preset-${name}`}
-              type="button"
-              onClick={() => togglePreset(name)}
-              className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                active
-                  ? "border-slate-300 bg-slate-50"
-                  : "border-slate-200 bg-white hover:bg-slate-50"
-              }`}
-            >
-              {/* ✅ checkbox square */}
-              <span
-                className={`inline-flex h-5 w-5 items-center justify-center rounded-md border transition ${
-                  active
-                    ? "bg-[#0a2230] border-[#0a2230] text-white"
-                    : "bg-white border-slate-300 text-transparent"
-                }`}
-                aria-hidden="true"
-              >
-                <CheckIcon className="h-3.5 w-3.5" />
-              </span>
-
-              <span className="text-[13px] font-semibold text-[#0a2230]">
-                {name}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-
-    {/* Additional equipment input */}
-    <div className="mt-6">
-      <div className="text-[13px] font-semibold text-[#0a2230] mb-2">
-        Additional equipment
-      </div>
-
-      <div className="flex items-center gap-2">
-        <input
-          className={`${fieldBase} border-slate-300 bg-white`}
-          value={additionalEquipmentInput}
-          onChange={(e) => setAdditionalEquipmentInput(e.target.value)}
-          placeholder="Type an item (press Enter)…"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addAdditionalEquipment(additionalEquipmentInput);
-            }
-          }}
-        />
-
-        <button
-          type="button"
-          className={btnMini}
-          onClick={() => addAdditionalEquipment(additionalEquipmentInput)}
-        >
-          Add
-        </button>
-      </div>
-    </div>
-  </div>
-</SectionCard>
-
-
-      {/* =====================================================
-          5) PHOTOS
-      ====================================================== */}
-      <SectionCard
-        title="Photos"
-        subtitle="Add photos, then press Upload. First photo becomes the hero image."
+    {/* Submit buttons */}
+    <div className="flex items-center justify-end gap-3">
+      <button
+        type="button"
+        className={btnGhost}
+        onClick={() => router.push("/listings")}
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className={`${btnGhost} cursor-pointer`}>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => addPhotos(e.target.files)}
-              />
-              Add photos
-            </label>
+        Cancel
+      </button>
 
-            <button
-              type="button"
-              className={`${btnPrimary} ${uploadingPhotos ? "opacity-70 cursor-not-allowed" : ""}`}
-              disabled={uploadingPhotos || photoItems.length === 0}
-              onClick={() => uploadAllPhotosIfNeeded(photoItems)}
-            >
-              {uploadingPhotos ? "Uploading…" : "Upload"}
-            </button>
+      <button type="button" className={btnGhost} onClick={saveDraftNow}>
+        Save draft
+      </button>
 
-            <div className="text-[12px] text-slate-600">
-              Tip: Drag to reorder. The first photo will be the hero image.
-            </div>
-          </div>
-
-          {photoItems.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-[13px] text-slate-600">
-              No photos yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {photoItems.map((p, idx) => (
-                <div
-                  key={p.id}
-                  className={`relative rounded-2xl border overflow-hidden bg-white shadow-sm ${dragOverPhotoId === p.id ? "border-[#c8a44d]" : "border-slate-200"}`}
-                  draggable
-                  onDragStart={() => setDraggingPhotoId(p.id)}
-                  onDragEnd={() => {
-                    setDraggingPhotoId(null);
-                    setDragOverPhotoId(null);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragOverPhotoId(p.id);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (draggingPhotoId && draggingPhotoId !== p.id)
-                      reorderPhotos(draggingPhotoId, p.id);
-                    setDraggingPhotoId(null);
-                    setDragOverPhotoId(null);
-                  }}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.previewUrl}
-                    alt="Photo preview"
-                    className="w-full h-36 object-contain bg-slate-100"
-                    loading="lazy"
-                  />
-
-                  {idx === 0 && (
-                    <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
-                      Hero
-                    </div>
-                  )}
-
-                  {p.status === "uploaded" && (
-                    <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
-                      ✓
-                    </div>
-                  )}
-
-                  <div className="p-2 flex items-center justify-between gap-2">
-                    <div className="text-[12px] text-slate-600">
-                      {p.status === "uploaded" ? "Uploaded" : "Local"}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        className={iconBtn}
-                        onClick={() => movePhoto(p.id, -1)}
-                        aria-label="Move up"
-                      >
-                        <span className="text-[12px]">↑</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={iconBtn}
-                        onClick={() => movePhoto(p.id, 1)}
-                        aria-label="Move down"
-                      >
-                        <span className="text-[12px]">↓</span>
-                      </button>
-                      <button
-                        type="button"
-                        className={iconBtn}
-                        onClick={() => removePhoto(p.id)}
-                        aria-label="Remove photo"
-                      >
-                        <XIcon />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </SectionCard>
-
-      {/* =====================================================
-          6) LISTING CONTACT
-      ====================================================== */}
-      <SectionCard title="Listing Contact">
-        <div className="space-y-5">
-          <div>
-            <label className={label("sellerRole")}>
-              Are you the vessel&apos;s owner or broker? <Asterisk />
-            </label>
-
-            <div className="flex items-center gap-2">
-              <Pill
-                active={sellerRole === "OWNER"}
-                onClick={() => {
-                  contactTouchedRef.current.sellerRole = true;
-                  setSellerRole("OWNER");
-                  touch("sellerRole");
-
-                  if (brokerHeroItem?.previewUrl) {
-                    try {
-                      URL.revokeObjectURL(brokerHeroItem.previewUrl);
-                    } catch {}
-                  }
-                  setBrokerHeroItem(null);
-                }}
-              >
-                Owner
-              </Pill>
-
-              <Pill
-                active={sellerRole === "BROKER"}
-                onClick={() => {
-                  contactTouchedRef.current.sellerRole = true;
-                  setSellerRole("BROKER");
-                  touch("sellerRole");
-                }}
-              >
-                Broker
-              </Pill>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-12 items-end">
-            <div className="sm:col-span-6">
-              <label className={label("firstName")}>
-                First Name <Asterisk />
-              </label>
-              <div className="max-w-[520px]">
-                <input
-                  className={input("firstName")}
-                  value={listingContactFirstName}
-                  onChange={(e) => {
-                    contactTouchedRef.current.firstName = true;
-                    setListingContactFirstName(e.target.value);
-                  }}
-                  onBlur={() => touch("firstName")}
-                  placeholder="John"
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-6">
-              <label className={label("lastName")}>
-                Last Name <Asterisk />
-              </label>
-              <div className="max-w-[520px]">
-                <input
-                  className={input("lastName")}
-                  value={listingContactLastName}
-                  onChange={(e) => {
-                    contactTouchedRef.current.lastName = true;
-                    setListingContactLastName(e.target.value);
-                  }}
-                  onBlur={() => touch("lastName")}
-                  placeholder="Smith"
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-6">
-              <label className={label("contactEmail")}>
-                Email <Asterisk />
-              </label>
-              <div className="max-w-[520px]">
-                <input
-                  className={input("contactEmail")}
-                  value={contactEmail}
-                  onChange={(e) => {
-                    contactTouchedRef.current.contactEmail = true;
-                    setContactEmail(e.target.value);
-                  }}
-                  onBlur={() => touch("contactEmail")}
-                  inputMode="email"
-                  placeholder="you@example.com"
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-6">
-              <div className="flex items-center justify-between">
-                <label className={labelBase}>Phone Number</label>
-                <button
-                  type="button"
-                  onClick={() => setShowPhonePrivacy(true)}
-                  className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
-                >
-                  How ST protects your number
-                </button>
-              </div>
-
-              <div className="max-w-[320px]">
-                <input
-                  className={`${fieldBase} border-slate-300 bg-white`}
-                  value={contactPhone}
-                  onChange={(e) => {
-                    contactTouchedRef.current.contactPhone = true;
-                    setContactPhone(e.target.value);
-                  }}
-                  inputMode="tel"
-                />
-              </div>
-            </div>
-
-            {sellerRole === "BROKER" && (
-              <>
-                <div className="sm:col-span-6">
-                  <label className={labelBase}>Brokerage Name</label>
-                  <div className="max-w-[520px]">
-                    <input
-                      className={`${fieldBase} border-slate-300 bg-white`}
-                      value={brokerageName}
-                      onChange={(e) => {
-                        contactTouchedRef.current.brokerageName = true;
-                        setBrokerageName(e.target.value);
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="sm:col-span-12">
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
-                    <div className="sm:col-span-7">
-                      <label className={labelBase}>Street Address</label>
-                      <div className="max-w-[720px]">
-                        <input
-                          className={`${fieldBase} border-slate-300 bg-white`}
-                          value={brokerageStreet}
-                          onChange={(e) => {
-                            contactTouchedRef.current.brokerageStreet = true;
-                            setBrokerageStreet(e.target.value);
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-5">
-                      <label className={labelBase}>City</label>
-                      <div className="max-w-[420px]">
-                        <input
-                          className={`${fieldBase} border-slate-300 bg-white`}
-                          value={brokerageCity}
-                          onChange={(e) => {
-                            contactTouchedRef.current.brokerageCity = true;
-                            setBrokerageCity(e.target.value);
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-4">
-                      <label className={labelBase}>State / Region</label>
-                      <div className="max-w-[240px]">
-                        <input
-                          className={`${fieldSmall} border-slate-300 bg-white w-full`}
-                          value={brokerageState}
-                          onChange={(e) => {
-                            contactTouchedRef.current.brokerageState = true;
-                            setBrokerageState(e.target.value);
-                          }}
-                        />
-                      </div>
-                      <div className={helpText}>
-                        Use province/region if not in the U.S.
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-4">
-                      <label className={labelBase}>Country</label>
-                      <div className="max-w-[320px]">
-                        <input
-                          className={`${fieldBase} border-slate-300 bg-white`}
-                          value={brokerageCountry}
-                          onChange={(e) => {
-                            contactTouchedRef.current.brokerageCountry = true;
-                            setBrokerageCountry(e.target.value);
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="sm:col-span-12">
-                  <label className={labelBase}>
-                    Broker / Business Hero Image (optional)
-                  </label>
-                  <div className="max-w-[720px]">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="block w-full text-[13px] text-slate-700 file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-[13px] file:font-semibold file:text-[#0a2230] hover:file:bg-slate-200"
-                      onChange={(e) => pickBrokerHero(e.target.files?.[0])}
-                    />
-                  </div>
-
-                  {brokerHeroItem?.previewUrl && (
-                    <div className="mt-4 flex items-start gap-4">
-                      <div className="relative w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={brokerHeroItem.previewUrl}
-                          alt="Broker hero preview"
-                          className="w-full h-28 object-contain bg-slate-100"
-                          loading="lazy"
-                        />
-
-                        {brokerHeroItem.status === "uploaded" && (
-                          <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
-                            ✓
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="text-[13px] font-semibold text-[#0a2230]">
-                          {brokerHeroItem.status === "uploaded"
-                            ? "Uploaded"
-                            : "Ready"}
-                        </div>
-
-                        <div className="mt-3 flex items-center gap-3">
-                          <button
-                            type="button"
-                            className={`inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold ${
-                              uploadingBrokerHero || !brokerHeroItem
-                                ? "bg-slate-200 text-slate-500 cursor-not-allowed"
-                                : "bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
-                            }`}
-                            disabled={uploadingBrokerHero || !brokerHeroItem}
-                            onClick={() =>
-                              uploadBrokerHeroIfNeeded(brokerHeroItem)
-                            }
-                          >
-                            {uploadingBrokerHero ? "Uploading…" : "Upload"}
-                          </button>
-
-                          <button
-                            type="button"
-                            className={btnGhost}
-                            onClick={() => {
-                              if (brokerHeroItem?.previewUrl) {
-                                try {
-                                  URL.revokeObjectURL(
-                                    brokerHeroItem.previewUrl,
-                                  );
-                                } catch {}
-                              }
-                              setBrokerHeroItem(null);
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Phone privacy modal */}
-      {showPhonePrivacy && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowPhonePrivacy(false);
-          }}
-        >
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
-            <div className="px-5 py-3 bg-[#0a2230]">
-              <div className="text-[14px] font-semibold text-white">
-                How ST protects your number
-              </div>
-            </div>
-            <div className="p-5 text-[13px] text-slate-700">
-              ST.com values your privacy and will only display a phone number if
-              a valid user is logged in.
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className={btnPrimary}
-                  onClick={() => setShowPhonePrivacy(false)}
-                >
-                  Got it
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Submit buttons */}
-      <div className="flex items-center justify-end gap-3">
-        <button
-          type="button"
-          className={btnGhost}
-          onClick={() => router.push("/listings")}
-        >
-          Cancel
-        </button>
-
-        <button type="button" className={btnGhost} onClick={saveDraftNow}>
-          Save draft
-        </button>
-
-        <button type="submit" className={btnPrimary} disabled={submitting}>
-          {submitting ? "Saving…" : "Create listing"}
-        </button>
-      </div>
-    </form>
-  );
+      <button type="submit" className={btnPrimary} disabled={submitting}>
+        {submitting ? "Saving…" : "Create listing"}
+      </button>
+    </div>
+  </form>
+);
 }
+

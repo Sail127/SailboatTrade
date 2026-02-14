@@ -2,14 +2,13 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useState, Suspense } from "react";
+import { useState, Suspense, useMemo } from "react";
 import Link from "next/link";
 
 const GOLD = "#c8a44d";
 
 function EyeIcon({ open }) {
   return open ? (
-    // eye-off
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
       <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path
@@ -26,23 +25,33 @@ function EyeIcon({ open }) {
       />
     </svg>
   ) : (
-    // eye
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
       <path
         d="M2.1 12c1.1-2.7 5.4-7 9.9-7s8.8 4.3 9.9 7c-1.1 2.7-5.4 7-9.9 7s-8.8-4.3-9.9-7Z"
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
 
 function LoginInner() {
   const sp = useSearchParams();
-  const next = sp.get("next") || "/dashboard";
-  const reset = sp.get("reset") === "1";
   const router = useRouter();
+
+  const rawNext = sp.get("next") || "/dashboard";
+  const reset = sp.get("reset") === "1";
+
+  // ✅ ONLY special-case the listing flow
+  const next = useMemo(() => {
+    const n = String(rawNext || "/dashboard");
+    return n.startsWith("/listings/new") ? "/dashboard/listings" : n;
+  }, [rawNext]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,7 +78,8 @@ function LoginInner() {
         return;
       }
 
-      router.push(next);
+      // ✅ go where we decided above
+      router.replace(next);
       router.refresh();
     } finally {
       setLoading(false);
@@ -81,7 +91,9 @@ function LoginInner() {
       <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
         <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
           <h1 className="text-xl font-bold text-[#0a2230]">Login</h1>
-          <p className="mt-1 text-sm text-slate-600">Sign in to manage listings and favorites.</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Sign in to manage listings and favorites.
+          </p>
 
           {reset ? (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -97,7 +109,9 @@ function LoginInner() {
 
           <form onSubmit={onSubmit} className="mt-5 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">Email</label>
+              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                Email
+              </label>
               <input
                 className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
                 value={email}
@@ -108,7 +122,9 @@ function LoginInner() {
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">Password</label>
+              <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                Password
+              </label>
 
               <div className="relative">
                 <input
@@ -153,7 +169,7 @@ function LoginInner() {
             No account?{" "}
             <Link
               className="font-semibold text-blue-600 underline underline-offset-2 hover:text-blue-700"
-              href={`/register?next=${encodeURIComponent(next)}`}
+              href={`/register?next=${encodeURIComponent(rawNext)}`}
             >
               Register
             </Link>

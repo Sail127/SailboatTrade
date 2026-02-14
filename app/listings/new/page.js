@@ -16,7 +16,7 @@ export default async function NewListingPage() {
 
   // ✅ not logged in → bounce to login, then return here
   if (!s?.uid) {
-    redirect(`/login?next=${encodeURIComponent("/listings/new")}`);
+    redirect(`/login?next=${encodeURIComponent("/dashboard/listings")}`);
   }
 
   return (

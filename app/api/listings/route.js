@@ -27,19 +27,27 @@ export async function GET() {
  * Creates a new listing as DRAFT (private until published).
  *
  * ✅ Requires authentication.
+ * ✅ Returns consistent error shapes for UI error summaries.
  */
 export async function POST(req) {
   try {
     // ✅ Require login
     const { requireUser } = await import("@/lib/auth"); // avoids client bundling mistakes
     const s = await requireUser().catch(() => null);
+
     if (!s?.uid) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "AUTH_REQUIRED", message: "Authentication required." },
+        { status: 401 }
+      );
     }
 
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "INVALID_JSON", message: "Invalid JSON body." },
+        { status: 400 }
+      );
     }
 
     // ---------------- helpers ----------------
@@ -140,8 +148,32 @@ export async function POST(req) {
     if (!isNonEmpty(contactEmail)) missing.push("contactEmail");
 
     if (missing.length) {
+      const label = {
+        sellerRole: "Seller role",
+        year: "Year",
+        builder: "Builder",
+        model: "Model",
+        boatCondition: "Boat condition",
+        type: "Hull type",
+        description: "Description",
+        price: "Price",
+        locationCountry: "Country",
+        locationUsRegion: "US region",
+        locationState: "State",
+        listingContactName: "Contact name",
+        contactEmail: "Contact email",
+      };
+
+      const errors = missing.map((k) => `${label[k] || k} is required.`);
+
       return NextResponse.json(
-        { error: "Missing or invalid required fields", missing },
+        {
+          ok: false,
+          error: "VALIDATION_ERROR",
+          message: "Missing or invalid required fields.",
+          missing,
+          errors,
+        },
         { status: 400 }
       );
     }
@@ -277,10 +309,12 @@ export async function POST(req) {
       },
     });
 
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json({ ok: true, listing: created }, { status: 201 });
   } catch (error) {
     console.error("POST /api/listings error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "INTERNAL_ERROR", message: "Internal Server Error" },
+      { status: 500 }
+    );
   }
 }
-

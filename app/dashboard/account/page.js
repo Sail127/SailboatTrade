@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { notifyAuthChanged } from "@/lib/auth-client";
 
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
@@ -21,12 +22,31 @@ function Card({ title, subtitle, children }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[#0a2230]">{title}</h2>
-          {subtitle ? (
-            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
-          ) : null}
+          {subtitle ? <p className="mt-1 text-sm text-slate-600">{subtitle}</p> : null}
         </div>
       </div>
       <div className="mt-5">{children}</div>
+    </div>
+  );
+}
+
+function Modal({ open, title, children, onClose }) {
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden="true" />
+      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200">
+        <div className="p-5 border-b">
+          <div className="text-lg font-bold text-[#0a2230]">{title}</div>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
     </div>
   );
 }
@@ -59,6 +79,11 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmNew, setConfirmNew] = useState("");
 
+  // ✅ Restore old delete behavior (modal + POST /api/account/delete + notifyAuthChanged + hard redirect)
+  const [openDelete, setOpenDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState("");
+
   const emailVerified = Boolean(profile?.emailVerified);
   const isBroker = sellerRole === "BROKER";
 
@@ -78,9 +103,7 @@ export default function AccountPage() {
 
         // ✅ Only redirect on AUTH_REQUIRED (401)
         if (res.status === 401 || data?.error === "AUTH_REQUIRED") {
-          window.location.assign(
-            `/login?next=${encodeURIComponent("/dashboard/account")}`,
-          );
+          window.location.assign(`/login?next=${encodeURIComponent("/dashboard/account")}`);
           return;
         }
 
@@ -144,9 +167,7 @@ export default function AccountPage() {
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 401 || data?.error === "AUTH_REQUIRED") {
-        window.location.assign(
-          `/login?next=${encodeURIComponent("/dashboard/account")}`,
-        );
+        window.location.assign(`/login?next=${encodeURIComponent("/dashboard/account")}`);
         return;
       }
 
@@ -159,7 +180,6 @@ export default function AccountPage() {
       setOkMsg("Saved.");
 
       // ✅ refresh /api/auth/me contract consumers (NewListingForm autofill)
-      // This pings your /api/auth/me so subsequent loads are fresh.
       try {
         await fetch("/api/auth/me", { cache: "no-store" });
       } catch {}
@@ -194,9 +214,7 @@ export default function AccountPage() {
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 401 || data?.error === "AUTH_REQUIRED") {
-        window.location.assign(
-          `/login?next=${encodeURIComponent("/dashboard/account")}`,
-        );
+        window.location.assign(`/login?next=${encodeURIComponent("/dashboard/account")}`);
         return;
       }
 
@@ -219,19 +237,42 @@ export default function AccountPage() {
     setErr("");
     setOkMsg("");
     try {
-      const res = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-      });
+      const res = await fetch("/api/auth/resend-verification", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok)
-        throw new Error(data?.error || "Could not resend verification email.");
-      setOkMsg(
-        data.alreadyVerified
-          ? "You’re already verified."
-          : "Verification email sent. Check inbox/spam.",
-      );
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Could not resend verification email.");
+      setOkMsg(data.alreadyVerified ? "You’re already verified." : "Verification email sent. Check inbox/spam.");
     } catch (e) {
       setErr(e?.message || "Could not resend verification email.");
+    }
+  }
+
+  async function deleteAccount() {
+    setDeleting(true);
+    setDeleteErr("");
+    setErr("");
+    setOkMsg("");
+
+    try {
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `Request failed (${res.status})`);
+      }
+
+      // ✅ Immediately tell the SPA header "auth changed"
+      try {
+        notifyAuthChanged();
+      } catch {}
+
+      // ✅ Hard redirect guarantees cookies + server components are fresh
+      window.location.href = "/";
+    } catch (e) {
+      setDeleteErr(e?.message || "Failed to delete account.");
+      setDeleting(false);
     }
   }
 
@@ -311,40 +352,24 @@ export default function AccountPage() {
               </div>
             ) : null}
 
-            <Card
-              title="Profile"
-              subtitle="This info is used to auto-fill listing contact details."
-            >
+            <Card title="Profile" subtitle="This info is used to auto-fill listing contact details.">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className={labelBase}>First name</label>
-                  <input
-                    className={inputBase}
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
+                  <input className={inputBase} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                 </div>
 
                 <div>
                   <label className={labelBase}>Last name</label>
-                  <input
-                    className={inputBase}
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                  />
+                  <input className={inputBase} value={lastName} onChange={(e) => setLastName(e.target.value)} />
                 </div>
 
                 {/* Email is read-only here (email change is a separate secured flow) */}
                 <div className="sm:col-span-2">
                   <label className={labelBase}>Email (read-only)</label>
-                  <input
-                    className={`${inputBase} bg-slate-50`}
-                    value={profile?.email || ""}
-                    readOnly
-                  />
+                  <input className={`${inputBase} bg-slate-50`} value={profile?.email || ""} readOnly />
                   <div className="mt-2 text-xs text-slate-600">
-                    To change email safely, we’ll add a dedicated “Change email”
-                    flow next.
+                    To change email safely, we’ll add a dedicated “Change email” flow next.
                   </div>
                 </div>
 
@@ -357,9 +382,7 @@ export default function AccountPage() {
                     placeholder="+14155552671"
                   />
                   <div className="mt-2 text-xs text-slate-600">
-                    International format:{" "}
-                    <span className="font-semibold">+{`countrycode`}{`number`}</span>
-                    . Leave blank to clear.
+                    International format: <span className="font-semibold">+{`countrycode`}{`number`}</span>. Leave blank to clear.
                   </div>
                 </div>
 
@@ -393,72 +416,40 @@ export default function AccountPage() {
 
                 <div className="sm:col-span-2">
                   <label className={labelBase}>Business name (optional)</label>
-                  <input
-                    className={inputBase}
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                  />
+                  <input className={inputBase} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
                 </div>
               </div>
 
               {isBroker ? (
                 <div className="mt-6 rounded-2xl border bg-slate-50 p-4">
-                  <div className="text-sm font-semibold text-[#0a2230]">
-                    Broker details
-                  </div>
+                  <div className="text-sm font-semibold text-[#0a2230]">Broker details</div>
                   <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="sm:col-span-2">
                       <label className={labelBase}>Brokerage name</label>
-                      <input
-                        className={inputBase}
-                        value={brokerageName}
-                        onChange={(e) => setBrokerageName(e.target.value)}
-                      />
+                      <input className={inputBase} value={brokerageName} onChange={(e) => setBrokerageName(e.target.value)} />
                     </div>
                     <div className="sm:col-span-2">
                       <label className={labelBase}>Street</label>
-                      <input
-                        className={inputBase}
-                        value={brokerageStreet}
-                        onChange={(e) => setBrokerageStreet(e.target.value)}
-                      />
+                      <input className={inputBase} value={brokerageStreet} onChange={(e) => setBrokerageStreet(e.target.value)} />
                     </div>
                     <div>
                       <label className={labelBase}>City</label>
-                      <input
-                        className={inputBase}
-                        value={brokerageCity}
-                        onChange={(e) => setBrokerageCity(e.target.value)}
-                      />
+                      <input className={inputBase} value={brokerageCity} onChange={(e) => setBrokerageCity(e.target.value)} />
                     </div>
                     <div>
                       <label className={labelBase}>State/Region</label>
-                      <input
-                        className={inputBase}
-                        value={brokerageState}
-                        onChange={(e) => setBrokerageState(e.target.value)}
-                      />
+                      <input className={inputBase} value={brokerageState} onChange={(e) => setBrokerageState(e.target.value)} />
                     </div>
                     <div className="sm:col-span-2">
                       <label className={labelBase}>Country</label>
-                      <input
-                        className={inputBase}
-                        value={brokerageCountry}
-                        onChange={(e) => setBrokerageCountry(e.target.value)}
-                      />
+                      <input className={inputBase} value={brokerageCountry} onChange={(e) => setBrokerageCountry(e.target.value)} />
                     </div>
                   </div>
                 </div>
               ) : null}
 
               <div className="mt-6 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={saveProfile}
-                  className={btnPrimary}
-                  style={{ background: GOLD }}
-                >
+                <button type="button" disabled={saving} onClick={saveProfile} className={btnPrimary} style={{ background: GOLD }}>
                   {saving ? "Saving…" : "Save changes"}
                 </button>
                 <Link href="/dashboard" className={btnGhost}>
@@ -515,9 +506,71 @@ export default function AccountPage() {
                 </button>
               </div>
             </Card>
+
+            {/* ✅ RESTORED: Delete account section (matches old behavior) */}
+            <Card
+              title="Danger zone"
+              subtitle="Permanently delete your account and your listings. This cannot be undone."
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-600">
+                  If you no longer want an account, you can permanently delete it.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteErr("");
+                    setOpenDelete(true);
+                  }}
+                  className="h-10 rounded-full px-5 text-sm font-semibold text-white disabled:opacity-60"
+                  style={{ background: "#dc2626" }}
+                >
+                  Delete account
+                </button>
+              </div>
+            </Card>
           </div>
         )}
       </div>
+
+      {/* ✅ Confirm delete modal (same as old) */}
+      <Modal
+        open={openDelete}
+        title="Delete your account?"
+        onClose={() => (deleting ? null : setOpenDelete(false))}
+      >
+        <p className="text-sm text-slate-700">
+          This permanently deletes your account and your listings. This action cannot be undone.
+        </p>
+
+        {deleteErr ? (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {deleteErr}
+          </div>
+        ) : null}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            className="h-10 rounded-full border px-5 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:opacity-60"
+            onClick={() => setOpenDelete(false)}
+            disabled={deleting}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            className="h-10 rounded-full px-5 text-sm font-semibold text-white disabled:opacity-60"
+            style={{ background: "#dc2626" }}
+            onClick={deleteAccount}
+            disabled={deleting}
+          >
+            {deleting ? "Deleting…" : "Yes, delete"}
+          </button>
+        </div>
+      </Modal>
     </main>
   );
 }

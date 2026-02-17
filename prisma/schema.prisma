@@ -1,3 +1,5 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,7 +9,6 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
-
 
 enum UserRole {
   USER
@@ -70,23 +71,34 @@ enum VolumeUnit {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
+  id    String  @id @default(cuid())
+  email String  @unique
+  name  String?
 
-  firstName    String?
-  lastName     String?
+  firstName String?
+  lastName  String?
+
+  // NOTE: You said you want to remove Business Name from the UI.
+  // Keeping field here is safe/backwards compatible. You can delete later when you’re ready for a breaking migration.
   businessName String?
 
-  // ✅ NEW: for Listing Contact auto-fill
-  sellerRole       SellerRole?  // OWNER | BROKER
-  phoneE164        String?       // "+14155552671" (E.164)
+  // ✅ Listing Contact auto-fill
+  sellerRole SellerRole?
+  phoneE164  String? // "+14155552671" (E.164)
 
+  // ✅ Brokerage (store only when sellerRole == BROKER)
   brokerageName    String?
   brokerageStreet  String?
   brokerageCity    String?
-  brokerageState   String?
-  brokerageCountry String?
+  brokerageState   String? // for US only (UI can hide for non-US; backend can null it)
+  brokerageCountry String? @db.Char(2) // ISO alpha-2, e.g. "US"
+
+  // ✅ Homeport (for future listing auto-fill)
+  homeportCountry String? @db.Char(2) // ISO alpha-2, e.g. "US"
+  homeportRegion  String? // your custom regions (only when US): "WEST_COAST" etc.
+  homeportState   String? // US state (e.g. "FL") when US
+  homeportAdmin1  String? // non-US province/region (e.g. "Ontario") when NOT US
+  homeportCity    String? // city/port
 
   passwordHash String
 
@@ -96,23 +108,20 @@ model User {
   emailVerificationExpires DateTime?
   emailVerificationSentAt  DateTime?
 
-  role       UserRole @default(USER)
-  isDisabled Boolean  @default(false)
+  role       UserRole  @default(USER)
+  isDisabled Boolean   @default(false)
   disabledAt DateTime?
   deletedAt  DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  listings                 Listing[]
-  favorites                Favorite[]
-  reviewedListings         Listing[] @relation("ListingReviewedBy")
-  removedListings          Listing[] @relation("ListingRemovedBy")
-  contentReviewedListings  Listing[] @relation("ListingContentReviewedBy")
-  auditLogs                AdminAuditLog[]
+  listings                Listing[]
+  favorites               Favorite[]
+  reviewedListings        Listing[]       @relation("ListingReviewedBy")
+  removedListings         Listing[]       @relation("ListingRemovedBy")
+  contentReviewedListings Listing[]       @relation("ListingContentReviewedBy")
+  auditLogs               AdminAuditLog[]
 }
-
-
-
 
 model Listing {
   id      String @id @default(cuid())
@@ -122,10 +131,15 @@ model Listing {
   title       String?
   description String?
 
-  locationCountry  String?
+  // ✅ Location (international-friendly)
+  // - locationCountry uses ISO alpha-2 codes
+  // - If US: you can use locationUsRegion + locationState
+  // - If NOT US: use locationAdmin1 (province/region) optionally; keep locationState null
+  locationCountry  String? @db.Char(2)
   locationCity     String?
-  locationState    String?
-  locationUsRegion String?
+  locationState    String? // US state only (e.g. "FL")
+  locationAdmin1   String? // non-US province/region (e.g. "BC", "Queensland", "Bavaria")
+  locationUsRegion String? // your custom US coastal regions only
 
   price    Int?
   currency String?
@@ -157,7 +171,7 @@ model Listing {
   leftEngineHours  Int?
   rightEngineHours Int?
 
-  hasGenerator   Boolean @default(false)
+  hasGenerator   Boolean   @default(false)
   generatorFuel  FuelType?
   generatorMake  String?
   generatorKw    Float?
@@ -168,7 +182,7 @@ model Listing {
   tankWater   Float?
   tankHolding Float?
 
-  hasDinghy        Boolean @default(false)
+  hasDinghy        Boolean  @default(false)
   dinghyModel      String?
   dinghyLength     Float?
   dinghyLengthUnit String?
@@ -188,7 +202,7 @@ model Listing {
   contentSubmittedAt     DateTime?
   contentReviewedAt      DateTime?
   contentReviewedById    String?
-  contentReviewedBy      User? @relation("ListingContentReviewedBy", fields: [contentReviewedById], references: [id])
+  contentReviewedBy      User?               @relation("ListingContentReviewedBy", fields: [contentReviewedById], references: [id])
   contentRejectionReason String?
 
   sellerRole         SellerRole?
@@ -215,12 +229,12 @@ model Listing {
   // -------- Moderation (new listing approval / takedown) --------
   reviewedAt      DateTime?
   reviewedById    String?
-  reviewedBy      User? @relation("ListingReviewedBy", fields: [reviewedById], references: [id])
+  reviewedBy      User?     @relation("ListingReviewedBy", fields: [reviewedById], references: [id])
   rejectionReason String?
 
   removedAt     DateTime?
   removedById   String?
-  removedBy     User? @relation("ListingRemovedBy", fields: [removedById], references: [id])
+  removedBy     User?     @relation("ListingRemovedBy", fields: [removedById], references: [id])
   removedReason String?
 
   createdAt DateTime @default(now())
@@ -246,7 +260,7 @@ model AdminAuditLog {
   createdAt DateTime @default(now())
 
   actorId String
-  actor   User @relation(fields: [actorId], references: [id])
+  actor   User   @relation(fields: [actorId], references: [id])
 
   action     String
   entityType String

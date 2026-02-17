@@ -4,6 +4,12 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
+/**
+ * ✅ MUST match Registration + Account pages:
+ * Countries come from lib/countries.js
+ */
+import { getCountryOptions } from "@/lib/countries";
+
 /* =========================================================
    SECTION 1 of 3 — UI TOKENS + HELPERS + OPTIONS + SMALL UI
 ========================================================= */
@@ -58,22 +64,6 @@ const toFloat = (v) => {
   const n = Number.parseFloat(String(v).replace(/[^\d.-]/g, ""));
   return Number.isFinite(n) ? n : null;
 };
-
-function normalizeCountry(raw) {
-  const s = String(raw ?? "").trim();
-  const lower = s.toLowerCase();
-  if (
-    lower === "usa" ||
-    lower === "us" ||
-    lower === "u.s." ||
-    lower === "u.s.a." ||
-    lower === "united states" ||
-    lower === "united states of america"
-  ) {
-    return "United States";
-  }
-  return s;
-}
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -154,25 +144,7 @@ function orderBuilders() {
   return [...TOP5, ...rest];
 }
 
-const COUNTRY_OPTIONS = [
-  "United States",
-  "Canada",
-  "United Kingdom",
-  "France",
-  "Italy",
-  "Spain",
-  "Greece",
-  "Croatia",
-  "Netherlands",
-  "Sweden",
-  "Portugal",
-  "Australia",
-  "New Zealand",
-  "Mexico",
-  "Bahamas",
-  "Other",
-];
-
+// ✅ EXACT same region values used on account page + api/account/profile
 const US_REGION_OPTIONS = [
   { label: "Select…", value: "" },
   { label: "West Coast", value: "WEST_COAST" },
@@ -206,6 +178,23 @@ const EQUIPMENT_PRESETS = [
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"];
 
+/* -----------------------------
+   ✅ Countries from lib/countries.js (single source of truth)
+------------------------------ */
+function buildCountryOptionsFromLib() {
+  const arr = getCountryOptions("en") || [];
+  // Ensure required-field UX works (needs a blank option)
+  return [{ label: "Select…", value: "" }, ...arr];
+}
+
+function countryLabelFromValue(options, value) {
+  const v = String(value || "").toUpperCase().trim();
+  const found = (options || []).find(
+    (o) => String(o?.value || "").toUpperCase().trim() === v
+  );
+  return found?.label || "";
+}
+
 /* Small UI */
 function Asterisk() {
   return <span className="ml-1 font-extrabold text-[#0a2230]">*</span>;
@@ -213,12 +202,7 @@ function Asterisk() {
 
 function XIcon({ className = "h-4 w-4" }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
       <path
         d="M6 6l12 12M18 6L6 18"
         stroke="currentColor"
@@ -231,12 +215,7 @@ function XIcon({ className = "h-4 w-4" }) {
 
 function CheckIcon({ className = "h-3.5 w-3.5" }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      className={className}
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
       <path
         d="M20 6L9 17l-5-5"
         stroke="currentColor"
@@ -252,7 +231,8 @@ function SmallToggleInline({ value, onChange, options = ["ft", "m"] }) {
   const base =
     "text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded-full border transition";
   const active = "text-[#0a2230] bg-slate-200 border-slate-300";
-  const inactive = "text-slate-600 bg-white border-slate-300 hover:bg-slate-50";
+  const inactive =
+    "text-slate-600 bg-white border-slate-300 hover:bg-slate-50";
 
   return (
     <span className="inline-flex items-center gap-1">
@@ -365,10 +345,13 @@ export default function NewListingForm() {
   const router = useRouter();
   const builders = useMemo(orderBuilders, []);
 
+  // ✅ Country options from lib/countries.js (same as Registration + Account)
+  const countryOptions = useMemo(() => buildCountryOptionsFromLib(), []);
+
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
-  // ✅ NEW: reset banner message (shown top + bottom)
+  // ✅ reset banner message (shown top + bottom)
   const [resetMsg, setResetMsg] = useState("");
 
   // Draft UX
@@ -417,10 +400,9 @@ export default function NewListingForm() {
   const [currency, setCurrency] = useState("USD");
 
   /* -------------------------
-     LOCATION
+     LOCATION (✅ country is ISO alpha-2 code like Registration/Account)
   ------------------------- */
-  const [locationCountrySel, setLocationCountrySel] = useState("");
-  const [locationCountryOther, setLocationCountryOther] = useState("");
+  const [locationCountry, setLocationCountry] = useState(""); // "US", "CA", ...
   const [locationUsRegion, setLocationUsRegion] = useState("");
   const [locationState, setLocationState] = useState("");
   const [locationCity, setLocationCity] = useState("");
@@ -610,7 +592,7 @@ export default function NewListingForm() {
   const [brokerageStreet, setBrokerageStreet] = useState("");
   const [brokerageCity, setBrokerageCity] = useState("");
   const [brokerageState, setBrokerageState] = useState("");
-  const [brokerageCountry, setBrokerageCountry] = useState("");
+  const [brokerageCountry, setBrokerageCountry] = useState(""); // ✅ ISO alpha-2
 
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
@@ -702,11 +684,7 @@ export default function NewListingForm() {
       if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
       if (!data?.key) throw new Error("Upload did not return a key.");
 
-      const next = {
-        ...snapshot,
-        status: "uploaded",
-        uploadedKey: String(data.key),
-      };
+      const next = { ...snapshot, status: "uploaded", uploadedKey: String(data.key) };
       setBrokerHeroItem(next);
       return next;
     } catch (e) {
@@ -735,18 +713,10 @@ export default function NewListingForm() {
         const maybeEmail = (data?.email || "").toString().trim();
         const maybePhone = (data?.phone || data?.phoneNumber || "").toString().trim();
 
-        if (
-          !contactTouchedRef.current.firstName &&
-          !listingContactFirstName.trim() &&
-          maybeFirst
-        ) {
+        if (!contactTouchedRef.current.firstName && !listingContactFirstName.trim() && maybeFirst) {
           setListingContactFirstName(maybeFirst);
         }
-        if (
-          !contactTouchedRef.current.lastName &&
-          !listingContactLastName.trim() &&
-          maybeLast
-        ) {
+        if (!contactTouchedRef.current.lastName && !listingContactLastName.trim() && maybeLast) {
           setListingContactLastName(maybeLast);
         }
         if (!contactTouchedRef.current.contactEmail && !contactEmail.trim() && maybeEmail) {
@@ -768,10 +738,10 @@ export default function NewListingForm() {
         const maybeBrokerageName = (data?.brokerageName || data?.company || "").toString().trim();
         const maybeStreet = (data?.brokerageStreet || data?.street || "").toString().trim();
         const maybeCity = (data?.brokerageCity || data?.city || "").toString().trim();
-        const maybeState = (data?.brokerageState || data?.state || data?.region || "")
-          .toString()
-          .trim();
-        const maybeCountry = (data?.brokerageCountry || data?.country || "").toString().trim();
+        const maybeState = (data?.brokerageState || data?.state || data?.region || "").toString().trim();
+
+        // ✅ IMPORTANT: brokerageCountry should now be ISO alpha-2 (like account/profile)
+        const maybeCountry = (data?.brokerageCountry || "").toString().trim().toUpperCase();
 
         if (!contactTouchedRef.current.brokerageName && !brokerageName.trim() && maybeBrokerageName) {
           setBrokerageName(maybeBrokerageName);
@@ -785,7 +755,7 @@ export default function NewListingForm() {
         if (!contactTouchedRef.current.brokerageState && !brokerageState.trim() && maybeState) {
           setBrokerageState(maybeState);
         }
-        if (!contactTouchedRef.current.brokerageCountry && !brokerageCountry.trim() && maybeCountry) {
+        if (!contactTouchedRef.current.brokerageCountry && !brokerageCountry && maybeCountry.length === 2) {
           setBrokerageCountry(maybeCountry);
         }
       } catch {
@@ -801,15 +771,12 @@ export default function NewListingForm() {
   }, []);
 
   /* =========================================================
-     DRAFT STORAGE (FIXED)
+     DRAFT STORAGE
   ========================================================= */
   const restoringDraftRef = useRef(false);
   const debounceTimerRef = useRef(null);
-
-  // ✅ NEW: block autosave for a short window after reset, so it doesn't recreate a fresh empty draft
   const autosaveDisabledUntilRef = useRef(0);
 
-  // ✅ NEW: helper to show reset banner top+bottom
   const showResetMessage = useCallback((msg) => {
     setResetMsg(msg);
     try {
@@ -841,9 +808,8 @@ export default function NewListingForm() {
       priceDisplay,
       currency,
 
-      // Location
-      locationCountrySel,
-      locationCountryOther,
+      // Location (✅ ISO country code)
+      locationCountry,
       locationUsRegion,
       locationState,
       locationCity,
@@ -903,10 +869,7 @@ export default function NewListingForm() {
 
       brokerHeroUploaded:
         brokerHeroItem?.status === "uploaded" && brokerHeroItem?.uploadedKey
-          ? {
-              uploadedKey: brokerHeroItem.uploadedKey,
-              previewUrl: brokerHeroItem.previewUrl || "",
-            }
+          ? { uploadedKey: brokerHeroItem.uploadedKey, previewUrl: brokerHeroItem.previewUrl || "" }
           : null,
     };
   }, [
@@ -926,8 +889,7 @@ export default function NewListingForm() {
     type,
     priceDisplay,
     currency,
-    locationCountrySel,
-    locationCountryOther,
+    locationCountry,
     locationUsRegion,
     locationState,
     locationCity,
@@ -990,7 +952,6 @@ export default function NewListingForm() {
     } catch {}
   }, []);
 
-  // ✅ NEW: hard reset everything + clear draft + show message top & bottom
   const resetFormToBlank = useCallback(() => {
     // Basics
     setYear("");
@@ -1011,8 +972,7 @@ export default function NewListingForm() {
     setCurrency("USD");
 
     // Location
-    setLocationCountrySel("");
-    setLocationCountryOther("");
+    setLocationCountry("");
     setLocationUsRegion("");
     setLocationState("");
     setLocationCity("");
@@ -1046,7 +1006,7 @@ export default function NewListingForm() {
     setAdditionalEquipmentInput("");
     setAdditionalEquipment([]);
 
-    // Photos (revoke previews)
+    // Photos
     try {
       (photoItemsRef.current || []).forEach((p) => {
         if (p?.previewUrl) URL.revokeObjectURL(p.previewUrl);
@@ -1056,11 +1016,9 @@ export default function NewListingForm() {
     setDraggingPhotoId(null);
     setDragOverPhotoId(null);
 
-    // Broker hero (revoke preview)
+    // Broker hero
     try {
-      if (brokerHeroRef.current?.previewUrl) {
-        URL.revokeObjectURL(brokerHeroRef.current.previewUrl);
-      }
+      if (brokerHeroRef.current?.previewUrl) URL.revokeObjectURL(brokerHeroRef.current.previewUrl);
     } catch {}
     setBrokerHeroItem(null);
 
@@ -1087,21 +1045,16 @@ export default function NewListingForm() {
 
   const clearDraftAndReset = useCallback(() => {
     if (typeof window === "undefined") return;
-
-    // prevent autosave from immediately recreating a new draft
     autosaveDisabledUntilRef.current = Date.now() + 4500;
 
-    // stop debounced timer if running
     try {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     } catch {}
 
-    // clear storage
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
 
-    // treat like a "restore" so autosave doesn't run mid-reset
     restoringDraftRef.current = true;
     resetFormToBlank();
     setTimeout(() => {
@@ -1140,10 +1093,8 @@ export default function NewListingForm() {
       if (typeof d.priceDisplay === "string") setPriceDisplay(d.priceDisplay);
       if (typeof d.currency === "string") setCurrency(d.currency);
 
-      // Location
-      if (typeof d.locationCountrySel === "string") setLocationCountrySel(d.locationCountrySel);
-      if (typeof d.locationCountryOther === "string")
-        setLocationCountryOther(d.locationCountryOther);
+      // Location (✅ ISO)
+      if (typeof d.locationCountry === "string") setLocationCountry(d.locationCountry);
       if (typeof d.locationUsRegion === "string") setLocationUsRegion(d.locationUsRegion);
       if (typeof d.locationState === "string") setLocationState(d.locationState);
       if (typeof d.locationCity === "string") setLocationCity(d.locationCity);
@@ -1178,16 +1129,13 @@ export default function NewListingForm() {
 
       // Equipment
       if (Array.isArray(d.equipmentSelected)) setEquipmentSelected(new Set(d.equipmentSelected));
-      if (typeof d.additionalEquipmentInput === "string")
-        setAdditionalEquipmentInput(d.additionalEquipmentInput);
+      if (typeof d.additionalEquipmentInput === "string") setAdditionalEquipmentInput(d.additionalEquipmentInput);
       if (Array.isArray(d.additionalEquipment)) setAdditionalEquipment(d.additionalEquipment);
 
       // Contact
       if (typeof d.sellerRole === "string") setSellerRole(d.sellerRole);
-      if (typeof d.listingContactFirstName === "string")
-        setListingContactFirstName(d.listingContactFirstName);
-      if (typeof d.listingContactLastName === "string")
-        setListingContactLastName(d.listingContactLastName);
+      if (typeof d.listingContactFirstName === "string") setListingContactFirstName(d.listingContactFirstName);
+      if (typeof d.listingContactLastName === "string") setListingContactLastName(d.listingContactLastName);
 
       if (typeof d.brokerageName === "string") setBrokerageName(d.brokerageName);
       if (typeof d.brokerageStreet === "string") setBrokerageStreet(d.brokerageStreet);
@@ -1278,8 +1226,7 @@ export default function NewListingForm() {
     type,
     priceDisplay,
     currency,
-    locationCountrySel,
-    locationCountryOther,
+    locationCountry,
     locationUsRegion,
     locationState,
     locationCity,
@@ -1348,13 +1295,9 @@ export default function NewListingForm() {
   /* -------------------------
      DERIVED VALUES + VALIDATION
   ------------------------- */
-  const effectiveCountryRaw =
-    locationCountrySel === "Other" ? locationCountryOther : locationCountrySel;
-  const effectiveCountry = normalizeCountry(effectiveCountryRaw);
-  const isUSA = effectiveCountry === "United States";
+  const isUSA = String(locationCountry || "").toUpperCase() === "US";
 
-  const effectiveBuilder =
-    builderSel === "Other" ? builderOther.trim() : builderSel.trim();
+  const effectiveBuilder = builderSel === "Other" ? builderOther.trim() : builderSel.trim();
 
   const yearInt = toInt(year);
   const loaNum = toFloat(loa);
@@ -1395,7 +1338,7 @@ export default function NewListingForm() {
     description: !description.trim(),
     type: !type,
     price: priceNum == null,
-    country: !effectiveCountry,
+    country: !String(locationCountry || "").trim(),
     city: !locationCity.trim(),
     usRegion: isUSA && !locationUsRegion,
     state: isUSA && !locationState.trim(),
@@ -1408,9 +1351,7 @@ export default function NewListingForm() {
   const showErrorFor = (key) => Boolean(touched[key] && missing[key]);
 
   const fieldBorder = (bad) =>
-    bad
-      ? "border-red-300 bg-red-50 focus:ring-red-200"
-      : "border-slate-300 bg-white";
+    bad ? "border-red-300 bg-red-50 focus:ring-red-200" : "border-slate-300 bg-white";
   const label = (key) => `${labelBase} ${showErrorFor(key) ? "text-red-700" : ""}`;
   const input = (key) => `${fieldBase} ${fieldBorder(showErrorFor(key))}`;
   const inputSm = (key) => `${fieldSmall} ${fieldBorder(showErrorFor(key))}`;
@@ -1435,12 +1376,9 @@ export default function NewListingForm() {
     setResendMsg("");
     setResendBusy(true);
     try {
-      const res = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-      });
+      const res = await fetch("/api/auth/resend-verification", { method: "POST" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok)
-        throw new Error(data?.error || "Could not resend verification email.");
+      if (!res.ok || !data.ok) throw new Error(data?.error || "Could not resend verification email.");
       if (data.alreadyVerified) {
         setResendMsg("You’re already verified. Try submitting again.");
         return;
@@ -1491,9 +1429,7 @@ export default function NewListingForm() {
 
     const hasLocalPhotos = (photoItems || []).some((p) => p?.status === "local");
     if (photoItems.length > 0 && hasLocalPhotos) {
-      setFormError(
-        "You selected photos. Please press Upload in the Photos section before submitting."
-      );
+      setFormError("You selected photos. Please press Upload in the Photos section before submitting.");
       try {
         window.scrollTo({ top: 0, behavior: "smooth" });
       } catch {}
@@ -1517,6 +1453,12 @@ export default function NewListingForm() {
 
       const orderedKeys = (photosAfterUpload || []).map((p) => p.uploadedKey).filter(Boolean);
 
+      // ✅ FIX: Use the same countryOptions array everywhere (no COUNTRY_OPTIONS undefined)
+      const brokerageCountryLabel =
+        countryLabelFromValue(countryOptions, brokerageCountry) || brokerageCountry || "";
+      const locationCountryLabel =
+        countryLabelFromValue(countryOptions, locationCountry) || locationCountry || "";
+
       const payload = {
         title: autoTitle(),
         description: description.trim(),
@@ -1534,8 +1476,8 @@ export default function NewListingForm() {
         price: priceNum,
         currency,
 
-        // Location
-        locationCountry: effectiveCountry,
+        // Location (✅ store ISO code)
+        locationCountry: String(locationCountry || "").toUpperCase(),
         locationCity: locationCity.trim() || null,
         locationState: isUSA ? locationState.trim() || null : null,
         locationUsRegion: isUSA ? locationUsRegion || null : null,
@@ -1595,12 +1537,15 @@ export default function NewListingForm() {
         brokerageName: sellerRole === "BROKER" ? brokerageName.trim() || null : null,
         brokerageAddress:
           sellerRole === "BROKER"
-            ? [brokerageStreet, brokerageCity, brokerageState, brokerageCountry]
+            ? [brokerageStreet, brokerageCity, brokerageState, brokerageCountryLabel]
                 .map((s) => (s || "").trim())
                 .filter(Boolean)
                 .join(", ") || null
             : null,
         brokerLogoUrl: sellerRole === "BROKER" ? brokerAfterUpload?.uploadedKey || null : null,
+
+        // optional display helper
+        _locationCountryLabel: locationCountryLabel,
       };
 
       const res = await fetch("/api/listings/create", {
@@ -1625,14 +1570,12 @@ export default function NewListingForm() {
       setNeedsEmailVerify(false);
       setResendMsg("");
 
-      // clear saved draft on success (routing away right after)
       clearDraftOnly();
 
       router.push(data.previewPath || data.previewUrl || "/listings");
       router.refresh();
     } catch (e2) {
       setFormError(e2?.message || "Failed to create listing.");
-      // keep draft intact on failure
       saveDraftNow();
     } finally {
       setSubmitting(false);
@@ -1648,8 +1591,7 @@ export default function NewListingForm() {
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-[13px] text-amber-900">
           <div className="font-semibold">Verify your email to post listings</div>
           <div className="mt-1 text-amber-900/80">
-            We sent you a verification link during registration. Click it, then come back and
-            submit again.
+            We sent you a verification link during registration. Click it, then come back and submit again.
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1688,14 +1630,12 @@ export default function NewListingForm() {
         </div>
       )}
 
-      {/* ✅ TOP reset message */}
       {resetMsg ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
           {resetMsg}
         </div>
       ) : null}
 
-      {/* Draft status */}
       {lastDraftSavedAt ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-700 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -1711,7 +1651,7 @@ export default function NewListingForm() {
           </div>
           <button
             type="button"
-            className="text-[12px] font-semibold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+            className="text-[12px] font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
             onClick={clearDraftAndReset}
           >
             Clear draft / reset form
@@ -1952,63 +1892,43 @@ export default function NewListingForm() {
           2) BOAT LOCATION
       ====================================================== */}
       <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located.">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-12 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+          {/* Country */}
           <div className="sm:col-span-6">
             <label className={label("country")}>
               Country <Asterisk />
             </label>
-
-            <div className="max-w-[420px]">
+            <div className="max-w-[520px]">
               <select
                 className={input("country")}
-                value={locationCountrySel || ""}
+                value={locationCountry}
                 onChange={(e) => {
-                  const nextVal = e.target.value;
-                  setLocationCountrySel(nextVal);
+                  const v = String(e.target.value || "").toUpperCase();
+                  setLocationCountry(v);
                   touch("country");
 
-                  const nextEffective =
-                    nextVal === "Other"
-                      ? normalizeCountry(locationCountryOther)
-                      : normalizeCountry(nextVal);
-
-                  if (nextEffective !== "United States") {
+                  if (v !== "US") {
                     setLocationUsRegion("");
                     setLocationState("");
                   }
                 }}
                 onBlur={() => touch("country")}
               >
-                <option value="">Select…</option>
-                {COUNTRY_OPTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                {countryOptions.map((o) => (
+                  <option key={o.value || "blank"} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
               </select>
-
-              {locationCountrySel === "Other" && (
-                <div className="mt-3">
-                  <label className={label("country")}>
-                    Country (type it) <Asterisk />
-                  </label>
-                  <input
-                    className={input("country")}
-                    value={locationCountryOther}
-                    onChange={(e) => setLocationCountryOther(e.target.value)}
-                    onBlur={() => touch("country")}
-                    placeholder="Enter country name"
-                  />
-                </div>
-              )}
             </div>
           </div>
 
+          {/* City */}
           <div className="sm:col-span-6">
             <label className={label("city")}>
               City <Asterisk />
             </label>
-            <div className="max-w-[420px]">
+            <div className="max-w-[520px]">
               <input
                 className={input("city")}
                 value={locationCity}
@@ -2019,13 +1939,14 @@ export default function NewListingForm() {
             </div>
           </div>
 
+          {/* US-only: Region + State aligned */}
           {isUSA && (
             <>
               <div className="sm:col-span-6">
                 <label className={label("usRegion")}>
                   USA Region <Asterisk />
                 </label>
-                <div className="max-w-[420px]">
+                <div className="max-w-[520px]">
                   <select
                     className={input("usRegion")}
                     value={locationUsRegion}
@@ -2045,7 +1966,7 @@ export default function NewListingForm() {
                 <label className={label("state")}>
                   State <Asterisk />
                 </label>
-                <div className="max-w-[160px]">
+                <div className="max-w-[200px]">
                   <input
                     className={input("state")}
                     value={locationState}
@@ -2330,7 +2251,9 @@ export default function NewListingForm() {
                   onChange={(e) => setDinghyNotes(e.target.value)}
                   placeholder="Example: 2021 10' inflatable, Honda 5hp 4-stroke, etc…"
                 />
-                <div className={helpText}>Enter size, make/model, and outboard details (optional).</div>
+                <div className={helpText}>
+                  Enter size, make/model, and outboard details (optional).
+                </div>
               </div>
             )}
           </div>
@@ -2342,11 +2265,8 @@ export default function NewListingForm() {
       ====================================================== */}
       <SectionCard title="Equipment" subtitle="Select installed equipment, then add additional equipment.">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          {/* Installed equipment chips */}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="text-[13px] font-semibold text-[#0a2230] mb-3">
-              Installed equipment
-            </div>
+            <div className="text-[13px] font-semibold text-[#0a2230] mb-3">Installed equipment</div>
 
             <div className="flex flex-wrap gap-2">
               {installedEquipment.length === 0 ? (
@@ -2380,7 +2300,6 @@ export default function NewListingForm() {
             </div>
           </div>
 
-          {/* Common equipment presets */}
           <div className="mt-5">
             <div className="text-[13px] font-semibold text-[#0a2230] mb-3">Common equipment</div>
 
@@ -2393,9 +2312,7 @@ export default function NewListingForm() {
                     type="button"
                     onClick={() => togglePreset(name)}
                     className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
-                      active
-                        ? "border-slate-300 bg-slate-50"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
+                      active ? "border-slate-300 bg-slate-50" : "border-slate-200 bg-white hover:bg-slate-50"
                     }`}
                   >
                     <span
@@ -2416,7 +2333,6 @@ export default function NewListingForm() {
             </div>
           </div>
 
-          {/* Additional equipment input */}
           <div className="mt-6">
             <div className="text-[13px] font-semibold text-[#0a2230] mb-2">Additional equipment</div>
 
@@ -2523,9 +2439,7 @@ export default function NewListingForm() {
                   )}
 
                   <div className="p-2 flex items-center justify-between gap-2">
-                    <div className="text-[12px] text-slate-600">
-                      {p.status === "uploaded" ? "Uploaded" : "Local"}
-                    </div>
+                    <div className="text-[12px] text-slate-600">{p.status === "uploaded" ? "Uploaded" : "Local"}</div>
                     <div className="flex items-center gap-1">
                       <button type="button" className={iconBtn} onClick={() => movePhoto(p.id, -1)} aria-label="Move up">
                         <span className="text-[12px]">↑</span>
@@ -2549,8 +2463,6 @@ export default function NewListingForm() {
           6) LISTING CONTACT
       ====================================================== */}
       <SectionCard title="Listing Contact">
-        {/* ... your Listing Contact section remains unchanged (as you pasted) ... */}
-        {/* (Keeping your code exactly below) */}
         <div className="space-y-5">
           <div>
             <label className={label("sellerRole")}>
@@ -2716,6 +2628,7 @@ export default function NewListingForm() {
                       </div>
                     </div>
 
+                    {/* ✅ aligned: State/Region + Country (dropdown) */}
                     <div className="sm:col-span-4">
                       <label className={labelBase}>State / Region</label>
                       <div className="max-w-[240px]">
@@ -2726,22 +2639,32 @@ export default function NewListingForm() {
                             contactTouchedRef.current.brokerageState = true;
                             setBrokerageState(e.target.value);
                           }}
+                          placeholder={String(brokerageCountry || "").toUpperCase() === "US" ? "ex: FL" : ""}
                         />
                       </div>
-                      <div className={helpText}>Use province/region if not in the U.S.</div>
                     </div>
 
                     <div className="sm:col-span-4">
                       <label className={labelBase}>Country</label>
                       <div className="max-w-[320px]">
-                        <input
+                        <select
                           className={`${fieldBase} border-slate-300 bg-white`}
                           value={brokerageCountry}
                           onChange={(e) => {
+                            const v = String(e.target.value || "").toUpperCase();
                             contactTouchedRef.current.brokerageCountry = true;
-                            setBrokerageCountry(e.target.value);
+                            setBrokerageCountry(v);
+
+                            // ✅ match your API behavior: brokerageState only meaningful for US
+                            if (v !== "US") setBrokerageState("");
                           }}
-                        />
+                        >
+                          {countryOptions.map((o) => (
+                            <option key={o.value || "blank"} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                   </div>
@@ -2835,8 +2758,7 @@ export default function NewListingForm() {
               <div className="text-[14px] font-semibold text-white">How ST protects your number</div>
             </div>
             <div className="p-5 text-[13px] text-slate-700">
-              ST.com values your privacy and will only display a phone number if a valid user is
-              logged in.
+              ST.com values your privacy and will only display a phone number if a valid user is logged in.
               <div className="mt-4 flex justify-end">
                 <button type="button" className={btnPrimary} onClick={() => setShowPhonePrivacy(false)}>
                   Got it
@@ -2847,14 +2769,37 @@ export default function NewListingForm() {
         </div>
       )}
 
-      {/* ✅ BOTTOM reset message */}
+      {/* ✅ Bottom clear draft / reset banner (same as top) */}
+      {lastDraftSavedAt ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[12px] text-slate-700 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            Draft saved{" "}
+            <span className="font-semibold">
+              {new Date(lastDraftSavedAt).toLocaleString(undefined, {
+                month: "short",
+                day: "2-digit",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="text-[12px] font-semibold text-red-700 underline underline-offset-2 hover:text-red-900"
+            onClick={clearDraftAndReset}
+          >
+            Clear draft / reset form
+          </button>
+        </div>
+      ) : null}
+
+      {/* ✅ Bottom reset confirmation message */}
       {resetMsg ? (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
           {resetMsg}
         </div>
       ) : null}
 
-      {/* Submit buttons */}
       <div className="flex items-center justify-end gap-3">
         <button type="button" className={btnGhost} onClick={() => router.push("/listings")}>
           Cancel

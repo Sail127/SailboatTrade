@@ -7,21 +7,39 @@ import Link from "next/link";
 
 /**
  * ✅ International phone input:
- * - Uses react-international-phone for country picker + dialing code
- * - Stores E.164 (ex: +14155552671) in the database
- *
- * Install:
  *   npm i react-international-phone libphonenumber-js
- *
- * Also add the CSS import below (required).
  */
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 
+// ✅ Option 1 country list (ISO, shared)
+import { getCountryOptions } from "@/lib/countries";
+
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
+
+const inputBase =
+  "h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white";
+const selectBase =
+  "h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white";
+const labelBase = "mb-2 block text-sm font-semibold text-[#0a2230]";
+
+// keep fields from getting comically wide on huge monitors
+const fieldWrap = "w-full max-w-[560px]";
+const fieldWrapSm = "w-full max-w-[360px]";
+
+const US_REGION_OPTIONS = [
+  { label: "Select…", value: "" },
+  { label: "West Coast", value: "WEST_COAST" },
+  { label: "East Coast", value: "EAST_COAST" },
+  { label: "Gulf Coast", value: "GULF_COAST" },
+  { label: "Great Lakes", value: "GREAT_LAKES" },
+  { label: "Hawaii", value: "HAWAII" },
+  { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
+  { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
+];
 
 function CheckIcon() {
   return (
@@ -41,7 +59,12 @@ function EyeIcon({ open }) {
   return open ? (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" aria-hidden="true">
       <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M10.6 10.7a2.5 2.5 0 003.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M10.6 10.7a2.5 2.5 0 003.5 3.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
       <path
         d="M9.5 5.4A10.6 10.6 0 0112 5c5.5 0 9.8 4.3 10.9 7-.4 1-1.2 2.4-2.5 3.7M6.1 6.1C4.2 7.5 3 9.4 2.1 12c1.1 2.7 5.4 7 9.9 7 1 0 2-.2 3-.5"
         stroke="currentColor"
@@ -56,7 +79,11 @@ function EyeIcon({ open }) {
         stroke="currentColor"
         strokeWidth="2"
       />
-      <path d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 15.5A3.5 3.5 0 1012 8.5a3.5 3.5 0 000 7Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -64,27 +91,37 @@ function EyeIcon({ open }) {
 function RegisterInner() {
   const sp = useSearchParams();
   const router = useRouter();
-
-  // preserve next (including if user later adds query params)
   const next = useMemo(() => sp.get("next") || "/dashboard", [sp]);
+
+  // ✅ shared countries list (ISO codes)
+  const COUNTRY_OPTIONS = useMemo(() => getCountryOptions("en"), []);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
-  // ✅ Map to your Listing Contact broker fields
+  // Seller role
   const [sellerRole, setSellerRole] = useState("OWNER"); // OWNER | BROKER
+
+  // Broker fields
   const [brokerageName, setBrokerageName] = useState("");
   const [brokerageStreet, setBrokerageStreet] = useState("");
   const [brokerageCity, setBrokerageCity] = useState("");
   const [brokerageState, setBrokerageState] = useState("");
   const [brokerageCountry, setBrokerageCountry] = useState("");
 
-  // ✅ International phone
-  // PhoneInput returns a string that typically begins with + and includes digits/spaces.
-  const [phoneRaw, setPhoneRaw] = useState("");
+  const isBrokerUSA = brokerageCountry === "US";
 
-  // optional helper for display/validation feedback
+  // Phone
+  const [phoneRaw, setPhoneRaw] = useState("");
   const [phoneMsg, setPhoneMsg] = useState("");
+
+  // ✅ Homeport
+  const [homeportCountry, setHomeportCountry] = useState("");
+  const [homeportRegion, setHomeportRegion] = useState("");
+  const [homeportState, setHomeportState] = useState(""); // US: state; Non-US: region/province text
+  const [homeportCity, setHomeportCity] = useState("");
+
+  const isUSA = homeportCountry === "US";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,7 +139,6 @@ function RegisterInner() {
   useEffect(() => {
     try {
       const lang = (navigator.language || "").toLowerCase();
-      // crude mapping, good enough without geo-IP; you can improve later
       if (lang.includes("en-gb")) setDefaultCountry("gb");
       else if (lang.includes("en-au")) setDefaultCountry("au");
       else if (lang.includes("en-nz")) setDefaultCountry("nz");
@@ -121,11 +157,11 @@ function RegisterInner() {
 
   function normalizePhoneToE164(raw) {
     const s = String(raw || "").trim();
-    if (!s) return { e164: null, ok: true }; // optional field
+    if (!s) return { e164: null, ok: true }; // optional
     const pn = parsePhoneNumberFromString(s);
     if (!pn) return { e164: null, ok: false };
     if (!pn.isValid()) return { e164: null, ok: false };
-    return { e164: pn.number, ok: true }; // pn.number is E.164
+    return { e164: pn.number, ok: true };
   }
 
   async function onSubmit(e) {
@@ -145,14 +181,12 @@ function RegisterInner() {
     if (!password || password.length < 8) return setErr("Password must be at least 8 characters.");
     if (password !== confirm) return setErr("Passwords do not match.");
 
-    // ✅ Phone normalization (optional but must be valid if provided)
     const { e164, ok } = normalizePhoneToE164(phoneRaw);
     if (!ok) {
       setPhoneMsg("Please enter a valid phone number (include country code).");
       return;
     }
 
-    // ✅ Broker fields: optional, but if BROKER, recommend brokerage name
     if (sellerRole === "BROKER" && !brokerageName.trim()) {
       return setErr("Brokerage name is recommended for brokers.");
     }
@@ -163,22 +197,31 @@ function RegisterInner() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ ensure session cookie is set/kept
+        credentials: "include",
         body: JSON.stringify({
-          // existing
           firstName: fn,
           lastName: ln,
           email: em,
           password,
 
-          // ✅ new (for Listing Contact auto-fill)
-          sellerRole, // OWNER | BROKER
-          phone: e164, // store E.164 in DB (or null)
+          sellerRole,
+
+          // ✅ align with api/auth/register + prisma
+          phoneE164: e164,
+
           brokerageName: sellerRole === "BROKER" ? brokerageName.trim() || null : null,
           brokerageStreet: sellerRole === "BROKER" ? brokerageStreet.trim() || null : null,
           brokerageCity: sellerRole === "BROKER" ? brokerageCity.trim() || null : null,
-          brokerageState: sellerRole === "BROKER" ? brokerageState.trim() || null : null,
-          brokerageCountry: sellerRole === "BROKER" ? brokerageCountry.trim() || null : null,
+          brokerageCountry: sellerRole === "BROKER" ? (brokerageCountry || null) : null,
+          brokerageState:
+            sellerRole === "BROKER" && isBrokerUSA ? brokerageState.trim() || null : null,
+
+          // ✅ Homeport
+          homeportCountry: homeportCountry || null,
+          homeportRegion: isUSA ? homeportRegion || null : null,
+          // Store US state OR non-US "region/province" in the same field for now
+          homeportState: homeportState.trim() || null,
+          homeportCity: homeportCity.trim() || null,
         }),
       });
 
@@ -206,7 +249,6 @@ function RegisterInner() {
       <div className="mx-auto max-w-7xl px-5 md:px-8 py-14">
         <div className="mx-auto w-full max-w-4xl">
           <div className="grid gap-8 md:grid-cols-5">
-            {/* Left: trust + bullets */}
             <div className="md:col-span-2">
               <div className="rounded-2xl border bg-gradient-to-b from-slate-50 to-white p-6 shadow-sm">
                 <div className="flex items-start gap-3">
@@ -262,12 +304,11 @@ function RegisterInner() {
                 </div>
 
                 <div className="mt-5 text-xs text-slate-500">
-                  We store phone numbers in international format (E.164) so they display correctly worldwide.
+                  Providing your <span className="font-semibold">Homeport</span> helps us prioritize the most relevant listings to you.
                 </div>
               </div>
             </div>
 
-            {/* Right: form */}
             <div className="md:col-span-3">
               <div className="rounded-2xl border bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-[#0a2230]">Account details</h2>
@@ -287,10 +328,10 @@ function RegisterInner() {
                   </div>
                 ) : null}
 
-                <form onSubmit={onSubmit} className="mt-5 space-y-4">
+                <form onSubmit={onSubmit} className="mt-5 space-y-5">
                   {/* Role */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                  <div className={fieldWrap}>
+                    <label className={labelBase}>
                       Are you an owner or broker? <span className="text-red-500">*</span>
                     </label>
                     <div className="flex flex-wrap gap-2">
@@ -323,13 +364,13 @@ function RegisterInner() {
                   </div>
 
                   {/* Name */}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                  <div className="flex flex-wrap gap-4">
+                    <div className={fieldWrapSm}>
+                      <label className={labelBase}>
                         First name <span className="text-red-500">*</span>
                       </label>
                       <input
-                        className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                        className={inputBase}
                         placeholder="First"
                         value={firstName}
                         onChange={(e) => setFirstName(e.target.value)}
@@ -337,12 +378,12 @@ function RegisterInner() {
                       />
                     </div>
 
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                    <div className={fieldWrapSm}>
+                      <label className={labelBase}>
                         Last name <span className="text-red-500">*</span>
                       </label>
                       <input
-                        className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                        className={inputBase}
                         placeholder="Last"
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
@@ -352,12 +393,12 @@ function RegisterInner() {
                   </div>
 
                   {/* Email */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                  <div className={fieldWrap}>
+                    <label className={labelBase}>
                       Email <span className="text-red-500">*</span>
                     </label>
                     <input
-                      className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                      className={inputBase}
                       placeholder="you@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -367,12 +408,12 @@ function RegisterInner() {
                   </div>
 
                   {/* Phone */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                  <div className={fieldWrap}>
+                    <label className={labelBase}>
                       Phone number <span className="font-normal text-slate-500">(optional)</span>
                     </label>
 
-                    <div className="rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40">
+                    <div className="rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40 bg-white">
                       <PhoneInput
                         defaultCountry={defaultCountry}
                         value={phoneRaw}
@@ -387,9 +428,110 @@ function RegisterInner() {
                       />
                     </div>
 
-                    {phoneMsg ? <div className="mt-2 text-xs font-semibold text-red-600">{phoneMsg}</div> : null}
+                    {phoneMsg ? (
+                      <div className="mt-2 text-xs font-semibold text-red-600">{phoneMsg}</div>
+                    ) : null}
                     <div className="mt-2 text-xs text-slate-600">
                       Include country code. We store phone numbers in international format so they display correctly worldwide.
+                    </div>
+                  </div>
+
+                  {/* Homeport */}
+                  <div className="rounded-2xl border bg-slate-50 p-4">
+                    <div className="text-sm font-semibold text-[#0a2230]">Homeport Location</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      Providing your homeport helps prioritize the most relevant listings to you.
+                    </div>
+
+                    <div className="mt-4 space-y-4">
+                      <div className={fieldWrapSm}>
+                        <label className={labelBase}>Country</label>
+                        <select
+                          className={selectBase}
+                          value={homeportCountry}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setHomeportCountry(v);
+                            if (v !== "US") setHomeportRegion("");
+                          }}
+                        >
+                          {COUNTRY_OPTIONS.map((o) => (
+                            <option key={o.value || "blank"} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {isUSA ? (
+                        <>
+                          <div className={fieldWrapSm}>
+                            <label className={labelBase}>Region</label>
+                            <select
+                              className={selectBase}
+                              value={homeportRegion}
+                              onChange={(e) => setHomeportRegion(e.target.value)}
+                            >
+                              {US_REGION_OPTIONS.map((o) => (
+                                <option key={o.value || "blank"} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex flex-wrap gap-4">
+                            <div className={fieldWrapSm}>
+                              <label className={labelBase}>State</label>
+                              <input
+                                className={inputBase}
+                                value={homeportState}
+                                onChange={(e) => setHomeportState(e.target.value)}
+                                placeholder="ex: FL"
+                                autoComplete="address-level1"
+                              />
+                            </div>
+
+                            <div className={fieldWrapSm}>
+                              <label className={labelBase}>City</label>
+                              <input
+                                className={inputBase}
+                                value={homeportCity}
+                                onChange={(e) => setHomeportCity(e.target.value)}
+                                autoComplete="address-level2"
+                              />
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap gap-4">
+                            <div className={fieldWrapSm}>
+                              <label className={labelBase}>City</label>
+                              <input
+                                className={inputBase}
+                                value={homeportCity}
+                                onChange={(e) => setHomeportCity(e.target.value)}
+                                autoComplete="address-level2"
+                              />
+                            </div>
+
+                            <div className={fieldWrapSm}>
+                              <label className={labelBase}>Region / Province (optional)</label>
+                              <input
+                                className={inputBase}
+                                value={homeportState}
+                                onChange={(e) => setHomeportState(e.target.value)}
+                                placeholder="ex: Ontario, Andalucía, Queensland"
+                                autoComplete="address-level1"
+                              />
+                            </div>
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            Optional, but helps us match location-based searches more accurately outside the U.S.
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -398,12 +540,12 @@ function RegisterInner() {
                     <div className="space-y-3 rounded-2xl border bg-slate-50 p-4">
                       <div className="text-sm font-semibold text-[#0a2230]">Broker details (optional)</div>
 
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                      <div className={fieldWrap}>
+                        <label className={labelBase}>
                           Brokerage name <span className="font-normal text-slate-500">(recommended)</span>
                         </label>
                         <input
-                          className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                          className={inputBase}
                           placeholder="Brokerage / Company"
                           value={brokerageName}
                           onChange={(e) => setBrokerageName(e.target.value)}
@@ -411,13 +553,11 @@ function RegisterInner() {
                         />
                       </div>
 
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                            Street <span className="font-normal text-slate-500">(optional)</span>
-                          </label>
+                      <div className="flex flex-wrap gap-4">
+                        <div className={fieldWrapSm}>
+                          <label className={labelBase}>Street (optional)</label>
                           <input
-                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            className={inputBase}
                             placeholder="Street address"
                             value={brokerageStreet}
                             onChange={(e) => setBrokerageStreet(e.target.value)}
@@ -425,12 +565,10 @@ function RegisterInner() {
                           />
                         </div>
 
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                            City <span className="font-normal text-slate-500">(optional)</span>
-                          </label>
+                        <div className={fieldWrapSm}>
+                          <label className={labelBase}>City (optional)</label>
                           <input
-                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
+                            className={inputBase}
                             placeholder="City"
                             value={brokerageCity}
                             onChange={(e) => setBrokerageCity(e.target.value)}
@@ -439,32 +577,38 @@ function RegisterInner() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                            State/Region <span className="font-normal text-slate-500">(optional)</span>
-                          </label>
-                          <input
-                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
-                            placeholder="State / Region"
-                            value={brokerageState}
-                            onChange={(e) => setBrokerageState(e.target.value)}
-                            autoComplete="address-level1"
-                          />
+                      <div className="flex flex-wrap gap-4">
+                        <div className={fieldWrapSm}>
+                          <label className={labelBase}>Country (optional)</label>
+                          <select
+                            className={selectBase}
+                            value={brokerageCountry}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setBrokerageCountry(v);
+                              if (v !== "US") setBrokerageState("");
+                            }}
+                          >
+                            {COUNTRY_OPTIONS.map((o) => (
+                              <option key={o.value || "blank"} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
-                        <div>
-                          <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
-                            Country <span className="font-normal text-slate-500">(optional)</span>
-                          </label>
-                          <input
-                            className="h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 bg-white"
-                            placeholder="Country"
-                            value={brokerageCountry}
-                            onChange={(e) => setBrokerageCountry(e.target.value)}
-                            autoComplete="country-name"
-                          />
-                        </div>
+                        {isBrokerUSA ? (
+                          <div className={fieldWrapSm}>
+                            <label className={labelBase}>State (optional)</label>
+                            <input
+                              className={inputBase}
+                              placeholder="State"
+                              value={brokerageState}
+                              onChange={(e) => setBrokerageState(e.target.value)}
+                              autoComplete="address-level1"
+                            />
+                          </div>
+                        ) : null}
                       </div>
 
                       <div className="text-xs text-slate-600">
@@ -474,9 +618,9 @@ function RegisterInner() {
                   )}
 
                   {/* Password + show toggle */}
-                  <div>
+                  <div className={fieldWrap}>
                     <div className="mb-2 flex items-center justify-between">
-                      <label className="block text-sm font-semibold text-[#0a2230]">
+                      <label className={labelBase}>
                         Password <span className="text-red-500">*</span>
                       </label>
                       <button
@@ -491,24 +635,25 @@ function RegisterInner() {
                     </div>
 
                     <input
-                      className="h-11 w-full rounded-xl border px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                      className={inputBase}
                       placeholder="8+ characters"
                       type={showPw ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="new-password"
                     />
+                    <div className="mt-2 text-xs text-slate-600">Minimum 8 characters.</div>
                   </div>
 
                   {/* Confirm password */}
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold text-[#0a2230]">
+                  <div className={fieldWrap}>
+                    <label className={labelBase}>
                       Confirm password <span className="text-red-500">*</span>
                     </label>
                     <input
                       className={`h-11 w-full rounded-xl border px-3 text-sm outline-none focus:ring-2 ${
                         mismatch ? "border-red-300 focus:ring-red-200" : "focus:ring-[#c8a44d]/40"
-                      }`}
+                      } bg-white`}
                       type={showPw ? "text" : "password"}
                       value={confirm}
                       onChange={(e) => setConfirm(e.target.value)}
@@ -516,7 +661,9 @@ function RegisterInner() {
                       placeholder="Type it again"
                     />
 
-                    {mismatch ? <div className="mt-2 text-xs font-semibold text-red-600">Passwords do not match.</div> : null}
+                    {mismatch ? (
+                      <div className="mt-2 text-xs font-semibold text-red-600">Passwords do not match.</div>
+                    ) : null}
                   </div>
 
                   <button
@@ -554,7 +701,6 @@ function RegisterInner() {
             </div>
           </div>
 
-          {/* Tiny note about styling PhoneInput */}
           <div className="mt-6 text-xs text-slate-500">
             Note: Phone input styling comes from <code>react-international-phone/style.css</code>. You can customize later.
           </div>

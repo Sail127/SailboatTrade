@@ -24,14 +24,13 @@ function splitName(fullName) {
 }
 
 function newToken() {
-  return crypto.randomBytes(32).toString("hex"); // url-safe
+  return crypto.randomBytes(32).toString("hex");
 }
 
 // Very light E.164 check (frontend should build E.164; backend enforces basic shape)
 function normalizeE164(raw) {
   const s = toStr(raw, 40);
   if (!s) return null;
-  // Accept "+<digits>", 7-15 digits (E.164 max is 15)
   if (!/^\+\d{7,15}$/.test(s)) return null;
   return s;
 }
@@ -40,6 +39,28 @@ function normalizeSellerRole(raw) {
   const v = toStr(raw, 20).toUpperCase();
   if (v === "OWNER" || v === "BROKER") return v;
   return null;
+}
+
+const US_REGION_VALUES = new Set([
+  "WEST_COAST",
+  "EAST_COAST",
+  "GULF_COAST",
+  "GREAT_LAKES",
+  "HAWAII",
+  "OTHER_INLAND_WATERS",
+  "OTHER_US_TERRITORIAL",
+]);
+
+function normalizeIsoCountry(raw) {
+  // country stored as 2-letter ISO: "US", "FR", etc.
+  const v = toStr(raw, 2).toUpperCase();
+  return v ? v : null;
+}
+
+function normalizeUsRegion(raw) {
+  const v = toStr(raw, 40).toUpperCase();
+  if (!v) return null;
+  return US_REGION_VALUES.has(v) ? v : null;
 }
 
 /* -----------------------------
@@ -53,7 +74,6 @@ export async function POST(req) {
 
   let firstName = toStr(body?.firstName ?? "", 60);
   let lastName = toStr(body?.lastName ?? "", 60);
-  const businessName = toStr(body?.businessName ?? "", 120) || null;
 
   const incomingName = toStr(body?.name ?? "", 200);
   if ((!firstName || !lastName) && incomingName) {
@@ -65,19 +85,38 @@ export async function POST(req) {
   const name =
     (firstName && lastName ? `${firstName} ${lastName}` : incomingName) || null;
 
-  // ✅ New listing-contact profile fields
+  // ✅ Listing-contact profile fields
   const sellerRole = normalizeSellerRole(body?.sellerRole);
-  const phoneE164 = normalizeE164(body?.phone || body?.phoneE164 || body?.phoneNumber);
 
-  // Brokerage structured fields (optional)
+  // Accept old and new field names, but normalize to phoneE164 storage
+  const rawPhone = body?.phoneE164 ?? body?.phone ?? body?.phoneNumber ?? "";
+  const phoneE164 = normalizeE164(rawPhone);
+
+  // Brokerage fields (country now ISO)
   const brokerageName = toStr(body?.brokerageName ?? "", 120) || null;
   const brokerageStreet = toStr(body?.brokerageStreet ?? "", 160) || null;
   const brokerageCity = toStr(body?.brokerageCity ?? "", 120) || null;
-  const brokerageState = toStr(body?.brokerageState ?? "", 80) || null;
-  const brokerageCountry = toStr(body?.brokerageCountry ?? "", 120) || null;
+
+  const brokerageCountry = normalizeIsoCountry(body?.brokerageCountry);
+  const brokerageStateRaw = toStr(body?.brokerageState ?? "", 80) || null;
+  const brokerageState = brokerageCountry === "US" ? brokerageStateRaw : null;
+
+  // ✅ Homeport fields (country ISO)
+  const homeportCountry = normalizeIsoCountry(body?.homeportCountry);
+  const homeportCity = toStr(body?.homeportCity ?? "", 120) || null;
+
+  // If US, allow region + state; otherwise clear state/region
+  const requestedRegion = normalizeUsRegion(body?.homeportRegion);
+  const homeportRegion = homeportCountry === "US" ? requestedRegion : null;
+
+  const homeportStateRaw = toStr(body?.homeportState ?? "", 80) || null;
+  const homeportState = homeportCountry === "US" ? homeportStateRaw : null;
 
   if (!email || !password) {
-    return Response.json({ ok: false, error: "Email and password required." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "Email and password required." },
+      { status: 400 }
+    );
   }
 
   if (String(password).length < 8) {
@@ -87,9 +126,8 @@ export async function POST(req) {
     );
   }
 
-  // If you made phone required on the UI, enforce it here too.
-  // (Keeping it optional for now so you don’t block international users.)
-  if (body?.phone && !phoneE164) {
+  // Phone is optional, but if provided, must be valid E.164
+  if (rawPhone && !phoneE164) {
     return Response.json(
       { ok: false, error: "Please enter a valid phone number (include country code)." },
       { status: 400 }
@@ -107,26 +145,30 @@ export async function POST(req) {
   const verifyToken = newToken();
   const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
 
-  // ✅ Build create data safely (only include fields that exist in schema)
-  // IMPORTANT: This assumes you added these fields to Prisma:
-  // sellerRole, phoneE164, brokerageName, brokerageStreet, brokerageCity, brokerageState, brokerageCountry
   const user = await prisma.user.create({
     data: {
       email,
       name,
       firstName: firstName || null,
       lastName: lastName || null,
-      businessName,
       passwordHash,
 
-      // listing-contact profile fields
+      // profile
       sellerRole,
       phoneE164,
-      brokerageName,
-      brokerageStreet,
-      brokerageCity,
-      brokerageState,
-      brokerageCountry,
+
+      // brokerage (store only if BROKER, else clear)
+      brokerageName: sellerRole === "BROKER" ? brokerageName : null,
+      brokerageStreet: sellerRole === "BROKER" ? brokerageStreet : null,
+      brokerageCity: sellerRole === "BROKER" ? brokerageCity : null,
+      brokerageState: sellerRole === "BROKER" ? brokerageState : null,
+      brokerageCountry: sellerRole === "BROKER" ? brokerageCountry : null,
+
+      // homeport
+      homeportCountry,
+      homeportRegion,
+      homeportState,
+      homeportCity,
 
       // email verification
       emailVerifiedAt: null,
@@ -142,11 +184,7 @@ export async function POST(req) {
       lastName: true,
       sellerRole: true,
       phoneE164: true,
-      brokerageName: true,
-      brokerageStreet: true,
-      brokerageCity: true,
-      brokerageState: true,
-      brokerageCountry: true,
+      emailVerifiedAt: true,
     },
   });
 
@@ -156,8 +194,6 @@ export async function POST(req) {
     name: user.name,
     firstName: user.firstName,
     lastName: user.lastName,
-
-    // optional extra session claims (harmless if your signSession ignores unknown)
     sellerRole: user.sellerRole || undefined,
   });
 

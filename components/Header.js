@@ -484,12 +484,12 @@ export default function Header() {
                     <div className="my-2 h-px bg-white/15" />
 
                     <a
-                      href={meUser ? "/dashboard/listings" : "/login"}
+                      href={meUser ? "/dashboard" : "/login?next=/dashboard"}
                       className={navSecondary}
                       onClick={(e) => {
                         e.preventDefault();
                         setOpen(false);
-                        hardNav(meUser ? "/dashboard/listings" : "/login");
+                        hardNav(meUser ? "/dashboard" : "/login?next=/dashboard");
                       }}
                     >
                       <span className={iconBox}>
@@ -501,7 +501,7 @@ export default function Header() {
                           <UserSilhouetteIcon className="h-4 w-4" stroke="#ffffff" />
                         )}
                       </span>
-                      {meUser ? "My Account" : "Login"}
+                      {meUser ? "My Dashboard" : "Login"}
                     </a>
 
                     {meUser && (
@@ -534,3 +534,4 @@ export default function Header() {
     </header>
   );
 }
+

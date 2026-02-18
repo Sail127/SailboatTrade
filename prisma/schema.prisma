@@ -182,7 +182,13 @@ model Listing {
   tankWater   Float?
   tankHolding Float?
 
-  hasDinghy        Boolean  @default(false)
+  // Dinghy
+  hasDinghy Boolean @default(false)
+
+  // ✅ NEW (matches current listing form: “dinghy details” free text)
+  dinghyDetails String?
+
+  // ---- Legacy / future expansion (keep for now to avoid breaking older code & data) ----
   dinghyModel      String?
   dinghyLength     Float?
   dinghyLengthUnit String?

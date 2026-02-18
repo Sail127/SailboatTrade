@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const isFtOrM = (v) => {
   const s = String(v ?? "").toLowerCase().trim();
   return s === "ft" || s === "m";
@@ -92,20 +95,22 @@ const yesNoToBoolOrNull = (v) => {
 
 export async function POST(req) {
   try {
-    const s = await requireUser();
+    // ✅ Require login
+    const s = await requireUser().catch(() => null);
     const body = await req.json().catch(() => ({}));
 
     const ownerIdRaw = s?.uid ?? s?.id ?? s?.userId;
     const ownerId = ownerIdRaw ? String(ownerIdRaw) : "";
-if (!ownerId) {
-  return NextResponse.json(
-    { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
-    { status: 401 }
-  );
-}
 
-// ✅ Phase 1: require verified email to create listings
-const u = await prisma.user.findUnique({
+    if (!ownerId) {
+      return NextResponse.json(
+        { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
+        { status: 401 }
+      );
+    }
+
+    // ✅ Phase 1: require verified email to create listings
+    const u = await prisma.user.findUnique({
       where: { id: ownerId },
       select: { emailVerifiedAt: true, deletedAt: true, isDisabled: true },
     });
@@ -116,12 +121,16 @@ const u = await prisma.user.findUnique({
 
     if (!u.emailVerifiedAt) {
       return NextResponse.json(
-        { ok: false, code: "EMAIL_NOT_VERIFIED", error: "Please verify your email before creating listings." },
+        {
+          ok: false,
+          code: "EMAIL_NOT_VERIFIED",
+          error: "Please verify your email before creating listings.",
+        },
         { status: 403 }
       );
     }
 
-
+    // ---------- normalize core fields ----------
     const currency = isCurrency(body.currency) ? String(body.currency).toUpperCase() : "USD";
     const plan =
       body.plan === "FEATURED_HOME" || body.plan === "STANDARD" ? body.plan : "STANDARD";
@@ -135,8 +144,15 @@ const u = await prisma.user.findUnique({
 
     const sellerRole = normalizeSellerRole(body.sellerRole);
 
+    // ✅ booleans can arrive as YES/NO strings from your form
     const hasGenerator = yesNoToBoolOrNull(body.hasGenerator) ?? false;
     const hasDinghy = yesNoToBoolOrNull(body.hasDinghy) ?? false;
+
+    // ✅ Dinghy text: your form uses dinghyNotes; support a few fallbacks
+    const dinghyDetails =
+      hasDinghy
+        ? toStringOrNull(body.dinghyDetails ?? body.dinghyNotes ?? body.dinghyModel)
+        : null;
 
     const listing = await prisma.listing.create({
       data: {
@@ -194,15 +210,15 @@ const u = await prisma.user.findUnique({
         tankWater: toNumberOrNull(body.tankWater),
         tankHolding: toNumberOrNull(body.tankHolding),
 
+        // ✅ Dinghy (new form supports: hasDinghy + dinghyDetails free-text)
         hasDinghy,
-        dinghyModel: hasDinghy ? toStringOrNull(body.dinghyModel) : null,
-        dinghyLength: hasDinghy ? toNumberOrNull(body.dinghyLength) : null,
-        dinghyLengthUnit: hasDinghy
-          ? isFtOrM(body.dinghyLengthUnit)
-            ? String(body.dinghyLengthUnit).toLowerCase()
-            : "ft"
-          : null,
-        dinghyMotor: hasDinghy ? yesNoToBoolOrNull(body.dinghyMotor) : null,
+        dinghyDetails,
+
+        // ✅ Legacy fields (kept in schema; ensure clean data)
+        dinghyModel: null,
+        dinghyLength: null,
+        dinghyLengthUnit: null,
+        dinghyMotor: null,
 
         equipment,
         heroImageUrl: toStringOrNull(body.heroImageUrl),
@@ -224,15 +240,33 @@ const u = await prisma.user.findUnique({
       select: { id: true, previewToken: true },
     });
 
-    const previewPath = `/listings/preview/${listing.previewToken}`;
+    // ✅ Use existing detail route + token query for draft preview + image access
+    const previewPath = `/listings/${listing.id}?token=${encodeURIComponent(listing.previewToken)}`;
+
     return NextResponse.json({
       ok: true,
       listingId: listing.id,
+      previewToken: listing.previewToken,
       previewPath,
       previewUrl: previewPath,
     });
   } catch (err) {
     console.error("POST /api/listings/create error:", err);
+
+    // ✅ Friendlier Prisma unknown-field errors (e.g. schema mismatch)
+    const msg = String(err?.message || "");
+    if (msg.includes("Unknown argument")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Schema mismatch: Prisma does not recognize a field being sent. Run your migration and regenerate Prisma client.",
+          detail: msg,
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       { ok: false, error: err?.message || "Failed to create listing." },
       { status: 500 }

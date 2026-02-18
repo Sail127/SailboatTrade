@@ -27,25 +27,50 @@ export async function GET() {
  * Creates a new listing as DRAFT (private until published).
  *
  * ✅ Requires authentication.
- * ✅ Returns consistent error shapes for UI error summaries.
+ * ✅ Requires verified email (matches your /api/listings/create flow)
+ * ✅ Returns previewPath (/listings/preview/:token)
  */
 export async function POST(req) {
   try {
-    // ✅ Require login
-    const { requireUser } = await import("@/lib/auth"); // avoids client bundling mistakes
+    // ✅ Require login (dynamic import avoids bundling issues)
+    const { requireUser } = await import("@/lib/auth");
     const s = await requireUser().catch(() => null);
 
-    if (!s?.uid) {
+    const ownerIdRaw = s?.uid ?? s?.id ?? s?.userId;
+    const ownerId = ownerIdRaw ? String(ownerIdRaw) : "";
+
+    if (!ownerId) {
       return NextResponse.json(
-        { ok: false, error: "AUTH_REQUIRED", message: "Authentication required." },
+        { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
         { status: 401 }
+      );
+    }
+
+    // ✅ Require verified email to create listings (Phase 1)
+    const u = await prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { emailVerifiedAt: true, deletedAt: true, isDisabled: true },
+    });
+
+    if (!u || u.deletedAt || u.isDisabled) {
+      return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
+    }
+
+    if (!u.emailVerifiedAt) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "EMAIL_NOT_VERIFIED",
+          error: "Please verify your email before creating listings.",
+        },
+        { status: 403 }
       );
     }
 
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
       return NextResponse.json(
-        { ok: false, error: "INVALID_JSON", message: "Invalid JSON body." },
+        { ok: false, code: "INVALID_JSON", error: "Invalid JSON body." },
         { status: 400 }
       );
     }
@@ -72,20 +97,42 @@ export async function POST(req) {
       return Number.isFinite(n) ? n : null;
     };
 
-    const normalizeCountry = (raw) => {
+    const upperOrNull = (v) => {
+      const s = toStr(v);
+      return s ? s.toUpperCase() : null;
+    };
+
+    const isCurrency = (v) =>
+      ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"].includes(String(v || "").toUpperCase());
+
+    const isFtOrM = (v) => {
+      const s = String(v ?? "").toLowerCase().trim();
+      return s === "ft" || s === "m";
+    };
+
+    // ISO2 country normalization (schema expects Char(2))
+    const normalizeIso2 = (raw) => {
       const s = toStr(raw);
-      const lower = s.toLowerCase();
+      const u = s.toUpperCase();
+      if (!u) return null;
+
+      // common US variants
       if (
-        lower === "usa" ||
-        lower === "us" ||
-        lower === "u.s." ||
-        lower === "u.s.a." ||
-        lower === "united states" ||
-        lower === "united states of america"
+        u === "US" ||
+        u === "USA" ||
+        u === "U.S." ||
+        u === "U.S.A." ||
+        u === "UNITED STATES" ||
+        u === "UNITED STATES OF AMERICA"
       ) {
-        return "United States";
+        return "US";
       }
-      return s;
+
+      // already ISO2
+      if (/^[A-Z]{2}$/.test(u)) return u;
+
+      // if someone passes a full name, we refuse (to protect schema integrity)
+      return null;
     };
 
     const coerceYesNoToBool = (v) => {
@@ -98,39 +145,82 @@ export async function POST(req) {
       return null;
     };
 
-    const upperOrNull = (v) => {
-      const s = toStr(v);
-      return s ? s.toUpperCase() : null;
+    const normalizeStringArray = (v) => {
+      if (!Array.isArray(v)) return [];
+      return v.map((x) => String(x ?? "").trim()).filter(Boolean);
     };
 
-    // ---------------- required (per your form) ----------------
-    const title = toStr(body.title);
+    const normalizeEquipment = (v) => {
+      if (Array.isArray(v)) return normalizeStringArray(v);
+      if (typeof v === "string") {
+        return v
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      return [];
+    };
+
+    const normalizeHullType = (v) => {
+      const t = String(v || "").toUpperCase().trim();
+      if (t === "MONOHULL" || t === "CATAMARAN" || t === "TRIMARAN") return t;
+      return null;
+    };
+
+    const normalizeSellerRole = (v) => {
+      const r = String(v || "").toUpperCase().trim();
+      if (r === "OWNER" || r === "BROKER") return r;
+      return null;
+    };
+
+    const normalizeBoatCondition = (v) => {
+      const c = String(v || "").toUpperCase().trim();
+      if (c === "NEW" || c === "USED") return c;
+      return null;
+    };
+
+    const normalizeFuelType = (v) => {
+      const f = String(v || "").toUpperCase().trim();
+      if (f === "DIESEL" || f === "GAS") return f;
+      return null;
+    };
+
+    const normalizeVolumeUnit = (v) => {
+      const s = String(v ?? "").trim();
+      if (s === "gal" || s === "L") return s;
+      if (s.toLowerCase() === "gal") return "gal";
+      if (s.toUpperCase() === "L") return "L";
+      return null;
+    };
+
+    // ---------------- required (match your form’s required set) ----------------
     const description = toStr(body.description);
 
     const year = toInt(body.year);
     const builder = isNonEmpty(body.builder) ? toStr(body.builder) : null;
     const model = isNonEmpty(body.model) ? toStr(body.model) : null;
 
-    const boatCondition = upperOrNull(body.boatCondition); // "NEW" | "USED"
-    const type = upperOrNull(body.type); // "MONOHULL" | "CATAMARAN" | "TRIMARAN"
+    const boatCondition = normalizeBoatCondition(body.boatCondition); // NEW | USED
+    const type = normalizeHullType(body.type); // MONOHULL | CATAMARAN | TRIMARAN
+
+    const loa = toFloat(body.loa);
+    const loaUnit = isFtOrM(body.loaUnit) ? String(body.loaUnit).toLowerCase() : "ft";
 
     const price = toInt(body.price);
-    const currency = upperOrNull(body.currency) || "USD";
+    const currency = isCurrency(body.currency) ? String(body.currency).toUpperCase() : "USD";
 
-    const locationCountry = normalizeCountry(body.locationCountry);
+    const locationCountry = normalizeIso2(body.locationCountry);
     const locationCity = isNonEmpty(body.locationCity) ? toStr(body.locationCity) : null;
-    const locationState =
-      locationCountry === "United States" && isNonEmpty(body.locationState)
-        ? toStr(body.locationState)
-        : null;
-    const locationUsRegion =
-      locationCountry === "United States" && isNonEmpty(body.locationUsRegion)
-        ? upperOrNull(body.locationUsRegion)
-        : null;
 
+    const isUSA = locationCountry === "US";
+
+    const locationState = isUSA && isNonEmpty(body.locationState) ? toStr(body.locationState) : null;
+    const locationUsRegion =
+      isUSA && isNonEmpty(body.locationUsRegion) ? upperOrNull(body.locationUsRegion) : null;
+
+    const sellerRole = normalizeSellerRole(body.sellerRole); // OWNER | BROKER
     const listingContactName = toStr(body.listingContactName);
     const contactEmail = toStr(body.contactEmail);
-    const sellerRole = upperOrNull(body.sellerRole); // "OWNER" | "BROKER"
 
     const missing = [];
     if (!sellerRole) missing.push("sellerRole");
@@ -139,59 +229,43 @@ export async function POST(req) {
     if (!model) missing.push("model");
     if (!boatCondition) missing.push("boatCondition");
     if (!type) missing.push("type");
-    if (!isNonEmpty(description)) missing.push("description");
+    if (loa == null) missing.push("loa");
+    if (!description) missing.push("description");
     if (price == null || price <= 0) missing.push("price");
-    if (!isNonEmpty(locationCountry)) missing.push("locationCountry");
-    if (locationCountry === "United States" && !locationUsRegion) missing.push("locationUsRegion");
-    if (locationCountry === "United States" && !locationState) missing.push("locationState");
-    if (!isNonEmpty(listingContactName)) missing.push("listingContactName");
-    if (!isNonEmpty(contactEmail)) missing.push("contactEmail");
+    if (!locationCountry) missing.push("locationCountry");
+    if (!locationCity) missing.push("locationCity");
+    if (isUSA && !locationUsRegion) missing.push("locationUsRegion");
+    if (isUSA && !locationState) missing.push("locationState");
+    if (!listingContactName) missing.push("listingContactName");
+    if (!contactEmail) missing.push("contactEmail");
 
     if (missing.length) {
-      const label = {
-        sellerRole: "Seller role",
-        year: "Year",
-        builder: "Builder",
-        model: "Model",
-        boatCondition: "Boat condition",
-        type: "Hull type",
-        description: "Description",
-        price: "Price",
-        locationCountry: "Country",
-        locationUsRegion: "US region",
-        locationState: "State",
-        listingContactName: "Contact name",
-        contactEmail: "Contact email",
-      };
-
-      const errors = missing.map((k) => `${label[k] || k} is required.`);
-
       return NextResponse.json(
         {
           ok: false,
-          error: "VALIDATION_ERROR",
-          message: "Missing or invalid required fields.",
+          code: "VALIDATION_ERROR",
+          error: "Missing or invalid required fields.",
           missing,
-          errors,
         },
         { status: 400 }
       );
     }
 
-    // ---------------- optional fields (aligned to your model) ----------------
+    // ---------------- optional fields ----------------
+    const title = isNonEmpty(body.title)
+      ? toStr(body.title)
+      : [year, builder, model].filter(Boolean).join(" ");
+
     const cabins = toInt(body.cabins);
     const heads = toInt(body.heads);
 
-    const loa = toFloat(body.loa);
-    const loaUnit = isNonEmpty(body.loaUnit) ? toStr(body.loaUnit) : "ft";
-
     const draft = toFloat(body.draft);
-    const draftUnit = isNonEmpty(body.draftUnit) ? toStr(body.draftUnit) : "ft";
+    const draftUnit = isFtOrM(body.draftUnit) ? String(body.draftUnit).toLowerCase() : null;
 
     const airDraft = toFloat(body.airDraft);
-    const airDraftUnit = isNonEmpty(body.airDraftUnit) ? toStr(body.airDraftUnit) : "ft";
+    const airDraftUnit = isFtOrM(body.airDraftUnit) ? String(body.airDraftUnit).toLowerCase() : null;
 
-    const engineFuel = upperOrNull(body.engineFuel); // "DIESEL" | "GAS"
+    const engineFuel = normalizeFuelType(body.engineFuel);
     const engineMake = isNonEmpty(body.engineMake) ? toStr(body.engineMake) : null;
     const engineModel = isNonEmpty(body.engineModel) ? toStr(body.engineModel) : null;
     const propeller = isNonEmpty(body.propeller) ? toStr(body.propeller) : null;
@@ -202,44 +276,51 @@ export async function POST(req) {
     const rightEngineHours = toInt(body.rightEngineHours);
 
     const hasGenerator = coerceYesNoToBool(body.hasGenerator) ?? false;
-    const generatorFuel = upperOrNull(body.generatorFuel);
+    const generatorFuel = normalizeFuelType(body.generatorFuel);
     const generatorMake = isNonEmpty(body.generatorMake) ? toStr(body.generatorMake) : null;
     const generatorKw = toFloat(body.generatorKw);
     const generatorHours = toInt(body.generatorHours);
 
-    const tankUnit = isNonEmpty(body.tankUnit) ? toStr(body.tankUnit) : null; // "gal" | "L"
+    const tankUnit = normalizeVolumeUnit(body.tankUnit);
     const tankFuel = toFloat(body.tankFuel);
     const tankWater = toFloat(body.tankWater);
     const tankHolding = toFloat(body.tankHolding);
 
-    const hasDinghy = coerceYesNoToBool(body.hasDinghy);
-    const dinghyModel = isNonEmpty(body.dinghyModel) ? toStr(body.dinghyModel) : null;
-    const dinghyLength = toFloat(body.dinghyLength);
-    const dinghyLengthUnit = isNonEmpty(body.dinghyLengthUnit) ? toStr(body.dinghyLengthUnit) : "ft";
-    const dinghyMotor = coerceYesNoToBool(body.dinghyMotor);
+    // ✅ Dinghy (new form shape)
+    const hasDinghy = coerceYesNoToBool(body.hasDinghy) ?? false;
+    const dinghyDetailsRaw = isNonEmpty(body.dinghyDetails)
+      ? toStr(body.dinghyDetails)
+      : isNonEmpty(body.dinghyNotes)
+      ? toStr(body.dinghyNotes)
+      : null;
 
-    const equipment = Array.isArray(body.equipment) ? body.equipment.filter(Boolean) : undefined;
+    const equipment = normalizeEquipment(body.equipment);
+    const imageUrls = normalizeStringArray(body.imageUrls);
 
     const heroImageUrl = isNonEmpty(body.heroImageUrl) ? toStr(body.heroImageUrl) : null;
-    const imageUrls = Array.isArray(body.imageUrls) ? body.imageUrls.filter(Boolean) : undefined;
 
     const contactPhone = isNonEmpty(body.contactPhone) ? toStr(body.contactPhone) : null;
 
     const brokerageName =
       sellerRole === "BROKER" && isNonEmpty(body.brokerageName) ? toStr(body.brokerageName) : null;
+
     const brokerageAddress =
       sellerRole === "BROKER" && isNonEmpty(body.brokerageAddress)
         ? toStr(body.brokerageAddress)
         : null;
+
     const brokerLogoUrl = isNonEmpty(body.brokerLogoUrl) ? toStr(body.brokerLogoUrl) : null;
+
+    const plan = body.plan === "FEATURED_HOME" || body.plan === "STANDARD" ? body.plan : "STANDARD";
 
     // ---------------- create ----------------
     const created = await prisma.listing.create({
       data: {
-        // ✅ owner of the listing
-        userId: s.uid,
+        ownerId, // ✅ matches your schema (ownerId/owner relation)
 
         status: "DRAFT",
+        plan,
+        paymentStatus: "NONE",
 
         title,
         description,
@@ -256,7 +337,7 @@ export async function POST(req) {
         price,
         currency,
 
-        locationCountry,
+        locationCountry, // ✅ ISO2
         locationCity,
         locationState,
         locationUsRegion,
@@ -288,11 +369,15 @@ export async function POST(req) {
         tankWater,
         tankHolding,
 
-        hasDinghy: hasDinghy ?? false,
-        dinghyModel: hasDinghy ? dinghyModel : null,
-        dinghyLength: hasDinghy ? dinghyLength : null,
-        dinghyLengthUnit: hasDinghy ? dinghyLengthUnit : null,
-        dinghyMotor: hasDinghy ? dinghyMotor : null,
+        hasDinghy,
+        // ✅ requires schema field: dinghyDetails String?
+        dinghyDetails: hasDinghy ? dinghyDetailsRaw : null,
+
+        // legacy dinghy fields kept null (optional, safe)
+        dinghyModel: null,
+        dinghyLength: null,
+        dinghyLengthUnit: null,
+        dinghyMotor: null,
 
         equipment,
         heroImageUrl,
@@ -307,13 +392,24 @@ export async function POST(req) {
         brokerageAddress,
         brokerLogoUrl,
       },
+      select: { id: true, previewToken: true },
     });
 
-    return NextResponse.json({ ok: true, listing: created }, { status: 201 });
+    const previewPath = `/listings/preview/${created.previewToken}`;
+
+    return NextResponse.json(
+      {
+        ok: true,
+        listingId: created.id,
+        previewPath,
+        previewUrl: previewPath,
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("POST /api/listings error:", error);
     return NextResponse.json(
-      { ok: false, error: "INTERNAL_ERROR", message: "Internal Server Error" },
+      { ok: false, code: "INTERNAL_ERROR", error: "Internal Server Error" },
       { status: 500 }
     );
   }

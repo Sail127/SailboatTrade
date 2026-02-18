@@ -5,6 +5,7 @@ import Footer from "../components/Footer.js";
 import { Inter, Libre_Baskerville } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
+import "react-international-phone/style.css";
 
 const sans = Inter({
   subsets: ["latin"],

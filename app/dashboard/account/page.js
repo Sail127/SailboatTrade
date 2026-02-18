@@ -5,10 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { notifyAuthChanged } from "@/lib/auth-client";
 
-/** ✅ Match Registration phone UI */
-import { PhoneInput } from "react-international-phone";
-import "react-international-phone/style.css";
-import { parsePhoneNumberFromString } from "libphonenumber-js";
+/** ✅ Shared phone helper + UI */
+import PhoneE164Field from "@/components/forms/PhoneE164Field";
+import { normalizePhoneToE164 } from "@/lib/phone";
 
 /** ✅ ISO countries (shared with registration) */
 import { getCountryOptions } from "@/lib/countries";
@@ -109,36 +108,6 @@ function EyeIcon({ open }) {
   );
 }
 
-function normalizePhoneToE164(raw) {
-  const s = String(raw || "").trim();
-  if (!s) return { e164: "", ok: true }; // empty clears
-  const pn = parsePhoneNumberFromString(s);
-  if (!pn) return { e164: "", ok: false };
-  if (!pn.isValid()) return { e164: "", ok: false };
-  return { e164: pn.number, ok: true };
-}
-
-function guessDefaultCountry() {
-  try {
-    const lang = (navigator.language || "").toLowerCase();
-    if (lang.includes("en-gb")) return "gb";
-    if (lang.includes("en-au")) return "au";
-    if (lang.includes("en-nz")) return "nz";
-    if (lang.includes("fr")) return "fr";
-    if (lang.includes("es")) return "es";
-    if (lang.includes("it")) return "it";
-    if (lang.includes("nl")) return "nl";
-    if (lang.includes("sv")) return "se";
-    if (lang.includes("pt")) return "pt";
-    if (lang.includes("el")) return "gr";
-    if (lang.includes("hr")) return "hr";
-    if (lang.includes("en-ca") || lang.includes("fr-ca")) return "ca";
-    return "us";
-  } catch {
-    return "us";
-  }
-}
-
 export default function AccountPage() {
   const [loading, setLoading] = useState(true);
 
@@ -197,12 +166,6 @@ export default function AccountPage() {
   const isUSA = homeportCountry === "US";
   const isBrokerUSA = brokerageCountry === "US";
 
-  // PhoneInput default country (best-effort)
-  const [defaultCountry, setDefaultCountry] = useState("us");
-  useEffect(() => {
-    setDefaultCountry(guessDefaultCountry());
-  }, []);
-
   useEffect(() => {
     let alive = true;
 
@@ -248,12 +211,6 @@ export default function AccountPage() {
         setHomeportState(u.homeportState || "");
         setHomeportAdmin1(u.homeportAdmin1 || "");
         setHomeportCity(u.homeportCity || "");
-
-        // If profile has a homeport country, prefer it for the phone selector default
-        if (u?.homeportCountry) {
-          const cc = String(u.homeportCountry).toLowerCase();
-          if (cc.length === 2) setDefaultCountry(cc);
-        }
       } catch (e) {
         if (!alive) return;
         setProfileErr(e?.message || "Could not load account details.");
@@ -491,9 +448,7 @@ export default function AccountPage() {
             {!emailVerified ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
                 <div className="font-semibold">Verify your email</div>
-                <div className="mt-1 text-amber-900/80">
-                  You must verify your email to post listings.
-                </div>
+                <div className="mt-1 text-amber-900/80">You must verify your email to post listings.</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -536,29 +491,23 @@ export default function AccountPage() {
                 </div>
               </div>
 
-              {/* Phone */}
+              {/* ✅ Phone (shared component) */}
               <div className={`mt-4 ${fieldWrap}`}>
-                <label className={labelBase}>
-                  Phone number <span className="font-normal text-slate-500">(optional)</span>
-                </label>
-
-                <div className="rounded-xl border px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40 bg-white">
-                  <PhoneInput
-                    defaultCountry={defaultCountry}
-                    value={phoneRaw}
-                    onChange={(v) => {
-                      setPhoneRaw(v);
-                      setPhoneMsg("");
-                    }}
-                    inputClassName="w-full !border-0 !shadow-none !outline-none !text-sm"
-                    countrySelectorStyleProps={{ buttonClassName: "!border-0 !shadow-none" }}
-                  />
-                </div>
-
-                {phoneMsg ? <div className="mt-2 text-xs font-semibold text-red-600">{phoneMsg}</div> : null}
-                <div className="mt-2 text-xs text-slate-600">
-                  Include country code. We store phone numbers in international format so they display correctly worldwide.
-                </div>
+                <PhoneE164Field
+                  label={
+                    <>
+                      Phone number <span className="font-normal text-slate-500">(optional)</span>
+                    </>
+                  }
+                  preferredCountry={homeportCountry} // prefers homeport when set (otherwise browser language fallback)
+                  value={phoneRaw}
+                  onChange={(v) => {
+                    setPhoneRaw(v);
+                    setPhoneMsg("");
+                  }}
+                  message={phoneMsg}
+                  help="Include country code. We store phone numbers in international format so they display correctly worldwide."
+                />
               </div>
 
               {/* Seller Role */}
@@ -699,18 +648,30 @@ export default function AccountPage() {
                   <div className="mt-4 space-y-4">
                     <div className={fieldWrap}>
                       <label className={labelBase}>Brokerage name</label>
-                      <input className={inputBase} value={brokerageName} onChange={(e) => setBrokerageName(e.target.value)} />
+                      <input
+                        className={inputBase}
+                        value={brokerageName}
+                        onChange={(e) => setBrokerageName(e.target.value)}
+                      />
                     </div>
 
                     <div className="flex flex-wrap gap-4">
                       <div className={fieldWrapSm}>
                         <label className={labelBase}>Street</label>
-                        <input className={inputBase} value={brokerageStreet} onChange={(e) => setBrokerageStreet(e.target.value)} />
+                        <input
+                          className={inputBase}
+                          value={brokerageStreet}
+                          onChange={(e) => setBrokerageStreet(e.target.value)}
+                        />
                       </div>
 
                       <div className={fieldWrapSm}>
                         <label className={labelBase}>City</label>
-                        <input className={inputBase} value={brokerageCity} onChange={(e) => setBrokerageCity(e.target.value)} />
+                        <input
+                          className={inputBase}
+                          value={brokerageCity}
+                          onChange={(e) => setBrokerageCity(e.target.value)}
+                        />
                       </div>
                     </div>
 
@@ -838,9 +799,7 @@ export default function AccountPage() {
 
             <Card title="Danger zone" subtitle="Permanently delete your account and your listings. This cannot be undone.">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-slate-600">
-                  If you no longer want an account, you can permanently delete it.
-                </div>
+                <div className="text-sm text-slate-600">If you no longer want an account, you can permanently delete it.</div>
 
                 <button
                   type="button"

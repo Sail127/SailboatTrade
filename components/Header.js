@@ -109,7 +109,34 @@ function initialsFromUser(user) {
   return "";
 }
 
-function MenuItemLink({ href, onPick, children }) {
+function LogoutIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  );
+}
+
+function DashboardChip({ user }) {
+  return (
+    <span className="h-6 w-6 rounded-full bg-white/10 ring-1 ring-white/15 grid place-items-center text-[11px] font-extrabold tracking-wide">
+      {initialsFromUser(user) || "U"}
+    </span>
+  );
+}
+
+function MenuItemLink({ href, onPick, icon, children }) {
   return (
     <Link
       href={href}
@@ -117,7 +144,10 @@ function MenuItemLink({ href, onPick, children }) {
       className="flex items-center justify-between px-3 py-2 text-[13px] font-semibold text-white hover:bg-white/10 transition"
       role="menuitem"
     >
-      <span className="text-white">{children}</span>
+      <span className="flex items-center gap-3">
+        {icon ? <span className="inline-flex h-6 w-6 items-center justify-center shrink-0">{icon}</span> : null}
+        <span className="text-white">{children}</span>
+      </span>
       <span className="text-white/35 text-lg leading-none">›</span>
     </Link>
   );
@@ -217,6 +247,15 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
             role="menu"
           >
             <div className="py-1">
+              {/* ✅ My Dashboard with SAME icon style as hamburger */}
+              <MenuItemLink
+                href="/dashboard"
+                onPick={() => setOpen(false)}
+                icon={<DashboardChip user={user} />}
+              >
+                My Dashboard
+              </MenuItemLink>
+
               <MenuItemLink href="/dashboard/listings" onPick={() => setOpen(false)}>
                 My Listings
               </MenuItemLink>
@@ -232,10 +271,6 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
               <MenuItemLink href="/dashboard/alerts" onPick={() => setOpen(false)}>
                 Email Alerts
               </MenuItemLink>
-
-              <MenuItemLink href="/dashboard/account" onPick={() => setOpen(false)}>
-                Account
-              </MenuItemLink>
             </div>
 
             <div className="border-t border-white/15 p-1">
@@ -249,7 +284,13 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
                 className="w-full text-left px-3 py-2 text-[13px] font-semibold text-white hover:bg-white/10 rounded-lg transition"
                 role="menuitem"
               >
-                Sign out
+                <span className="flex items-center gap-3">
+                  {/* ✅ Log Out icon SAME as hamburger */}
+                  <span className="inline-flex h-6 w-6 items-center justify-center shrink-0">
+                    <LogoutIcon />
+                  </span>
+                  <span>Log Out</span>
+                </span>
               </button>
             </div>
           </div>
@@ -407,8 +448,7 @@ export default function Header() {
               style={{
                 fontFamily: "var(--font-brand, inherit)",
                 letterSpacing: "0.03em",
-                textShadow:
-                  "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.18)",
+                textShadow: "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.18)",
               }}
             >
               Sailboat<span className="text-[#c8a44d]">Trade</span>
@@ -419,9 +459,7 @@ export default function Header() {
             <div className="text-[11px] text-slate-300">Built by Sailors – For Sailors</div>
           </Link>
 
-          {/* ✅ min-w-0 allows the search to shrink instead of dropping out */}
           <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* ✅ always visible + flex-shrinkable search */}
             <input
               type="search"
               placeholder="Search…"
@@ -433,7 +471,6 @@ export default function Header() {
               ].join(" ")}
             />
 
-            {/* Account button/menu */}
             <AccountMenu
               user={meUser}
               loading={meLoading}
@@ -441,7 +478,6 @@ export default function Header() {
               onBeforeNav={() => setOpen(false)}
             />
 
-            {/* Hamburger */}
             <div className="relative shrink-0" ref={menuRef}>
               <button
                 type="button"
@@ -493,13 +529,7 @@ export default function Header() {
                       }}
                     >
                       <span className={iconBox}>
-                        {meUser ? (
-                          <span className="h-6 w-6 rounded-full bg-white/10 ring-1 ring-white/15 grid place-items-center text-[11px] font-extrabold tracking-wide">
-                            {initialsFromUser(meUser)}
-                          </span>
-                        ) : (
-                          <UserSilhouetteIcon className="h-4 w-4" stroke="#ffffff" />
-                        )}
+                        {meUser ? <DashboardChip user={meUser} /> : <UserSilhouetteIcon className="h-4 w-4" stroke="#ffffff" />}
                       </span>
                       {meUser ? "My Dashboard" : "Login"}
                     </a>
@@ -507,19 +537,7 @@ export default function Header() {
                     {meUser && (
                       <button type="button" onClick={onLogout} className={logoutBtn}>
                         <span className={iconBox} aria-hidden="true">
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                            <path d="M16 17l5-5-5-5" />
-                            <path d="M21 12H9" />
-                          </svg>
+                          <LogoutIcon />
                         </span>
                         Log Out
                       </button>
@@ -534,4 +552,3 @@ export default function Header() {
     </header>
   );
 }
-

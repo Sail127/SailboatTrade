@@ -2,7 +2,7 @@
 
 /* Theme tokens */
 @theme {
-  --color-navy: #0a2230; /* unified navy */
+  --color-navy: #0a2230;
   --color-gold: #c8a44d;
   --color-sand: #f4e1c1;
   --color-sea:  #1e81b0;
@@ -14,78 +14,95 @@
 }
 
 :root {
-  --color-navy: #0a2230; /* unified navy */
+  --color-navy: #0a2230;
   --color-gold: #c8a44d;
   --color-sand: #f4e1c1;
   --color-sea:  #1e81b0;
   --color-canvas: #f8fafc;
 }
 
-/* Base */
-html {
-  color-scheme: light;
-  scroll-behavior: smooth;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+/* ✅ IMPORTANT:
+   Put element styles in the Tailwind base layer so utilities (text-white, etc.)
+   can override them reliably across the entire app. */
+@layer base {
+  html {
+    color-scheme: light;
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-body {
-  /* Dark frame (header/footer), light canvas handled by layout <main> */
-  background-color: var(--color-navy, #0a2230);
-  color: #0f172a; /* slate-900 for light canvas */
-  font-family: var(--font-sans);
-  font-size: 0.9375rem; /* ~15px base text */
-  line-height: 1.6;
-}
+  body {
+    background-color: var(--color-navy, #0a2230);
+    color: #0f172a; /* slate-900 */
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
 
-/* Headings inherit color (no forced white) */
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  color: inherit;
-  line-height: 1.25;
-}
+  /* ✅ FIX: headings no longer override Tailwind utility colors */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.25;
+    /* keep inherit if you want, utilities will override now because this is base layer */
+    color: inherit;
+  }
 
-/* Links */
-a {
-  color: inherit;
-}
+  a {
+    color: inherit;
+  }
 
-/* Only remove underline from plain links (no class).
-   Tailwind-styled links (with className) can underline normally. */
-a:not([class]) {
-  text-decoration: none;
-}
+  a:not([class]) {
+    text-decoration: none;
+  }
 
+  input,
+  select,
+  textarea {
+    color: #0f172a;
+    background-color: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 100%;
+  }
 
-/* Forms (light surfaces) */
-input,
-select,
-textarea {
-  color: #0f172a;
-  background-color: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  width: 100%;
-}
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-gold);
+    box-shadow: 0 0 0 1px var(--color-gold);
+  }
 
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--color-gold);
-  box-shadow: 0 0 0 1px var(--color-gold);
-}
+  ::placeholder {
+    color: #94a3b8;
+  }
 
-::placeholder {
-  color: #94a3b8; /* slate-400 */
-}
+  footer {
+    background: var(--color-navy);
+    color: #fff;
+  }
 
-/* Footer */
-footer {
-  background: var(--color-navy);
-  color: #fff;
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(10, 34, 48, 0.35);
+    border-radius: 0.5rem;
+  }
+
+  img {
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  button {
+    transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+  }
+
+  button:active {
+    transform: translateY(0.5px);
+  }
 }
 
 /* Site Width Container */
@@ -101,23 +118,4 @@ footer {
     padding-left: 2rem;
     padding-right: 2rem;
   }
-}
-
-/* Global polish */
-:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(10, 34, 48, 0.35);
-  border-radius: 0.5rem;
-}
-
-img {
-  user-select: none;
-  -webkit-user-drag: none;
-}
-
-button {
-  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
-}
-button:active {
-  transform: translateY(0.5px);
 }

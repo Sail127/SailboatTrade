@@ -1,22 +1,23 @@
 // app/listings/preview/[token]/page.js
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
-import ListingDetail from "@/components/ListingDetail";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED = ["DRAFT", "READY_FOR_CHECKOUT", "PENDING_REVIEW", "REJECTED"];
-
-export default async function PreviewListing({ params }) {
-  const token = params.token;
+export default async function PreviewListingPage({ params }) {
+  const token = String(params?.token || "").trim();
+  if (!token) return notFound();
 
   const listing = await prisma.listing.findFirst({
-    where: { previewToken: token, status: { in: ALLOWED } },
-    include: { owner: { select: { email: true, id: true } } },
+    where: { previewToken: token },
+    select: { id: true, status: true },
   });
 
   if (!listing) return notFound();
 
-  // Let ListingMedia fetch images via /api/uploads?key=...&token=...
-  return <ListingDetail listing={{ ...listing, __previewToken: token }} />;
+  const status = String(listing.status || "").toUpperCase();
+  if (status === "REMOVED") return notFound(); // no token previews for removed listings
+
+  redirect(`/listings/${listing.id}?token=${encodeURIComponent(token)}`);
 }

@@ -3,64 +3,77 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCountryOptions } from "@/lib/countries";
 
 const RAW_BUILDERS = [
-  "Beneteau","Jeanneau","Lagoon","Catalina","Fountaine Pajot","Dufour","Bavaria",
-  "Hunter","Hanse","X-Yachts","Oyster","Hallberg-Rassy","Island Packet","J/Boats",
-  "Elan","Excess","Hylas","Leopard","Bali","Nautitech",
+  "Beneteau",
+  "Jeanneau",
+  "Lagoon",
+  "Catalina",
+  "Fountaine Pajot",
+  "Dufour",
+  "Bavaria",
+  "Hunter",
+  "Hanse",
+  "X-Yachts",
+  "Oyster",
+  "Hallberg-Rassy",
+  "Island Packet",
+  "J/Boats",
+  "Elan",
+  "Excess",
+  "Hylas",
+  "Leopard",
+  "Bali",
+  "Nautitech",
 ];
 const TOP5 = ["Beneteau", "Jeanneau", "Lagoon", "Catalina", "Bavaria"];
 
-const POPULAR_COUNTRIES = [
-  { label: "All", value: "" },
-  { label: "USA", value: "United States" },
-  { label: "Canada", value: "Canada" },
-  { label: "United Kingdom", value: "United Kingdom" },
-  { label: "France", value: "France" },
-  { label: "Italy", value: "Italy" },
-  { label: "Spain", value: "Spain" },
-  { label: "Greece", value: "Greece" },
-  { label: "Croatia", value: "Croatia" },
-  { label: "Australia", value: "Australia" },
-  { label: "New Zealand", value: "New Zealand" },
-  { label: "Netherlands", value: "Netherlands" },
-  { label: "Sweden", value: "Sweden" },
-  { label: "Portugal", value: "Portugal" },
-];
-
+// ✅ Match your listing form enum values (and add an "All" option for search)
 const US_REGION_OPTIONS = [
   { label: "All USA regions", value: "" },
   { label: "West Coast", value: "WEST_COAST" },
   { label: "East Coast", value: "EAST_COAST" },
   { label: "Gulf Coast", value: "GULF_COAST" },
   { label: "Great Lakes", value: "GREAT_LAKES" },
+  { label: "Hawaii", value: "HAWAII" },
   { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
+  { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
 ];
 
 function orderBuilders() {
-  const set = new Set(RAW_BUILDERS.map((m) => m.trim()));
+  const set = new Set(RAW_BUILDERS.map((m) => m.trim()).filter(Boolean));
   const deduped = Array.from(set);
   const rest = deduped.filter((m) => !TOP5.includes(m)).sort((a, b) => a.localeCompare(b));
   return [...TOP5, ...rest];
 }
 
-function normalizeCountry(raw) {
-  const s = String(raw ?? "").trim();
-  const lower = s.toLowerCase();
-  if (
-    lower === "usa" ||
-    lower === "us" ||
-    lower === "u.s." ||
-    lower === "u.s.a." ||
-    lower === "united states" ||
-    lower === "united states of america"
-  ) {
-    return "United States";
-  }
-  return s;
+function buildYearOptions() {
+  const nowYear = new Date().getFullYear();
+  const max = nowYear + 1;
+  const min = 1950;
+  const out = [];
+  for (let y = max; y >= min; y--) out.push(String(y));
+  return out;
 }
 
-/** Small inline FT/M toggle (same size as label) */
+function buildCountryOptionsForSearch() {
+  // getCountryOptions() already includes { value:"", label:"Select…" } at top.
+  const opts = getCountryOptions("en") || [];
+  const rest = opts.filter((o) => o?.value); // remove the blank Select…
+  return [{ value: "", label: "All" }, ...rest];
+}
+
+function buildLoaSuggestions(unit) {
+  // Simple “common picks” while still allowing typing
+  if (unit === "m") {
+    return ["6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "18", "20", "22", "24"];
+  }
+  // ft
+  return ["20", "22", "25", "27", "30", "32", "35", "37", "40", "42", "45", "50", "55", "60", "65", "70", "75"];
+}
+
+/** Small inline FT/M toggle */
 function SmallUnitToggle({ value, onChange }) {
   const btn = "px-1.5 py-[1px] rounded-md text-[11px] font-semibold transition";
   return (
@@ -96,7 +109,6 @@ function SmallUnitToggle({ value, onChange }) {
 }
 
 function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
-  // ↓ reduce border/padding/size ~15% vs the prior tiles
   const tileW = "w-[66px]";
   const tileH = "h-[56px]";
   const base =
@@ -115,7 +127,6 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
       aria-pressed={active}
       title={label}
     >
-      {/* subtle gold underline when active */}
       <span
         className={[
           "absolute left-2 right-2 bottom-1 h-[2px] rounded-full transition",
@@ -125,24 +136,19 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
       />
 
       {isAll ? (
-        // ✅ center ALL vertically, no duplicate label
         <div className="h-full w-full flex items-center justify-center">
-          <span className="text-white font-extrabold tracking-wide text-[13px] leading-none">
-            ALL
-          </span>
+          <span className="text-white font-extrabold tracking-wide text-[13px] leading-none">ALL</span>
         </div>
       ) : (
         <div className="h-full w-full flex flex-col items-center justify-center">
-          {/* ✅ PNG fills tile width nearly completely */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imgSrc}
             alt=""
             draggable={false}
             className="w-[88%] h-[28px] object-contain opacity-95"
           />
-          <span className="mt-1 text-[10px] font-semibold text-white/80 leading-none">
-            {label}
-          </span>
+          <span className="mt-1 text-[10px] font-semibold text-white/80 leading-none">{label}</span>
         </div>
       )}
     </button>
@@ -151,38 +157,43 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
 
 export default function AdvancedSearchBar({ variant = "dark" }) {
   const router = useRouter();
+
   const builders = useMemo(orderBuilders, []);
-  const isDark = variant === "dark";
+  const yearOptions = useMemo(buildYearOptions, []);
+  const countryOptions = useMemo(buildCountryOptionsForSearch, []);
 
   const [q, setQ] = useState("");
-  const [type, setType] = useState("both"); // default ALL
+  const [type, setType] = useState("both"); // ALL
   const [builder, setBuilder] = useState("");
   const [yearMin, setYearMin] = useState("");
   const [yearMax, setYearMax] = useState("");
   const [loaUnit, setLoaUnit] = useState("ft");
   const [loaMin, setLoaMin] = useState("");
   const [loaMax, setLoaMax] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(""); // ✅ ISO alpha-2 or ""
   const [usRegion, setUsRegion] = useState("");
 
-  const countryNorm = normalizeCountry(country);
-  const isUSA = countryNorm === "United States";
+  const isUSA = String(country || "").toUpperCase() === "US";
+  const loaSuggestions = useMemo(() => buildLoaSuggestions(loaUnit), [loaUnit]);
 
-  const shell =
-    "w-full rounded-2xl bg-[#0a2230] p-5 shadow-lg ring-1 ring-white/15";
+  const shell = "w-full rounded-2xl bg-[#0a2230] p-5 shadow-lg ring-1 ring-white/15";
 
-  // ✅ labels a bit bigger
-  const label =
-    "block text-[12px] font-semibold tracking-wide text-white/80";
+  const label = "block text-[12px] font-semibold tracking-wide text-white/80";
 
+  // ✅ Force white inputs regardless of globals.css
   const input =
-    "h-10 w-full rounded-full border border-white/25 bg-[#071523] px-3 text-sm text-white placeholder:text-white/45 outline-none focus:border-white/40 focus:ring-2 focus:ring-white/10";
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none " +
+    "!bg-white !text-[#0a2230] placeholder:!text-slate-400 " +
+    "focus:border-[#c8a44d]/60 focus:ring-2 focus:ring-[#c8a44d]/30";
 
   const select =
-    "h-10 w-full rounded-full border border-white/25 bg-[#071523] px-3 text-sm text-white outline-none focus:border-white/40 focus:ring-2 focus:ring-white/10";
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none " +
+    "!bg-white !text-[#0a2230] " +
+    "focus:border-[#c8a44d]/60 focus:ring-2 focus:ring-[#c8a44d]/30";
 
   const button =
-    "h-10 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]";
+    "h-10 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
+    "hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]";
 
   const submit = (e) => {
     e.preventDefault();
@@ -195,18 +206,22 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
 
     put("q", q);
     if (type && type !== "both") put("type", type);
+
     put("builder", builder);
+
     put("yearMin", yearMin);
     put("yearMax", yearMax);
 
-    // Your listings page can map these to whatever it expects
     put("loaUnit", loaUnit);
     put("loaMin", loaMin);
     put("loaMax", loaMax);
 
-    const c = normalizeCountry(country);
-    if (c) params.set("country", c);
-    if (c === "United States") put("usRegion", usRegion);
+    // ✅ Country is ISO alpha-2 (matches your listing form + DB)
+    if (country) params.set("country", String(country).toUpperCase());
+    else params.delete("country");
+
+    // ✅ Only allow usRegion when country is US
+    if (isUSA) put("usRegion", usRegion);
     else params.delete("usRegion");
 
     params.delete("page");
@@ -218,10 +233,22 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
   return (
     <section className="w-full">
       <form onSubmit={submit} className={shell}>
-        {/* ROW 1: Keyword (narrower) + Year (between) + Builder + Search */}
+        {/* datalists: typing OR picking */}
+        <datalist id="st-year-options">
+          {yearOptions.map((y) => (
+            <option key={y} value={y} />
+          ))}
+        </datalist>
+
+        <datalist id={`st-loa-${loaUnit}`}>
+          {loaSuggestions.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+
+        {/* ROW 1: Keyword + Year + Builder + Search */}
         <div className="grid grid-cols-12 gap-3 items-end">
-          {/* ✅ keyword reduced width by ~50% on desktop via col-span */}
-          <div className="col-span-12 md:col-span-4">
+          <div className="col-span-12 md:col-span-4 min-w-0">
             <label className={label}>Keyword search</label>
             <input
               type="text"
@@ -232,19 +259,22 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
             />
           </div>
 
-          {/* ✅ move year between keyword and builder (top row) */}
-          <div className="col-span-12 md:col-span-3">
+          <div className="col-span-12 md:col-span-3 min-w-0">
             <label className={label}>Year</label>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                list="st-year-options"
                 placeholder="Min"
                 className={input}
                 value={yearMin}
                 onChange={(e) => setYearMin(e.target.value)}
               />
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                list="st-year-options"
                 placeholder="Max"
                 className={input}
                 value={yearMax}
@@ -253,13 +283,10 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
             </div>
           </div>
 
-          <div className="col-span-12 md:col-span-4">
+          {/* ✅ Builder less wide + min-w-0 so it won’t overflow */}
+          <div className="col-span-12 md:col-span-3 min-w-0">
             <label className={label}>Builder</label>
-            <select
-              className={select}
-              value={builder}
-              onChange={(e) => setBuilder(e.target.value)}
-            >
+            <select className={select} value={builder} onChange={(e) => setBuilder(e.target.value)}>
               <option value="">All</option>
               {builders.map((b) => (
                 <option key={b} value={b}>
@@ -270,114 +297,130 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
             </select>
           </div>
 
-          <div className="col-span-12 md:col-span-1 md:flex md:justify-end">
-            <button type="submit" className={button}>
+          {/* ✅ Give the button more space so nothing tucks under it */}
+          <div className="col-span-12 md:col-span-2 md:flex md:justify-end">
+            <button type="submit" className={`${button} w-full md:w-auto`}>
               Search
             </button>
           </div>
         </div>
 
-        {/* ROW 2: Hull + LOA + Country/Region */}
-        <div className="mt-4 grid grid-cols-12 gap-3 items-end">
-          {/* Hull type */}
-          <div className="col-span-12 lg:col-span-4">
-            <div className={label}>Hull type</div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <HullTile
-                active={type === "both"}
-                onClick={() => setType("both")}
-                label="All"
-                isAll
-              />
-              <HullTile
-                active={type === "monohull"}
-                onClick={() => setType("monohull")}
-                label="Monohull"
-                imgSrc="/images/hulls/monohull.png"
-              />
-              <HullTile
-                active={type === "catamaran"}
-                onClick={() => setType("catamaran")}
-                label="Catamaran"
-                imgSrc="/images/hulls/catamaran.png"
-              />
-              <HullTile
-                active={type === "trimaran"}
-                onClick={() => setType("trimaran")}
-                label="Trimaran"
-                imgSrc="/images/hulls/trimaran.png"
-              />
-            </div>
-          </div>
+{/* ROW 2: Hull + LOA + Country/Region */}
+<div className="mt-4 grid grid-cols-12 gap-3 items-end">
+  {/* Hull type */}
+  <div className="col-span-12 lg:col-span-4">
+    <div className={label}>Hull type</div>
+    <div className="mt-2 flex flex-wrap gap-2">
+      <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
+      <HullTile
+        active={type === "monohull"}
+        onClick={() => setType("monohull")}
+        label="Monohull"
+        imgSrc="/images/hulls/monohull.png"
+      />
+      <HullTile
+        active={type === "catamaran"}
+        onClick={() => setType("catamaran")}
+        label="Catamaran"
+        imgSrc="/images/hulls/catamaran.png"
+      />
+      <HullTile
+        active={type === "trimaran"}
+        onClick={() => setType("trimaran")}
+        label="Trimaran"
+        imgSrc="/images/hulls/trimaran.png"
+      />
+    </div>
+  </div>
 
-          {/* LOA */}
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4">
-            <div className="flex items-center justify-between">
-              <label className={label}>
-                LOA <span className="text-white/55 font-semibold">(length overall)</span>
-                <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
-              </label>
-              <span />
-            </div>
+  {/* ✅ LOA (narrower + matches Year width) */}
+  <div className="col-span-12 sm:col-span-6 lg:col-span-3 min-w-0">
+    <div className="flex items-center justify-between">
+      <label className={label}>
+        LOA <span className="text-white/55 font-semibold">(length overall)</span>
+        <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+      </label>
+      <span />
+    </div>
 
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="Min Length"
-                className={input}
-                value={loaMin}
-                onChange={(e) => setLoaMin(e.target.value)}
-              />
-              <input
-                type="number"
-                placeholder="Max Length"
-                className={input}
-                value={loaMax}
-                onChange={(e) => setLoaMax(e.target.value)}
-              />
-            </div>
-          </div>
+    <div className="mt-2 grid grid-cols-2 gap-2">
+      <input
+        type="text"
+        inputMode="decimal"
+        list={`st-loa-${loaUnit}`}
+        placeholder="Min Length"
+        className={input}
+        value={loaMin}
+        onChange={(e) => setLoaMin(e.target.value)}
+      />
+      <input
+        type="text"
+        inputMode="decimal"
+        list={`st-loa-${loaUnit}`}
+        placeholder="Max Length"
+        className={input}
+        value={loaMax}
+        onChange={(e) => setLoaMax(e.target.value)}
+      />
+    </div>
+  </div>
 
-          {/* Country / USA Region */}
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4">
-            <label className={label}>{isUSA ? "Country / Region" : "Country"}</label>
+  {/* ✅ Country / USA Region (wider so Region fits naturally) */}
+  <div className="col-span-12 sm:col-span-6 lg:col-span-5 min-w-0">
+    <label className={label}>{isUSA ? "Country / USA Region" : "Country"}</label>
 
-            <div className="mt-2 flex gap-2">
-              <select
-                className={select}
-                value={country}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setCountry(next);
-                  if (normalizeCountry(next) !== "United States") setUsRegion("");
-                }}
-                style={{ width: isUSA ? "55%" : "100%" }}
-              >
-                {POPULAR_COUNTRIES.map((c) => (
-                  <option key={c.label} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+    {!isUSA ? (
+      <div className="mt-2">
+        <select
+          className={select}
+          value={country}
+          onChange={(e) => {
+            const next = String(e.target.value || "").toUpperCase();
+            setCountry(next);
+            if (next !== "US") setUsRegion("");
+          }}
+        >
+          {countryOptions.map((c) => (
+            <option key={c.value || "all"} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : (
+      <div className="mt-2 flex gap-2">
+        <select
+          className={`${select} flex-1 min-w-0`}
+          value={country}
+          onChange={(e) => {
+            const next = String(e.target.value || "").toUpperCase();
+            setCountry(next);
+            if (next !== "US") setUsRegion("");
+          }}
+        >
+          {countryOptions.map((c) => (
+            <option key={c.value || "all"} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
 
-              {isUSA && (
-                <select
-                  className={select}
-                  value={usRegion}
-                  onChange={(e) => setUsRegion(e.target.value)}
-                  style={{ width: "45%" }}
-                  aria-label="USA Region"
-                >
-                  {US_REGION_OPTIONS.map((o) => (
-                    <option key={o.value || "all"} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-        </div>
+        <select
+          className={`${select} flex-1 min-w-0`}
+          value={usRegion}
+          onChange={(e) => setUsRegion(e.target.value)}
+          aria-label="USA Region"
+        >
+          {US_REGION_OPTIONS.map((o) => (
+            <option key={o.value || "all"} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    )}
+  </div>
+</div>
       </form>
     </section>
   );

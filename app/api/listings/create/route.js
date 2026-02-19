@@ -97,17 +97,16 @@ export async function POST(req) {
   try {
     // ✅ Require login
     const s = await requireUser().catch(() => null);
-    const body = await req.json().catch(() => ({}));
+if (!s?.uid) {
+  return NextResponse.json(
+    { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
+    { status: 401 }
+  );
+}
 
-    const ownerIdRaw = s?.uid ?? s?.id ?? s?.userId;
-    const ownerId = ownerIdRaw ? String(ownerIdRaw) : "";
+const body = await req.json().catch(() => ({}));
+const ownerId = String(s.uid);
 
-    if (!ownerId) {
-      return NextResponse.json(
-        { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
-        { status: 401 }
-      );
-    }
 
     // ✅ Phase 1: require verified email to create listings
     const u = await prisma.user.findUnique({

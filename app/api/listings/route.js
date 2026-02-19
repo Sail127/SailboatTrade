@@ -1,6 +1,7 @@
 // app/api/listings/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { requireUser } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,19 +33,15 @@ export async function GET() {
  */
 export async function POST(req) {
   try {
-    // ✅ Require login (dynamic import avoids bundling issues)
-    const { requireUser } = await import("@/lib/auth");
+    // ✅ Require login
     const s = await requireUser().catch(() => null);
-
-    const ownerIdRaw = s?.uid ?? s?.id ?? s?.userId;
-    const ownerId = ownerIdRaw ? String(ownerIdRaw) : "";
-
-    if (!ownerId) {
+    if (!s?.uid) {
       return NextResponse.json(
         { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
         { status: 401 }
       );
     }
+    const ownerId = String(s.uid);
 
     // ✅ Require verified email to create listings (Phase 1)
     const u = await prisma.user.findUnique({
@@ -131,7 +128,6 @@ export async function POST(req) {
       // already ISO2
       if (/^[A-Z]{2}$/.test(u)) return u;
 
-      // if someone passes a full name, we refuse (to protect schema integrity)
       return null;
     };
 
@@ -193,15 +189,15 @@ export async function POST(req) {
       return null;
     };
 
-    // ---------------- required (match your form’s required set) ----------------
+    // ---------------- required ----------------
     const description = toStr(body.description);
 
     const year = toInt(body.year);
     const builder = isNonEmpty(body.builder) ? toStr(body.builder) : null;
     const model = isNonEmpty(body.model) ? toStr(body.model) : null;
 
-    const boatCondition = normalizeBoatCondition(body.boatCondition); // NEW | USED
-    const type = normalizeHullType(body.type); // MONOHULL | CATAMARAN | TRIMARAN
+    const boatCondition = normalizeBoatCondition(body.boatCondition);
+    const type = normalizeHullType(body.type);
 
     const loa = toFloat(body.loa);
     const loaUnit = isFtOrM(body.loaUnit) ? String(body.loaUnit).toLowerCase() : "ft";
@@ -213,12 +209,11 @@ export async function POST(req) {
     const locationCity = isNonEmpty(body.locationCity) ? toStr(body.locationCity) : null;
 
     const isUSA = locationCountry === "US";
-
     const locationState = isUSA && isNonEmpty(body.locationState) ? toStr(body.locationState) : null;
     const locationUsRegion =
       isUSA && isNonEmpty(body.locationUsRegion) ? upperOrNull(body.locationUsRegion) : null;
 
-    const sellerRole = normalizeSellerRole(body.sellerRole); // OWNER | BROKER
+    const sellerRole = normalizeSellerRole(body.sellerRole);
     const listingContactName = toStr(body.listingContactName);
     const contactEmail = toStr(body.contactEmail);
 
@@ -251,7 +246,7 @@ export async function POST(req) {
       );
     }
 
-    // ---------------- optional fields ----------------
+    // ---------------- optional ----------------
     const title = isNonEmpty(body.title)
       ? toStr(body.title)
       : [year, builder, model].filter(Boolean).join(" ");
@@ -286,7 +281,6 @@ export async function POST(req) {
     const tankWater = toFloat(body.tankWater);
     const tankHolding = toFloat(body.tankHolding);
 
-    // ✅ Dinghy (new form shape)
     const hasDinghy = coerceYesNoToBool(body.hasDinghy) ?? false;
     const dinghyDetailsRaw = isNonEmpty(body.dinghyDetails)
       ? toStr(body.dinghyDetails)
@@ -305,9 +299,7 @@ export async function POST(req) {
       sellerRole === "BROKER" && isNonEmpty(body.brokerageName) ? toStr(body.brokerageName) : null;
 
     const brokerageAddress =
-      sellerRole === "BROKER" && isNonEmpty(body.brokerageAddress)
-        ? toStr(body.brokerageAddress)
-        : null;
+      sellerRole === "BROKER" && isNonEmpty(body.brokerageAddress) ? toStr(body.brokerageAddress) : null;
 
     const brokerLogoUrl = isNonEmpty(body.brokerLogoUrl) ? toStr(body.brokerLogoUrl) : null;
 
@@ -316,8 +308,7 @@ export async function POST(req) {
     // ---------------- create ----------------
     const created = await prisma.listing.create({
       data: {
-        ownerId, // ✅ matches your schema (ownerId/owner relation)
-
+        ownerId,
         status: "DRAFT",
         plan,
         paymentStatus: "NONE",
@@ -337,7 +328,7 @@ export async function POST(req) {
         price,
         currency,
 
-        locationCountry, // ✅ ISO2
+        locationCountry,
         locationCity,
         locationState,
         locationUsRegion,
@@ -370,10 +361,8 @@ export async function POST(req) {
         tankHolding,
 
         hasDinghy,
-        // ✅ requires schema field: dinghyDetails String?
         dinghyDetails: hasDinghy ? dinghyDetailsRaw : null,
 
-        // legacy dinghy fields kept null (optional, safe)
         dinghyModel: null,
         dinghyLength: null,
         dinghyLengthUnit: null,
@@ -398,12 +387,7 @@ export async function POST(req) {
     const previewPath = `/listings/preview/${created.previewToken}`;
 
     return NextResponse.json(
-      {
-        ok: true,
-        listingId: created.id,
-        previewPath,
-        previewUrl: previewPath,
-      },
+      { ok: true, listingId: created.id, previewPath, previewUrl: previewPath },
       { status: 201 }
     );
   } catch (error) {

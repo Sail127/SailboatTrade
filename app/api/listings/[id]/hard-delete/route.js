@@ -14,7 +14,14 @@ function isSafeKey(key) {
 }
 
 function uniq(arr) {
-  return Array.from(new Set(arr.filter(Boolean).map((x) => String(x).trim()).filter(Boolean)));
+  return Array.from(
+    new Set(
+      arr
+        .filter(Boolean)
+        .map((x) => String(x).trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 async function isKeyUsedElsewhere({ listingId, key }) {
@@ -34,7 +41,29 @@ async function isKeyUsedElsewhere({ listingId, key }) {
 }
 
 export async function POST(req, { params }) {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        s = await requireUser();
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const listing = await prisma.listing.findFirst({
     where: { id: params.id, ownerId: s.uid },
@@ -56,8 +85,11 @@ export async function POST(req, { params }) {
   const status = String(listing.status || "").toUpperCase();
   if (status !== "ARCHIVED") {
     return Response.json(
-      { ok: false, error: "You can only permanently delete ARCHIVED listings." },
-      { status: 400 }
+      {
+        ok: false,
+        error: "You can only permanently delete ARCHIVED listings.",
+      },
+      { status: 400 },
     );
   }
 
@@ -67,14 +99,19 @@ export async function POST(req, { params }) {
     listing.brokerLogoUrl,
     listing.pendingHeroImageUrl,
     ...(Array.isArray(listing.imageUrls) ? listing.imageUrls : []),
-    ...(Array.isArray(listing.pendingImageUrls) ? listing.pendingImageUrls : []),
+    ...(Array.isArray(listing.pendingImageUrls)
+      ? listing.pendingImageUrls
+      : []),
   ]).filter(isSafeKey);
 
   // Skip keys referenced by other listings
   const deletable = [];
   for (const key of keys) {
     // eslint-disable-next-line no-await-in-loop
-    const usedElsewhere = await isKeyUsedElsewhere({ listingId: listing.id, key });
+    const usedElsewhere = await isKeyUsedElsewhere({
+      listingId: listing.id,
+      key,
+    });
     if (!usedElsewhere) deletable.push(key);
   }
 
@@ -83,7 +120,7 @@ export async function POST(req, { params }) {
   const Bucket = getR2Bucket();
 
   const results = await Promise.allSettled(
-    deletable.map((Key) => r2.send(new DeleteObjectCommand({ Bucket, Key })))
+    deletable.map((Key) => r2.send(new DeleteObjectCommand({ Bucket, Key }))),
   );
 
   const failed = results
@@ -98,10 +135,11 @@ export async function POST(req, { params }) {
     return Response.json(
       {
         ok: false,
-        error: "Could not delete all images from storage. Listing was NOT deleted.",
+        error:
+          "Could not delete all images from storage. Listing was NOT deleted.",
         failed,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 

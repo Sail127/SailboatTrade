@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
+import CheckoutUI from "./ui";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export default async function CheckoutPage({ params, searchParams }) {
       paymentStatus: true,
       paidAt: true,
       submittedForReviewAt: true,
+      previewToken: true,
       year: true,
       builder: true,
       model: true,
@@ -58,7 +60,6 @@ export default async function CheckoutPage({ params, searchParams }) {
 
   const titleLine = titleFromListing(listing);
 
-  // Pricing display (server-side only)
   const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "", 10);
   const standardCents = Number.parseInt(process.env.STANDARD_PRICE_USD_CENTS || "", 10);
 
@@ -70,6 +71,13 @@ export default async function CheckoutPage({ params, searchParams }) {
 
   const alreadyPaid = listing.paymentStatus === "PAID";
   const pendingReview = listing.status === "PENDING_REVIEW";
+
+  // plan preference from querystring (set by /api/checkout redirect) or listing.plan fallback
+  const planFromQuery = String(searchParams?.plan || "").toUpperCase();
+  const initialPlan =
+    planFromQuery === "STANDARD" || planFromQuery === "FEATURED_HOME"
+      ? planFromQuery
+      : String(listing.plan || "FEATURED_HOME");
 
   return (
     <div className="py-10">
@@ -113,13 +121,18 @@ export default async function CheckoutPage({ params, searchParams }) {
                     <span className="text-slate-500"> • Paid: {new Date(listing.paidAt).toLocaleString()}</span>
                   ) : null}
                 </div>
-                <div className="mt-2">
-                  <Link
-                    href={`/listings/${listing.id}`}
-                    className="font-semibold text-blue-700 underline underline-offset-2"
-                  >
+                <div className="mt-2 flex gap-3">
+                  <Link href={`/listings/${listing.id}`} className="font-semibold text-blue-700 underline underline-offset-2">
                     Return to listing
                   </Link>
+                  {listing.previewToken ? (
+                    <Link
+                      href={`/listings/preview/${listing.previewToken}`}
+                      className="font-semibold text-blue-700 underline underline-offset-2"
+                    >
+                      View preview
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ) : pendingReview ? (
@@ -130,85 +143,27 @@ export default async function CheckoutPage({ params, searchParams }) {
                     Submitted: {new Date(listing.submittedForReviewAt).toLocaleString()}
                   </div>
                 ) : null}
-                <div className="mt-2">
-                  <Link
-                    href={`/listings/${listing.id}`}
-                    className="font-semibold text-blue-700 underline underline-offset-2"
-                  >
+                <div className="mt-2 flex gap-3">
+                  <Link href={`/listings/${listing.id}`} className="font-semibold text-blue-700 underline underline-offset-2">
                     Return to listing
                   </Link>
+                  {listing.previewToken ? (
+                    <Link
+                      href={`/listings/preview/${listing.previewToken}`}
+                      className="font-semibold text-blue-700 underline underline-offset-2"
+                    >
+                      View preview
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ) : (
-              <>
-                <div className="text-[13px] text-slate-700">
-                  Choose a plan, then you’ll be redirected to Stripe to complete payment.
-                  After payment, your listing moves to <span className="font-semibold">PENDING_REVIEW</span> for admin approval.
-                </div>
-
-                <form action="/api/checkout" method="post" className="space-y-4">
-                  <input type="hidden" name="listingId" value={listing.id} />
-
-                  <div className="rounded-2xl border border-slate-200 overflow-hidden">
-                    <label className="flex items-start gap-3 px-4 py-3 border-b border-slate-200 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="plan"
-                        value="STANDARD"
-                        defaultChecked={listing.plan === "STANDARD"}
-                        className="mt-1"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-[13px] font-extrabold text-[#0a2230]">
-                          Standard Listing <span className="ml-2 font-extrabold text-slate-700">{standardPrice}</span>
-                        </div>
-                        <div className="text-[12px] text-slate-600">
-                          Submit your listing for review and publishing.
-                        </div>
-                      </div>
-                    </label>
-
-                    <label className="flex items-start gap-3 px-4 py-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="plan"
-                        value="FEATURED_HOME"
-                        defaultChecked={listing.plan === "FEATURED_HOME"}
-                        className="mt-1"
-                      />
-                      <div className="min-w-0">
-                        <div className="text-[13px] font-extrabold text-[#0a2230]">
-                          Featured on Homepage{" "}
-                          <span className="ml-2 font-extrabold text-slate-700">{featuredPrice}</span>
-                        </div>
-                        <div className="text-[12px] text-slate-600">
-                          Priority placement on the homepage (after admin approval).
-                        </div>
-                      </div>
-                    </label>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-                    <Link
-                      href={`/listings/new?edit=${encodeURIComponent(listing.id)}`}
-                      className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-6 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
-                    >
-                      Edit Draft
-                    </Link>
-
-                    <button
-                      type="submit"
-                      className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-8 text-[13px] font-semibold text-white hover:bg-[#0f2a3b]"
-                    >
-                      Continue to Stripe
-                    </button>
-                  </div>
-
-                  <div className="text-[11px] text-slate-500">
-                    Payments are processed securely by Stripe.
-                  </div>
-                </form>
-              </>
+              <CheckoutUI
+                listingId={listing.id}
+                initialPlan={initialPlan}
+                featuredPrice={featuredPrice}
+                standardPrice={standardPrice}
+              />
             )}
           </div>
         </div>

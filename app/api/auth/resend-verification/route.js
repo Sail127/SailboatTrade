@@ -12,10 +12,34 @@ function newToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-const COOLDOWN_SECONDS = Number(process.env.EMAIL_VERIFY_RESEND_COOLDOWN_SECONDS || 60);
+const COOLDOWN_SECONDS = Number(
+  process.env.EMAIL_VERIFY_RESEND_COOLDOWN_SECONDS || 60,
+);
 
 export async function POST(req) {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        s = await requireUser();
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: s.uid },
@@ -35,12 +59,16 @@ export async function POST(req) {
   if (!user || user.deletedAt || user.isDisabled) {
     return NextResponse.json(
       { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
   if (user.emailVerifiedAt) {
-    return NextResponse.json({ ok: true, alreadyVerified: true, code: "EMAIL_ALREADY_VERIFIED" });
+    return NextResponse.json({
+      ok: true,
+      alreadyVerified: true,
+      code: "EMAIL_ALREADY_VERIFIED",
+    });
   }
 
   // ✅ Cooldown
@@ -58,7 +86,7 @@ export async function POST(req) {
           error: "Please wait before resending.",
           retryAfterSeconds: remaining,
         },
-        { status: 429 }
+        { status: 429 },
       );
     }
   }
@@ -79,7 +107,9 @@ export async function POST(req) {
   try {
     const appUrl = getAppUrl(req);
     const displayName =
-      (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.name) || "";
+      (user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`
+        : user.name) || "";
     const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verifyToken)}`;
 
     await sendEmail({

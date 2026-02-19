@@ -29,7 +29,8 @@ function initialsFromUser(user) {
   const name = (user?.name || "").trim();
   if (name) {
     const parts = name.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts.length >= 2)
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     return parts[0].slice(0, 2).toUpperCase();
   }
 
@@ -55,7 +56,29 @@ function SimpleLink({ href, label, right }) {
 }
 
 export default async function DashboardHome() {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        s = await requireUser();
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: s.uid },
@@ -69,7 +92,9 @@ export default async function DashboardHome() {
     },
   });
 
-  const favoritesCount = await prisma.favorite.count({ where: { userId: s.uid } });
+  const favoritesCount = await prisma.favorite.count({
+    where: { userId: s.uid },
+  });
 
   const who = displayPerson(user);
   const company = displayCompany(user);
@@ -91,13 +116,17 @@ export default async function DashboardHome() {
             </div>
 
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-[#0a2230]">User Dashboard</h1>
+              <h1 className="text-2xl font-bold text-[#0a2230]">
+                User Dashboard
+              </h1>
               <div className="mt-1 text-sm text-slate-600">
                 <span className="font-semibold text-slate-900">{who}</span>
                 {company ? (
                   <>
                     <span className="mx-2 text-slate-300">•</span>
-                    <span className="font-semibold text-slate-900">{company}</span>
+                    <span className="font-semibold text-slate-900">
+                      {company}
+                    </span>
                   </>
                 ) : null}
               </div>

@@ -6,7 +6,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req, { params }) {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        s = await requireUser();
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const listing = await prisma.listing.findFirst({
     where: { id: params.id, ownerId: s.uid },
@@ -19,7 +41,10 @@ export async function POST(req, { params }) {
 
   const status = String(listing.status || "").toUpperCase();
   if (status !== "ARCHIVED") {
-    return Response.json({ ok: false, error: "Only archived listings can be restored." }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "Only archived listings can be restored." },
+      { status: 400 },
+    );
   }
 
   const updated = await prisma.listing.update({

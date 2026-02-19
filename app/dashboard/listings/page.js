@@ -11,7 +11,9 @@ function Section({ title, subtitle, items, children }) {
     <section className="mt-8">
       <div className="mb-3">
         <h2 className="text-lg font-semibold text-[#0a2230]">{title}</h2>
-        {subtitle ? <p className="text-sm text-slate-600 mt-1">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="text-sm text-slate-600 mt-1">{subtitle}</p>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
@@ -26,7 +28,50 @@ function Section({ title, subtitle, items, children }) {
 }
 
 export default async function MyListings() {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        try {
+          try {
+            try {
+              s = await requireUser();
+            } catch {
+              return NextResponse.json(
+                { ok: false, error: "Authentication required" },
+                { status: 401 },
+              );
+            }
+          } catch {
+            return NextResponse.json(
+              { ok: false, error: "Authentication required" },
+              { status: 401 },
+            );
+          }
+        } catch {
+          return NextResponse.json(
+            { ok: false, error: "Authentication required" },
+            { status: 401 },
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const listings = await prisma.listing.findMany({
     where: { ownerId: s.uid },
@@ -51,7 +96,7 @@ export default async function MyListings() {
 
   // Pending: everything else (drafts, ready for checkout, etc.) and NOT archived/published
   const pendingListings = listings.filter(
-    (l) => l.status !== "ARCHIVED" && l.status !== "PUBLISHED"
+    (l) => l.status !== "ARCHIVED" && l.status !== "PUBLISHED",
   );
 
   const Row = (l) => (
@@ -74,7 +119,10 @@ export default async function MyListings() {
     <div className="mx-auto max-w-6xl px-4 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">My Listings</h1>
-        <Link className="rounded-md bg-[#c8a44d] px-4 py-2 font-medium" href="/listings/new">
+        <Link
+          className="rounded-md bg-[#c8a44d] px-4 py-2 font-medium"
+          href="/listings/new"
+        >
           Create listing
         </Link>
       </div>

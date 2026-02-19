@@ -5,7 +5,36 @@ import EditListingForm from "./ui";
 export const dynamic = "force-dynamic";
 
 export default async function EditListingPage({ params }) {
-  const s = await requireUser();
+  let s;
+  try {
+    try {
+      try {
+        try {
+          s = await requireUser();
+        } catch {
+          return NextResponse.json(
+            { ok: false, error: "Authentication required" },
+            { status: 401 },
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { ok: false, error: "Authentication required" },
+          { status: 401 },
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+  } catch {
+    return Response.json(
+      { ok: false, error: "Authentication required" },
+      { status: 401 },
+    );
+  }
 
   const listing = await prisma.listing.findFirst({
     where: { id: params.id, ownerId: s.uid },
@@ -14,7 +43,9 @@ export default async function EditListingPage({ params }) {
   if (!listing) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="rounded-2xl border bg-white p-6">Listing not found.</div>
+        <div className="rounded-2xl border bg-white p-6">
+          Listing not found.
+        </div>
       </div>
     );
   }

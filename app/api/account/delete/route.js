@@ -8,7 +8,13 @@ export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    const s = await requireUser();
+    const s = await requireUser().catch(() => null);
+    if (!s?.uid) {
+      return NextResponse.json(
+        { ok: false, error: "Authentication required" },
+        { status: 401 }
+      );
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: s.uid },
@@ -47,7 +53,14 @@ export async function POST() {
 
     // Clear auth cookie so they're logged out immediately
     const res = NextResponse.json({ ok: true });
-    res.cookies.set("sbt_session", "", { path: "/", maxAge: 0 });
+    res.cookies.set("sbt_session", "", {
+      path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
     return res;
   } catch (err) {
     console.error("POST /api/account/delete error:", err);

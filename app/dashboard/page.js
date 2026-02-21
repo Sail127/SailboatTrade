@@ -2,6 +2,7 @@
 import Link from "next/link";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import SignOutButton from "./SignOutButton";
 
 export const dynamic = "force-dynamic";
@@ -56,29 +57,8 @@ function SimpleLink({ href, label, right }) {
 }
 
 export default async function DashboardHome() {
-  let s;
-  try {
-    try {
-      try {
-        s = await requireUser();
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
-  }
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) redirect(`/login?next=${encodeURIComponent("/dashboard")}`);
 
   const user = await prisma.user.findUnique({
     where: { id: s.uid },
@@ -89,8 +69,11 @@ export default async function DashboardHome() {
       firstName: true,
       lastName: true,
       businessName: true,
+      role: true, // ✅ needed for admin link
     },
   });
+
+  if (!user) redirect(`/login?next=${encodeURIComponent("/dashboard")}`);
 
   const favoritesCount = await prisma.favorite.count({
     where: { userId: s.uid },
@@ -100,12 +83,13 @@ export default async function DashboardHome() {
   const company = displayCompany(user);
   const initials = initialsFromUser(user);
 
+  const isStaff = user.role === "ADMIN" || user.role === "MODERATOR";
+
   return (
     <div className="bg-white">
       <div className="mx-auto px-4 py-10 flex justify-center">
-        {/* Centered, narrower container */}
         <div className="w-full max-w-xl">
-          {/* Header (centered) */}
+          {/* Header */}
           <div className="flex items-start gap-4 justify-center">
             <div
               className="h-12 w-12 rounded-full grid place-items-center text-sm font-extrabold text-[#0a2230] shrink-0"
@@ -116,24 +100,20 @@ export default async function DashboardHome() {
             </div>
 
             <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-[#0a2230]">
-                User Dashboard
-              </h1>
+              <h1 className="text-2xl font-bold text-[#0a2230]">User Dashboard</h1>
               <div className="mt-1 text-sm text-slate-600">
                 <span className="font-semibold text-slate-900">{who}</span>
                 {company ? (
                   <>
                     <span className="mx-2 text-slate-300">•</span>
-                    <span className="font-semibold text-slate-900">
-                      {company}
-                    </span>
+                    <span className="font-semibold text-slate-900">{company}</span>
                   </>
                 ) : null}
               </div>
             </div>
           </div>
 
-          {/* Links (left-justified inside centered container) */}
+          {/* Links */}
           <div className="mt-8">
             <SimpleLink href="/dashboard/listings" label="My Listings" />
             <SimpleLink href="/listings/new" label="Create listing" />
@@ -144,9 +124,20 @@ export default async function DashboardHome() {
             />
             <SimpleLink href="/dashboard/alerts" label="Email Alerts" />
             <SimpleLink href="/dashboard/account" label="Account" />
+
+            {/* ✅ Staff-only */}
+            {isStaff ? (
+              <>
+                <div className="h-3" />
+                <div className="text-[11px] font-extrabold tracking-wide text-slate-500 px-1">
+                  ADMIN
+                </div>
+                <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
+              </>
+            ) : null}
           </div>
 
-          {/* Sign out: button only, centered container, left-aligned row */}
+          {/* Sign out */}
           <div className="mt-10 border-t border-slate-200 pt-6 flex justify-end">
             <SignOutButton className="h-10 rounded-full border px-5 text-sm font-semibold text-[#0a2230] hover:bg-slate-50" />
           </div>

@@ -1,35 +1,57 @@
 // app/api/auth/me/route.js
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function json(payload) {
+  return NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+      Pragma: "no-cache",
+    },
+  });
+}
+
+function nullPayload() {
+  return {
+    ok: true,
+    user: null,
+
+    // back-compat top-level keys (your NewListingForm reads these)
+    uid: null,
+    email: null,
+    name: null,
+    firstName: null,
+    lastName: null,
+    phone: null,
+    phoneNumber: null,
+
+    // optional convenience
+    phoneE164: null,
+
+    sellerRole: null,
+    businessName: null,
+
+    brokerageName: null,
+    brokerageStreet: null,
+    brokerageCity: null,
+    brokerageState: null,
+    brokerageCountry: null,
+
+    // ✅ broker hero image (so NewListingForm can autofill)
+    brokerHeroImageUrl: null,
+
+    emailVerified: false,
+    emailVerifiedAt: null,
+  };
+}
+
 export async function GET() {
   const s = await readSession();
-  if (!s?.uid) {
-    // ✅ keep existing contract, but also include top-level fields for your current form
-    return Response.json({
-      ok: true,
-      user: null,
-      uid: null,
-      email: null,
-      name: null,
-      firstName: null,
-      lastName: null,
-      phone: null,
-      phoneNumber: null,
-      sellerRole: null,
-      businessName: null,
-      brokerageName: null,
-      brokerageStreet: null,
-      brokerageCity: null,
-      brokerageState: null,
-      brokerageCountry: null,
-      emailVerified: false,
-      emailVerifiedAt: null,
-    });
-  }
+  if (!s?.uid) return json(nullPayload());
 
   const user = await prisma.user.findUnique({
     where: { id: s.uid },
@@ -43,50 +65,33 @@ export async function GET() {
       isDisabled: true,
       deletedAt: true,
 
-      // ✅ Phase 1
+      // email verify
       emailVerifiedAt: true,
 
-      // ✅ Listing-contact profile fields (add these to User model)
-      sellerRole: true, // SellerRole? (OWNER/BROKER)
-      phoneE164: true, // String? (international phone in E.164)
+      // listing-contact profile fields
+      sellerRole: true, // OWNER | BROKER
+      phoneE164: true, // String?
 
       businessName: true,
 
-      // ✅ Brokerage structured fields (optional)
+      // brokerage structured fields
       brokerageName: true,
       brokerageStreet: true,
       brokerageCity: true,
       brokerageState: true,
       brokerageCountry: true,
+
+      // ✅ IMPORTANT: must exist on User model (account page source of truth)
+      brokerHeroImageUrl: true, // String? (your stored upload key/url)
     },
   });
 
-  if (!user || user.deletedAt || user.isDisabled) {
-    return Response.json({
-      ok: true,
-      user: null,
-      uid: null,
-      email: null,
-      name: null,
-      firstName: null,
-      lastName: null,
-      phone: null,
-      phoneNumber: null,
-      sellerRole: null,
-      businessName: null,
-      brokerageName: null,
-      brokerageStreet: null,
-      brokerageCity: null,
-      brokerageState: null,
-      brokerageCountry: null,
-      emailVerified: false,
-      emailVerifiedAt: null,
-    });
-  }
+  if (!user || user.deletedAt || user.isDisabled) return json(nullPayload());
 
   const emailVerified = Boolean(user.emailVerifiedAt);
 
-  // ✅ Unified “user object” (newer callers)
+  // ✅ unified user object (newer callers)
+  // IMPORTANT: include aliases your NewListingForm reads when it uses data.user
   const userObj = {
     uid: user.id,
     email: user.email,
@@ -99,48 +104,56 @@ export async function GET() {
     emailVerifiedAt: user.emailVerifiedAt,
 
     sellerRole: user.sellerRole,
-    phoneE164: user.phoneE164,
-    businessName: user.businessName,
 
-    brokerageName: user.brokerageName,
-    brokerageStreet: user.brokerageStreet,
-    brokerageCity: user.brokerageCity,
-    brokerageState: user.brokerageState,
-    brokerageCountry: user.brokerageCountry,
+    // canonical
+    phoneE164: user.phoneE164 || null,
+
+    // ✅ aliases (so NewListingForm autofill works when it chooses data.user)
+    phone: user.phoneE164 || null,
+    phoneNumber: user.phoneE164 || null,
+
+    businessName: user.businessName || null,
+
+    brokerageName: user.brokerageName || null,
+    brokerageStreet: user.brokerageStreet || null,
+    brokerageCity: user.brokerageCity || null,
+    brokerageState: user.brokerageState || null,
+    brokerageCountry: user.brokerageCountry || null,
+
+    // ✅ broker hero for autofill
+    brokerHeroImageUrl: user.brokerHeroImageUrl || null,
   };
 
-  // ✅ Back-compat top-level keys (so your current NewListingForm auto-fill works as-is)
-  return Response.json({
+  return json({
     ok: true,
 
-    // New shape
+    // new shape
     user: userObj,
 
-    // Old / direct shape used by your current form code
+    // old/direct shape
     uid: user.id,
     email: user.email,
     name: user.name,
     firstName: user.firstName,
     lastName: user.lastName,
 
-    // Your form checks data.phone OR data.phoneNumber
+    // phone keys your form checks
+    phoneE164: user.phoneE164 || null,
     phone: user.phoneE164 || null,
     phoneNumber: user.phoneE164 || null,
 
-    // Your form checks sellerRole / role
     sellerRole: user.sellerRole || null,
-
-    // Your register page stores businessName
     businessName: user.businessName || null,
 
-    // Your form checks these brokerage fields
     brokerageName: user.brokerageName || user.businessName || null,
     brokerageStreet: user.brokerageStreet || null,
     brokerageCity: user.brokerageCity || null,
     brokerageState: user.brokerageState || null,
     brokerageCountry: user.brokerageCountry || null,
 
-    // Email verification flags
+    // broker hero for autofill
+    brokerHeroImageUrl: user.brokerHeroImageUrl || null,
+
     emailVerified,
     emailVerifiedAt: user.emailVerifiedAt,
   });

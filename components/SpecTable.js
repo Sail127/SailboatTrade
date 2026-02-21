@@ -123,10 +123,7 @@ export default function SpecTable({ listing = {} }) {
 
     // Dinghy
     hasDinghy,
-    dinghyModel,
-    dinghyLength,
-    dinghyLengthUnit,
-    dinghyMotor,
+    dinghydetails,
 
     // Location
     locationCity,

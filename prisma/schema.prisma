@@ -18,24 +18,11 @@ enum UserRole {
 
 enum ListingStatus {
   DRAFT
-  READY_FOR_CHECKOUT
   PENDING_REVIEW
   REJECTED
   PUBLISHED
   ARCHIVED
   REMOVED
-}
-
-enum ListingPlan {
-  STANDARD
-  FEATURED_HOME
-}
-
-enum PaymentStatus {
-  NONE
-  PENDING
-  PAID
-  FAILED
 }
 
 enum ContentReviewStatus {
@@ -70,6 +57,35 @@ enum VolumeUnit {
   L
 }
 
+enum WeightUnit {
+  lb
+  kg
+}
+
+/**
+ * ✅ Photo entitlement (drives server enforcement)
+ * FREE_3 => free listing, max 3 photos
+ * PHOTO_PLUS_25 => paid subscription upgrade, max 25 photos
+ */
+enum PhotoPlan {
+  FREE_3
+  PHOTO_PLUS_25
+}
+
+/**
+ * ✅ Billing state for subscription upgrades (Braintree)
+ * FREE => no subscription
+ * ACTIVE => subscription active
+ * PAST_DUE => billing problem
+ * CANCELED => canceled (may still be active until period end if cancelAtPeriodEnd=true)
+ */
+enum BillingStatus {
+  FREE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
 model User {
   id    String  @id @default(cuid())
   email String  @unique
@@ -78,35 +94,39 @@ model User {
   firstName String?
   lastName  String?
 
-  // NOTE: You said you want to remove Business Name from the UI.
-  // Keeping field here is safe/backwards compatible. You can delete later when you’re ready for a breaking migration.
   businessName String?
 
   // ✅ Listing Contact auto-fill
   sellerRole SellerRole?
-  phoneE164  String? // "+14155552671" (E.164)
+  phoneE164  String?
 
-  // ✅ Brokerage (store only when sellerRole == BROKER)
+  // ✅ Brokerage (account profile)
   brokerageName    String?
   brokerageStreet  String?
   brokerageCity    String?
-  brokerageState   String? // for US only (UI can hide for non-US; backend can null it)
-  brokerageCountry String? @db.Char(2) // ISO alpha-2, e.g. "US"
+  brokerageState   String?
+  brokerageCountry String? // ✅ allow ISO2 or typed "Other" safely
 
-  // ✅ Homeport (for future listing auto-fill)
-  homeportCountry String? @db.Char(2) // ISO alpha-2, e.g. "US"
-  homeportRegion  String? // your custom regions (only when US): "WEST_COAST" etc.
-  homeportState   String? // US state (e.g. "FL") when US
-  homeportAdmin1  String? // non-US province/region (e.g. "Ontario") when NOT US
-  homeportCity    String? // city/port
+  // ✅ Broker hero/logo image (3:2 logo style)
+  brokerHeroImageUrl String?
+
+  // ✅ Homeport (future)
+  homeportCountry String?
+  homeportRegion  String?
+  homeportState   String?
+  homeportAdmin1  String?
+  homeportCity    String?
 
   passwordHash String
 
-  // ✅ Email verification (Phase 1)
+  // ✅ Email verification
   emailVerifiedAt          DateTime?
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
   emailVerificationSentAt  DateTime?
+
+  // ✅ Braintree vault linkage (one per user, reused across listings)
+  braintreeCustomerId String? @unique
 
   role       UserRole  @default(USER)
   isDisabled Boolean   @default(false)
@@ -131,15 +151,11 @@ model Listing {
   title       String?
   description String?
 
-  // ✅ Location (international-friendly)
-  // - locationCountry uses ISO alpha-2 codes
-  // - If US: you can use locationUsRegion + locationState
-  // - If NOT US: use locationAdmin1 (province/region) optionally; keep locationState null
-  locationCountry  String? @db.Char(2)
+  // ✅ Form truth: ISO2 or typed "Other"
+  locationCountry  String?
   locationCity     String?
-  locationState    String? // US state only (e.g. "FL")
-  locationAdmin1   String? // non-US province/region (e.g. "BC", "Queensland", "Bavaria")
-  locationUsRegion String? // your custom US coastal regions only
+  locationState    String?
+  locationUsRegion String?
 
   price    Int?
   currency String?
@@ -161,9 +177,11 @@ model Listing {
   airDraft     Float?
   airDraftUnit String?
 
+  displacement     Float?
+  displacementUnit WeightUnit?
+
   engineFuel       FuelType?
   engineMake       String?
-  engineModel      String?
   propeller        String?
   engineHorsepower Int?
 
@@ -177,33 +195,49 @@ model Listing {
   generatorKw    Float?
   generatorHours Int?
 
-  tankUnit    VolumeUnit?
-  tankFuel    Float?
-  tankWater   Float?
-  tankHolding Float?
+  tankUnit  VolumeUnit?
+  tankFuel  Float?
+  tankWater Float?
 
-  // Dinghy
-  hasDinghy Boolean @default(false)
-
-  // ✅ NEW (matches current listing form: “dinghy details” free text)
+  // ✅ Form truth: yes/no + free text "dinghy details"
+  hasDinghy     Boolean @default(false)
   dinghyDetails String?
-
-  // ---- Legacy / future expansion (keep for now to avoid breaking older code & data) ----
-  dinghyModel      String?
-  dinghyLength     Float?
-  dinghyLengthUnit String?
-  dinghyMotor      Boolean?
 
   equipment    String[] @default([])
   heroImageUrl String?
   imageUrls    String[] @default([])
 
-  // -------- Staged (pending) content changes for PUBLISHED listings --------
-  pendingTitle        String?
-  pendingDescription  String?
-  pendingHeroImageUrl String?
-  pendingImageUrls    String[] @default([])
+  riggingRemarks String?
+  additionalInfo String?
 
+  // ============================
+  // ✅ FREE + PAID LISTING PLAN
+  // ============================
+  photoPlan PhotoPlan @default(FREE_3)
+
+  // ✅ Upgrade: featured on home page ($5/mo)
+  featuredHome Boolean @default(false)
+
+  // ✅ Subscription billing state (for upgrades)
+  billingStatus BillingStatus @default(FREE)
+
+  // provider details (Braintree)
+  billingProvider         String? // "BRAINTREE"
+  braintreeSubscriptionId String?  @unique
+  billingAddons           String[] @default([]) // e.g. ["PHOTO_PLUS_25","FEATURED_HOME"]
+
+  billingCurrency     String @default("USD")
+  billingMonthlyCents Int? // total subscription cents for current config
+
+  billingCurrentPeriodStart DateTime?
+  billingCurrentPeriodEnd   DateTime?
+  cancelAtPeriodEnd         Boolean   @default(false)
+  canceledAt                DateTime?
+  lastPaidAt                DateTime?
+
+  // ============================
+  // ✅ REVIEW / MODERATION FLOW
+  // ============================
   contentReviewStatus    ContentReviewStatus @default(NONE)
   contentSubmittedAt     DateTime?
   contentReviewedAt      DateTime?
@@ -216,23 +250,14 @@ model Listing {
   contactEmail       String?
   contactPhone       String?
 
-  brokerageName    String?
-  brokerageAddress String?
-  brokerLogoUrl    String?
+  brokerageName      String?
+  brokerageAddress   String?
+  brokerHeroImageUrl String?
 
   previewToken String @unique @default(cuid())
 
   status ListingStatus @default(DRAFT)
-  plan   ListingPlan   @default(STANDARD)
 
-  paymentStatus        PaymentStatus @default(NONE)
-  paymentProvider      String?
-  paymentSessionId     String?
-  paidAt               DateTime?
-  submittedForReviewAt DateTime?
-  publishedAt          DateTime?
-
-  // -------- Moderation (new listing approval / takedown) --------
   reviewedAt      DateTime?
   reviewedById    String?
   reviewedBy      User?     @relation("ListingReviewedBy", fields: [reviewedById], references: [id])
@@ -244,7 +269,7 @@ model Listing {
   removedReason String?
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  updatedAt DateTime @updatedAt
 
   favorites Favorite[]
 }

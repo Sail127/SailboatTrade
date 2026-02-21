@@ -1,55 +1,71 @@
+// app/api/listings/[id]/mark-paid/route.js
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { requireAdminApi, audit } from "@/lib/admin";
+import crypto from "crypto";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req, { params }) {
-  let s;
-  try {
-    try {
-      try {
-        s = await requireUser();
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
+  const guard = await requireAdminApi("MODERATOR");
+  if (!guard.ok) {
+    return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status });
   }
 
-  const listing = await prisma.listing.findFirst({
-    where: { id: params.id, ownerId: s.uid },
+  const id = String(params?.id || "").trim();
+  if (!id) return NextResponse.json({ ok: false, error: "Missing listing id" }, { status: 400 });
+
+  const body = await req.json().catch(() => ({}));
+  const planRaw = String(body?.plan || "").toUpperCase().trim();
+  const desiredPlan = planRaw === "STANDARD" ? "STANDARD" : "FEATURED_HOME";
+
+  const listing = await prisma.listing.findUnique({
+    where: { id },
+    select: { id: true, ownerId: true, paymentStatus: true, status: true, previewToken: true },
   });
 
-  if (!listing)
-    return Response.json({ ok: false, error: "Not found." }, { status: 404 });
+  if (!listing) return NextResponse.json({ ok: false, error: "Listing not found" }, { status: 404 });
 
-  // Only allow “paid” transition from checkout states
-  if (!["READY_FOR_CHECKOUT", "DRAFT"].includes(listing.status)) {
-    return Response.json(
-      { ok: false, error: "Invalid state for payment." },
-      { status: 400 },
-    );
+  // idempotent
+  if (listing.paymentStatus === "PAID") {
+    return NextResponse.json({
+      ok: true,
+      alreadyPaid: true,
+      redirect: `/checkout/${encodeURIComponent(listing.id)}?success=1`,
+    });
   }
 
-  const updated = await prisma.listing.update({
+  const now = new Date();
+  const previewToken = listing.previewToken || crypto.randomUUID();
+
+  await prisma.listing.update({
     where: { id: listing.id },
     data: {
+      plan: desiredPlan,
+      paymentProvider: "TEST",
       paymentStatus: "PAID",
-      paidAt: new Date(),
+      paymentSessionId: `test_${Date.now()}`,
+      paidAt: now,
+
       status: "PENDING_REVIEW",
-      submittedForReviewAt: new Date(),
+      submittedForReviewAt: now,
+
+      previewToken,
     },
   });
 
-  return Response.json({ ok: true, previewToken: updated.previewToken });
+  await audit({
+    actorId: guard.me.id,
+    action: "LISTING_MARK_PAID_TEST",
+    entityType: "Listing",
+    entityId: listing.id,
+    reason: null,
+    meta: { plan: desiredPlan, ownerId: listing.ownerId },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    redirect: `/checkout/${encodeURIComponent(listing.id)}?success=1`,
+  });
 }

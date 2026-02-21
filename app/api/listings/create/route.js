@@ -6,13 +6,18 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/* =========================================================
+   NORMALIZERS / HELPERS (form-aligned)
+========================================================= */
+const ALLOWED_CURRENCIES = ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"];
+const MAX_PHOTOS_AT_CREATE = 25;
+
 const isFtOrM = (v) => {
   const s = String(v ?? "").toLowerCase().trim();
   return s === "ft" || s === "m";
 };
 
-const isCurrency = (v) =>
-  ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"].includes(String(v || "").toUpperCase());
+const isCurrency = (v) => ALLOWED_CURRENCIES.includes(String(v || "").toUpperCase());
 
 const toStringOrNull = (v) => {
   const s = String(v ?? "").trim();
@@ -80,35 +85,37 @@ const normalizeVolumeUnit = (v) => {
   return null;
 };
 
-const yesNoToBoolOrNull = (v) => {
+const normalizeWeightUnit = (v) => {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "lb") return "lb";
+  if (s === "kg") return "kg";
+  return null;
+};
+
+const yesNoToBool = (v, fallback = false) => {
   if (v === true) return true;
   if (v === false) return false;
 
   const s = String(v ?? "").toUpperCase().trim();
-  if (s === "YES") return true;
-  if (s === "NO") return false;
-  if (s === "TRUE") return true;
-  if (s === "FALSE") return false;
+  if (s === "YES" || s === "TRUE" || s === "1") return true;
+  if (s === "NO" || s === "FALSE" || s === "0") return false;
 
-  return null;
+  return fallback;
 };
 
+/* =========================================================
+   POST
+========================================================= */
 export async function POST(req) {
   try {
-    // ✅ Require login
     const s = await requireUser().catch(() => null);
-if (!s?.uid) {
-  return NextResponse.json(
-    { ok: false, code: "UNAUTHORIZED", error: "Unauthorized." },
-    { status: 401 }
-  );
-}
+    if (!s?.uid) {
+      return NextResponse.json({ ok: false, code: "UNAUTHORIZED", error: "Unauthorized." }, { status: 401 });
+    }
 
-const body = await req.json().catch(() => ({}));
-const ownerId = String(s.uid);
+    const body = await req.json().catch(() => ({}));
+    const ownerId = String(s.uid);
 
-
-    // ✅ Phase 1: require verified email to create listings
     const u = await prisma.user.findUnique({
       where: { id: ownerId },
       select: { emailVerifiedAt: true, deletedAt: true, isDisabled: true },
@@ -120,38 +127,44 @@ const ownerId = String(s.uid);
 
     if (!u.emailVerifiedAt) {
       return NextResponse.json(
-        {
-          ok: false,
-          code: "EMAIL_NOT_VERIFIED",
-          error: "Please verify your email before creating listings.",
-        },
+        { ok: false, code: "EMAIL_NOT_VERIFIED", error: "Please verify your email before creating listings." },
         { status: 403 }
       );
     }
 
-    // ---------- normalize core fields ----------
+    // Units + enums
     const currency = isCurrency(body.currency) ? String(body.currency).toUpperCase() : "USD";
-    const plan =
-      body.plan === "FEATURED_HOME" || body.plan === "STANDARD" ? body.plan : "STANDARD";
-
     const loaUnit = isFtOrM(body.loaUnit) ? String(body.loaUnit).toLowerCase() : "ft";
-    const draftUnit = isFtOrM(body.draftUnit) ? String(body.draftUnit).toLowerCase() : null;
-    const airDraftUnit = isFtOrM(body.airDraftUnit) ? String(body.airDraftUnit).toLowerCase() : null;
+    const draftUnit = isFtOrM(body.draftUnit) ? String(body.draftUnit).toLowerCase() : loaUnit;
+    const airDraftUnit = isFtOrM(body.airDraftUnit) ? String(body.airDraftUnit).toLowerCase() : loaUnit;
 
-    const imageUrls = normalizeStringArray(body.imageUrls);
     const equipment = normalizeEquipment(body.equipment);
-
     const sellerRole = normalizeSellerRole(body.sellerRole);
 
-    // ✅ booleans can arrive as YES/NO strings from your form
-    const hasGenerator = yesNoToBoolOrNull(body.hasGenerator) ?? false;
-    const hasDinghy = yesNoToBoolOrNull(body.hasDinghy) ?? false;
+    const hasGenerator = yesNoToBool(body.hasGenerator, false);
+    const hasDinghy = yesNoToBool(body.hasDinghy, false);
 
-    // ✅ Dinghy text: your form uses dinghyNotes; support a few fallbacks
-    const dinghyDetails =
-      hasDinghy
-        ? toStringOrNull(body.dinghyDetails ?? body.dinghyNotes ?? body.dinghyModel)
-        : null;
+    // Dinghy details: form sends dinghyDetails, accept legacy keys too
+    const dinghyTextRaw = body.dinghyDetails ?? body.dinghyNotes ?? body.dinghyModel ?? null;
+    const dinghyDetails = hasDinghy ? toStringOrNull(dinghyTextRaw) : null;
+
+    const draftVal = toNumberOrNull(body.draft);
+    if (draftVal == null) {
+      return NextResponse.json({ ok: false, error: "Draft is required." }, { status: 400 });
+    }
+
+    // Photos (form truth: hard cap 25)
+    const imageUrlsRaw = normalizeStringArray(body.imageUrls);
+    if (imageUrlsRaw.length > MAX_PHOTOS_AT_CREATE) {
+      return NextResponse.json(
+        { ok: false, code: "MAX_PHOTO_LIMIT", error: `This listing is limited to ${MAX_PHOTOS_AT_CREATE} photos.` },
+        { status: 400 }
+      );
+    }
+    const imageUrls = imageUrlsRaw.slice(0, MAX_PHOTOS_AT_CREATE);
+    const heroImageUrl = toStringOrNull(body.heroImageUrl) || imageUrls[0] || null;
+
+    const brokerHeroImageUrl = sellerRole === "BROKER" ? toStringOrNull(body.brokerHeroImageUrl) : null;
 
     const listing = await prisma.listing.create({
       data: {
@@ -160,10 +173,10 @@ const ownerId = String(s.uid);
         title: toStringOrNull(body.title),
         description: toStringOrNull(body.description),
 
+        locationCountry: toStringOrNull(body.locationCountry),
         locationCity: toStringOrNull(body.locationCity),
         locationState: toStringOrNull(body.locationState),
         locationUsRegion: toStringOrNull(body.locationUsRegion),
-        locationCountry: toStringOrNull(body.locationCountry),
 
         price: toIntOrNull(body.price),
         currency,
@@ -171,26 +184,25 @@ const ownerId = String(s.uid);
         year: toIntOrNull(body.year),
         builder: toStringOrNull(body.builder),
         model: toStringOrNull(body.model),
-
         boatCondition: normalizeBoatCondition(body.boatCondition),
 
         cabins: toIntOrNull(body.cabins),
         heads: toIntOrNull(body.heads),
 
+        type: normalizeHullType(body.type),
+
         loa: toNumberOrNull(body.loa),
         loaUnit,
-
-        draft: toNumberOrNull(body.draft),
+        draft: draftVal,
         draftUnit,
-
         airDraft: toNumberOrNull(body.airDraft),
         airDraftUnit,
 
-        type: normalizeHullType(body.type),
+        displacement: toNumberOrNull(body.displacement),
+        displacementUnit: normalizeWeightUnit(body.displacementUnit),
 
         engineFuel: normalizeFuelType(body.engineFuel),
         engineMake: toStringOrNull(body.engineMake),
-        engineModel: toStringOrNull(body.engineModel),
         propeller: toStringOrNull(body.propeller),
         engineHorsepower: toIntOrNull(body.engineHorsepower),
 
@@ -207,21 +219,16 @@ const ownerId = String(s.uid);
         tankUnit: normalizeVolumeUnit(body.tankUnit),
         tankFuel: toNumberOrNull(body.tankFuel),
         tankWater: toNumberOrNull(body.tankWater),
-        tankHolding: toNumberOrNull(body.tankHolding),
 
-        // ✅ Dinghy (new form supports: hasDinghy + dinghyDetails free-text)
         hasDinghy,
         dinghyDetails,
 
-        // ✅ Legacy fields (kept in schema; ensure clean data)
-        dinghyModel: null,
-        dinghyLength: null,
-        dinghyLengthUnit: null,
-        dinghyMotor: null,
-
         equipment,
-        heroImageUrl: toStringOrNull(body.heroImageUrl),
+        heroImageUrl,
         imageUrls,
+
+        riggingRemarks: toStringOrNull(body.riggingRemarks),
+        additionalInfo: toStringOrNull(body.additionalInfo),
 
         sellerRole,
         listingContactName: toStringOrNull(body.listingContactName),
@@ -230,16 +237,21 @@ const ownerId = String(s.uid);
 
         brokerageName: sellerRole === "BROKER" ? toStringOrNull(body.brokerageName) : null,
         brokerageAddress: sellerRole === "BROKER" ? toStringOrNull(body.brokerageAddress) : null,
-        brokerLogoUrl: toStringOrNull(body.brokerLogoUrl),
+        brokerHeroImageUrl,
+
+        // ✅ Schema fields (safe + explicit)
+        photoPlan: "FREE_3",
+        featuredHome: false,
+        billingStatus: "FREE",
+        billingProvider: null,
+        billingAddons: [],
+        billingMonthlyCents: null,
 
         status: "DRAFT",
-        plan,
-        paymentStatus: "NONE",
       },
       select: { id: true, previewToken: true },
     });
 
-    // ✅ Use existing detail route + token query for draft preview + image access
     const previewPath = `/listings/${listing.id}?token=${encodeURIComponent(listing.previewToken)}`;
 
     return NextResponse.json({
@@ -252,23 +264,19 @@ const ownerId = String(s.uid);
   } catch (err) {
     console.error("POST /api/listings/create error:", err);
 
-    // ✅ Friendlier Prisma unknown-field errors (e.g. schema mismatch)
     const msg = String(err?.message || "");
     if (msg.includes("Unknown argument")) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Schema mismatch: Prisma does not recognize a field being sent. Run your migration and regenerate Prisma client.",
+            "Schema mismatch: Prisma Client/DB are not synced with schema.prisma. Run migration + regenerate Prisma Client.",
           detail: msg,
         },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
-      { ok: false, error: err?.message || "Failed to create listing." },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: err?.message || "Failed to create listing." }, { status: 500 });
   }
 }

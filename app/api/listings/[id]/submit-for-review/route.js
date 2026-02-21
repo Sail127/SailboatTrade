@@ -1,60 +1,54 @@
+// app/api/listings/[id]/submit-for-review/route.js
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { readSession } from "@/lib/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req, { params }) {
-  let s;
-  try {
-    try {
-      try {
-        s = await requireUser();
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
+  const s = await readSession();
+  if (!s?.uid) {
+    return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
   }
 
-  const listing = await prisma.listing.findFirst({
-    where: { id: params.id, ownerId: s.uid },
-  });
+  const id = String(params?.id || "").trim();
+  if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
 
-  if (!listing)
-    return Response.json({ ok: false, error: "Not found." }, { status: 404 });
-
-  if (listing.paymentStatus !== "PAID") {
-    return Response.json(
-      { ok: false, error: "Payment required before submission." },
-      { status: 400 },
-    );
-  }
-
-  if (listing.status === "PUBLISHED") {
-    return Response.json(
-      { ok: false, error: "Already published." },
-      { status: 400 },
-    );
-  }
-
-  const updated = await prisma.listing.update({
-    where: { id: listing.id },
-    data: {
-      status: "PENDING_REVIEW",
-      submittedForReviewAt: new Date(),
-      rejectionReason: null,
+  const listing = await prisma.listing.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      ownerId: true,
+      paymentStatus: true,
+      status: true,
     },
   });
 
-  return Response.json({ ok: true, status: updated.status });
+  if (!listing) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  if (listing.ownerId !== s.uid) return NextResponse.json({ ok: false, error: "Not authorized" }, { status: 403 });
+
+  if (listing.paymentStatus !== "PAID") {
+    return NextResponse.json(
+      { ok: false, error: "Payment required before submitting for review." },
+      { status: 400 }
+    );
+  }
+
+  const now = new Date();
+
+  await prisma.listing.update({
+    where: { id },
+    data: {
+      status: "PENDING_REVIEW",
+      submittedForReviewAt: now,
+
+      // clear old rejection info on resubmit
+      rejectionReason: null,
+      reviewedAt: null,
+      reviewedById: null,
+    },
+  });
+
+  return NextResponse.json({ ok: true });
 }

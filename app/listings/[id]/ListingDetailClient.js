@@ -10,6 +10,10 @@ const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
 const CONTAINER = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-8";
 
+// ✅ Free + paid plan constants (schema-aligned)
+const FREE_PHOTO_LIMIT = 3;
+const MAX_PHOTOS = 25;
+
 /* -----------------------------
    UI primitives
 ------------------------------ */
@@ -206,7 +210,8 @@ function normalizeAddressLines(rawAddr) {
 }
 
 /* -----------------------------
-   Status banner helper
+   Status banner helper (schema-aligned)
+   ListingStatus: DRAFT | PENDING_REVIEW | REJECTED | PUBLISHED | ARCHIVED | REMOVED
 ------------------------------ */
 function statusMeta(status) {
   const s = String(status || "").toUpperCase();
@@ -215,14 +220,7 @@ function statusMeta(status) {
       return {
         tone: "slate",
         title: "Draft Preview",
-        msg: "Only you can see this listing. Edit anything before checkout / review.",
-        style: "warning",
-      };
-    case "READY_FOR_CHECKOUT":
-      return {
-        tone: "gold",
-        title: "Ready for Checkout",
-        msg: "Complete checkout to submit this listing for review.",
+        msg: "Only you can see this listing. Submit when ready to send for review.",
         style: "warning",
       };
     case "PENDING_REVIEW":
@@ -245,14 +243,19 @@ function statusMeta(status) {
 ------------------------------ */
 function imageUrlFromKey(key, token) {
   if (!key) return "";
-  const k = String(key);
+  const k = String(key).trim();
+  if (!k) return "";
+
+  if (k.startsWith("data:")) return k;
   if (/^https?:\/\//i.test(k)) return k;
+  if (k.startsWith("/")) return k;
+
+  const r2 = String(process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  if (r2) return `${r2}/${encodeURIComponent(k)}`;
 
   const base = process.env.NEXT_PUBLIC_UPLOADS_BASE_URL || "/api/uploads?key=";
 
-  if (base.endsWith("/")) return `${base}${encodeURIComponent(k)}`;
-
-  let url = `${base}${encodeURIComponent(k)}`;
+  let url = base.endsWith("/") ? `${base}${encodeURIComponent(k)}` : `${base}${encodeURIComponent(k)}`;
   if (token && !/([?&])token=/.test(url)) {
     url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
   }
@@ -582,14 +585,22 @@ export default function ListingDetailClient({
   const price = formatMoney(listing?.price, listing?.currency);
 
   const rawCountry = String(locationCountryLabel || listing?.locationCountry || "").trim();
-  const usa = isUsCountry(rawCountry);
 
+  // ✅ Region/country line with safe fallback to listing.locationUsRegion
   const regionCountryLine = useMemo(() => {
-    if (!rawCountry && usRegionLabel) return usRegionLabel;
-    if (!rawCountry && !usRegionLabel) return "";
-    if (!usa) return rawCountry || "";
-    return [usRegionLabel, prettyUsCountry(rawCountry)].filter(Boolean).join(" • ");
-  }, [rawCountry, usRegionLabel, usa]);
+    const country = rawCountry || "";
+    const isUSA2 = isUsCountry(country);
+
+    const regionFallback = String(listing?.locationUsRegion || "").trim();
+    const region = usRegionLabel || (regionFallback ? prettyEnum(regionFallback) : "");
+
+    if (!country && region) return region;
+    if (!country && !region) return "";
+
+    if (!isUSA2) return country;
+
+    return [region, prettyUsCountry(country)].filter(Boolean).join(" • ");
+  }, [rawCountry, usRegionLabel, listing?.locationUsRegion]);
 
   const cityStateLine = [listing?.locationCity, listing?.locationState].filter(Boolean).join(", ");
 
@@ -597,9 +608,58 @@ export default function ListingDetailClient({
   const brokerageName = String(listing?.brokerageName || "").trim();
 
   const phoneRaw = String(listing?.contactPhone || "");
-  const sellerPhoneDisplay = viewerLoggedIn
-    ? formatIntlPhoneDisplay(phoneRaw) || "Not provided"
-    : "XXX-XXX-XXXX";
+  const sellerPhoneDisplay = viewerLoggedIn ? formatIntlPhoneDisplay(phoneRaw) || "Not provided" : "XXX-XXX-XXXX";
+
+  const emailRaw = String(listing?.contactEmail || "").trim();
+  const sellerEmailDisplay = viewerLoggedIn ? (emailRaw || "Not provided") : "XXX@XXX.com";
+
+  // ✅ Photo counts for Free vs Paid plan
+  const photoCount = useMemo(() => {
+    const urls = Array.isArray(listing?.imageUrls) ? listing.imageUrls.filter(Boolean) : [];
+    return urls.length;
+  }, [listing?.imageUrls]);
+
+  const requiresUpgrade = photoCount > FREE_PHOTO_LIMIT;
+  const overMax = photoCount > MAX_PHOTOS;
+
+  const isDraftish = String(listing?.status || "").toUpperCase() === "DRAFT";
+  const isRejected = String(listing?.status || "").toUpperCase() === "REJECTED";
+  const canSubmitFromHere = Boolean(canEdit && (isDraftish || isRejected));
+
+  // ✅ checkout route
+  const checkoutHref = useMemo(() => {
+    const id = listing?.id ? encodeURIComponent(String(listing.id)) : "";
+    return id ? `/checkout/${id}` : "/dashboard";
+  }, [listing?.id]);
+
+  // ✅ Free submit (no subscription management here — that stays in dashboard)
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [submitErr, setSubmitErr] = useState("");
+
+  async function submitFree() {
+    setSubmitErr("");
+    setSubmitBusy(true);
+    try {
+      if (overMax) throw new Error(`You have ${photoCount} photos. Max allowed is ${MAX_PHOTOS}. Remove photos first.`);
+      if (requiresUpgrade) {
+        throw new Error(`Free listings allow up to ${FREE_PHOTO_LIMIT} photos. Remove photos or upgrade.`);
+      }
+
+      const res = await fetch(`/api/listings/${encodeURIComponent(String(listing?.id || ""))}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "FREE" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not submit listing.");
+
+      window.location.assign(data.redirect || `/listings/${listing.id}`);
+    } catch (e) {
+      setSubmitErr(e?.message || "Could not submit listing.");
+    } finally {
+      setSubmitBusy(false);
+    }
+  }
 
   const [saved, setSaved] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
@@ -623,10 +683,7 @@ export default function ListingDetailClient({
 
   const msgRef = useRef(null);
 
-  const defaultBuyerMsg = useMemo(
-    () => `Please contact me and provide more details on this ${titleLine}.`,
-    [titleLine]
-  );
+  const defaultBuyerMsg = useMemo(() => `Please contact me and provide more details on this ${titleLine}.`, [titleLine]);
 
   const [buyerFirst, setBuyerFirst] = useState("");
   const [buyerLast, setBuyerLast] = useState("");
@@ -638,7 +695,6 @@ export default function ListingDetailClient({
     setBuyerMsg((prev) => (prev && prev.trim() ? prev : defaultBuyerMsg));
   }, [defaultBuyerMsg]);
 
-  // Auto-populate inquiry fields when logged in (safe + flexible response shape)
   useEffect(() => {
     if (!viewerLoggedIn) return;
 
@@ -650,18 +706,14 @@ export default function ListingDetailClient({
         const u = data?.user || data?.ok?.user || null;
         if (ignore || !u) return;
 
-        const first =
-          String(u.firstName || "").trim() ||
-          (u.name ? String(u.name).trim().split(" ")[0] : "");
+        const first = String(u.firstName || "").trim() || (u.name ? String(u.name).trim().split(" ")[0] : "");
         const last =
-          String(u.lastName || "").trim() ||
-          (u.name ? String(u.name).trim().split(" ").slice(1).join(" ") : "");
+          String(u.lastName || "").trim() || (u.name ? String(u.name).trim().split(" ").slice(1).join(" ") : "");
 
         if (!buyerFirst.trim() && first) setBuyerFirst(first);
         if (!buyerLast.trim() && last) setBuyerLast(last);
         if (!buyerEmail.trim() && u.email) setBuyerEmail(String(u.email).trim());
 
-        // If you later add user.phone to /api/auth/me, this will auto fill
         if (!buyerPhoneRaw.trim() && u.phone) setBuyerPhoneRaw(String(u.phone).trim());
       } catch {
         // ignore
@@ -728,9 +780,9 @@ export default function ListingDetailClient({
 
   const brokerHero = useMemo(() => {
     if (!isBroker) return "";
-    const k = String(listing?.brokerLogoUrl || "");
+    const k = String(listing?.brokerHeroImageUrl || "").trim();
     return k ? imageUrlFromKey(k, previewToken) : "";
-  }, [isBroker, listing?.brokerLogoUrl, previewToken]);
+  }, [isBroker, listing?.brokerHeroImageUrl, previewToken]);
 
   const brokerageAddressLines = useMemo(() => {
     if (!isBroker) return [];
@@ -739,8 +791,8 @@ export default function ListingDetailClient({
 
   const showBrokerageCard = useMemo(() => {
     if (!isBroker) return false;
-    return Boolean(listing?.brokerageName || brokerageAddressLines.length || brokerHero || phoneRaw);
-  }, [isBroker, listing?.brokerageName, brokerageAddressLines, brokerHero, phoneRaw]);
+    return Boolean(listing?.brokerageName || brokerageAddressLines.length || brokerHero || phoneRaw || emailRaw);
+  }, [isBroker, listing?.brokerageName, brokerageAddressLines, brokerHero, phoneRaw, emailRaw]);
 
   const tankUnit = String(listing?.tankUnit || "").trim();
   function capWithUnit(v) {
@@ -759,12 +811,15 @@ export default function ListingDetailClient({
       { key: "model", label: "Model", value: listing?.model || "" },
       { key: "cabins", label: "Cabins", value: listing?.cabins != null ? String(listing.cabins) : "" },
       { key: "heads", label: "Heads", value: listing?.heads != null ? String(listing.heads) : "" },
+
       { key: "loa", label: "LOA", value: fmtUnit(listing?.loa, listing?.loaUnit) },
       { key: "draft", label: "Draft", value: fmtUnit(listing?.draft, listing?.draftUnit) },
       { key: "air", label: "Air Draft", value: fmtUnit(listing?.airDraft, listing?.airDraftUnit) },
+
+      { key: "disp", label: "Displacement", value: fmtUnit(listing?.displacement, listing?.displacementUnit) },
+
       { key: "fuelCap", label: "Fuel Capacity", value: capWithUnit(listing?.tankFuel) },
       { key: "waterCap", label: "Water Capacity", value: capWithUnit(listing?.tankWater) },
-      { key: "holdCap", label: "Holding Capacity", value: capWithUnit(listing?.tankHolding) },
     ],
     [listing, tankUnit]
   );
@@ -805,7 +860,9 @@ export default function ListingDetailClient({
   }, [listing, hasGenerator]);
 
   const dinghyIncluded = isYes(listing?.hasDinghy);
-  const dinghyDetails = String(listing?.dinghyModel || "").trim();
+  const dinghyDetails = String(listing?.dinghyDetails || "").trim();
+
+  const riggingRemarksText = useMemo(() => String(listing?.riggingRemarks || "").trim(), [listing?.riggingRemarks]);
 
   const createdAt = listing?.createdAt ? new Date(listing.createdAt) : null;
   const updatedAt = listing?.updatedAt ? new Date(listing.updatedAt) : null;
@@ -854,11 +911,10 @@ export default function ListingDetailClient({
     }
   }
 
-  // ✅ FIXED: correct checkout route for /app/checkout/[id]/page.js
-  const checkoutHref = useMemo(() => {
-    const id = listing?.id ? encodeURIComponent(String(listing.id)) : "";
-    return id ? `/checkout/${id}` : "/dashboard";
-  }, [listing?.id]);
+  const additionalInfoText = useMemo(() => String(listing?.additionalInfo || "").trim(), [listing?.additionalInfo]);
+
+  const locationClass =
+    "text-[14px] sm:text-[16px] font-semibold text-[#0a2230] font-serif tracking-wide min-w-0 truncate";
 
   return (
     <div className="py-8">
@@ -912,27 +968,78 @@ export default function ListingDetailClient({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={meta.tone}>{meta.title}</Badge>
+                  {viewerIsOwner ? <span className="text-[12px] font-semibold text-slate-700">(Owner view)</span> : null}
                   {viewerIsOwner ? (
-                    <span className="text-[12px] font-semibold text-slate-700">(Owner view)</span>
+                    <span className="text-[12px] text-slate-600">
+                      • Photos: <span className="font-semibold">{photoCount}</span> /{" "}
+                      <span className="font-semibold">{requiresUpgrade ? MAX_PHOTOS : FREE_PHOTO_LIMIT}</span>
+                    </span>
                   ) : null}
                 </div>
                 <div className="mt-2 text-[12px] text-slate-700">{meta.msg}</div>
+
+                {submitErr ? (
+                  <div className="mt-2 rounded-xl border border-red-200 bg-white/70 px-3 py-2 text-[12px] text-red-700">
+                    {submitErr}
+                  </div>
+                ) : null}
               </div>
 
               {canEdit ? (
-                <div className="flex items-center gap-2">
-                  <a
-                    href={`/listings/new?edit=${encodeURIComponent(listing?.id || "")}`}
-                    className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
-                  >
-                    Edit Draft
-                  </a>
-                  <a
-                    href={checkoutHref}
-                    className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-[#c8a44d] bg-[#c8a44d] text-[#0a2230] hover:brightness-95"
-                  >
-                    Check Out
-                  </a>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={`/listings/new?edit=${encodeURIComponent(listing?.id || "")}`}
+                      className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+                    >
+                      Edit Draft
+                    </a>
+
+                    {/* ✅ Submit/Resubmit logic (NO subscription management here) */}
+                    {canSubmitFromHere ? (
+                      overMax ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-200 bg-slate-200 text-slate-500 cursor-not-allowed"
+                          title={`Max ${MAX_PHOTOS} photos`}
+                        >
+                          Too many photos
+                        </button>
+                      ) : requiresUpgrade ? (
+                        <a
+                          href={checkoutHref}
+                          className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-[#c8a44d] bg-[#c8a44d] text-[#0a2230] hover:brightness-95"
+                        >
+                          Upgrade &amp; {isRejected ? "resubmit" : "submit"}
+                        </a>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={submitFree}
+                          disabled={submitBusy}
+                          className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
+                            submitBusy ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                          }`}
+                        >
+                          {submitBusy ? "Submitting…" : isRejected ? "Resubmit (free)" : "Submit (free)"}
+                        </button>
+                      )
+                    ) : null}
+                  </div>
+
+                  {/* extra helper line for owner */}
+                  {canSubmitFromHere && requiresUpgrade && !overMax ? (
+                    <div className="text-[11px] text-slate-600">
+                      Free allows {FREE_PHOTO_LIMIT} photos. Upgrade enables up to {MAX_PHOTOS}.
+                    </div>
+                  ) : null}
+
+                  {canSubmitFromHere && overMax ? (
+                    <div className="text-[11px] text-red-700 font-semibold">
+                      Max {MAX_PHOTOS} photos. Remove photos in Edit Draft.
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -950,12 +1057,8 @@ export default function ListingDetailClient({
             <Gallery keys={galleryKeys} token={previewToken} title={titleLine} />
 
             <div className="flex items-center justify-between gap-4">
-              <div className="text-[13px] sm:text-[14px] font-extrabold text-[#0a2230] min-w-0 truncate">
-                {regionCountryLine || "—"}
-              </div>
-              <div className="text-[13px] sm:text-[14px] font-extrabold text-[#0a2230] text-right flex-none">
-                {cityStateLine || "—"}
-              </div>
+              <div className={locationClass}>{regionCountryLine || "—"}</div>
+              <div className={`${locationClass} text-right flex-none`}>{cityStateLine || "—"}</div>
             </div>
           </div>
 
@@ -964,9 +1067,7 @@ export default function ListingDetailClient({
             <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200">
                 {price ? (
-                  <div className="text-[22px] sm:text-[24px] font-extrabold text-[#0a2230] leading-none">
-                    {price}
-                  </div>
+                  <div className="text-[22px] sm:text-[24px] font-extrabold text-[#0a2230] leading-none">{price}</div>
                 ) : null}
 
                 <div className={`${price ? "mt-3" : ""} text-[12px] font-extrabold tracking-wide text-slate-600`}>
@@ -980,15 +1081,11 @@ export default function ListingDetailClient({
                         <div className="text-[15px] font-extrabold text-[#0a2230] truncate">
                           {brokerageName || "Brokerage"}
                         </div>
-                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">
-                          {contactName}
-                        </div>
+                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">{contactName}</div>
                       </>
                     ) : (
                       <>
-                        <div className="text-[15px] font-extrabold text-[#0a2230] truncate">
-                          {contactName}
-                        </div>
+                        <div className="text-[15px] font-extrabold text-[#0a2230] truncate">{contactName}</div>
                         <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">Owner</div>
                       </>
                     )}
@@ -1001,12 +1098,35 @@ export default function ListingDetailClient({
                         </span>
                       ) : null}
                     </div>
+
+                    <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
+                      {viewerLoggedIn && emailRaw ? (
+                        <a href={`mailto:${emailRaw}`} className="text-blue-600 hover:text-blue-700 underline underline-offset-2">
+                          {emailRaw}
+                        </a>
+                      ) : (
+                        <>
+                          {sellerEmailDisplay}
+                          {!viewerLoggedIn ? (
+                            <span className="ml-2 text-[11px] font-normal text-slate-500">
+                              (Email hidden unless valid user is logged in)
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
                   </div>
 
+                  {/* ✅ Broker hero: 3:2 aspect */}
                   {isBroker && brokerHero ? (
-                    <div className="h-[108px] w-[108px] rounded-2xl overflow-hidden flex-none">
+                    <div className="w-[156px] aspect-[3/2] rounded-2xl overflow-hidden flex-none border border-slate-200 bg-white">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={brokerHero} alt="Broker" className="h-full w-full object-contain bg-white" />
+                      <img
+                        src={brokerHero}
+                        alt="Broker hero"
+                        className="h-full w-full object-contain bg-white"
+                        loading="lazy"
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -1046,7 +1166,6 @@ export default function ListingDetailClient({
                     />
                   </Field>
 
-                  {/* ✅ PhoneInput fixed (same container style you use elsewhere) */}
                   <div className="mt-1">
                     <label className="mb-1.5 block text-[12px] font-semibold text-[#0a2230]">
                       Phone number <span className="font-normal text-slate-500">(optional)</span>
@@ -1139,7 +1258,11 @@ export default function ListingDetailClient({
                   </span>
                 </Subhead>
                 <div className="mt-2">
-                  {hasGenerator ? <InlineFacts items={generatorFacts} /> : <div className="text-[13px] text-slate-700">No generator listed.</div>}
+                  {hasGenerator ? (
+                    <InlineFacts items={generatorFacts} />
+                  ) : (
+                    <div className="text-[13px] text-slate-700">No generator listed.</div>
+                  )}
                 </div>
               </div>
 
@@ -1159,6 +1282,19 @@ export default function ListingDetailClient({
                   {dinghyIncluded && dinghyDetails ? <div className="mt-1 whitespace-pre-wrap">{dinghyDetails}</div> : null}
                 </div>
               </div>
+
+              <div>
+                <Subhead>RIGGING / SAIL INVENTORY REMARKS</Subhead>
+                <div className="mt-2 text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  {riggingRemarksText || "No rigging / sail inventory remarks provided."}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Additional Information">
+            <div className="text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+              {additionalInfoText || "No additional information provided."}
             </div>
           </SectionCard>
 
@@ -1166,20 +1302,20 @@ export default function ListingDetailClient({
             <SectionCard title="Brokerage">
               <div className="flex flex-col items-center text-center">
                 {brokerHero ? (
-                  <div className="w-full max-w-[220px] rounded-2xl overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={brokerHero}
-                      alt="Brokerage hero"
-                      className="w-full h-[170px] object-contain bg-white"
-                      loading="lazy"
-                    />
+                  <div className="w-full max-w-[360px] rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <div className="aspect-[3/2] bg-white">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={brokerHero}
+                        alt="Brokerage hero"
+                        className="h-full w-full object-contain bg-white"
+                        loading="lazy"
+                      />
+                    </div>
                   </div>
                 ) : null}
 
-                <div className="mt-2 text-[14px] font-extrabold text-[#0a2230]">
-                  {listing?.brokerageName || "Brokerage"}
-                </div>
+                <div className="mt-2 text-[14px] font-extrabold text-[#0a2230]">{listing?.brokerageName || "Brokerage"}</div>
 
                 {brokerageAddressLines.length ? (
                   <div className="mt-1 text-[12px] text-slate-600 space-y-0.5">
@@ -1191,9 +1327,8 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                {sellerPhoneDisplay ? (
-                  <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">{sellerPhoneDisplay}</div>
-                ) : null}
+                {sellerPhoneDisplay ? <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">{sellerPhoneDisplay}</div> : null}
+                {sellerEmailDisplay ? <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">{sellerEmailDisplay}</div> : null}
 
                 <button
                   type="button"

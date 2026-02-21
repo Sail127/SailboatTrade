@@ -26,10 +26,6 @@ function titleFromListing(listing) {
   return [year, builder, model].filter(Boolean).join(" ") || fallback;
 }
 
-function planLabel(plan) {
-  return plan === "FEATURED_HOME" ? "Featured on Homepage" : "Standard Listing";
-}
-
 export default async function CheckoutPage({ params, searchParams }) {
   const id = String(params?.id || "").trim();
   if (!id) redirect("/");
@@ -43,15 +39,25 @@ export default async function CheckoutPage({ params, searchParams }) {
       id: true,
       ownerId: true,
       status: true,
-      plan: true,
-      paymentStatus: true,
-      paidAt: true,
-      submittedForReviewAt: true,
       previewToken: true,
+
       year: true,
       builder: true,
       model: true,
       title: true,
+
+      heroImageUrl: true,
+      imageUrls: true,
+
+      // ✅ new plan fields
+      photoPlan: true,
+      featuredHome: true,
+
+      billingStatus: true,
+      billingAddons: true,
+      braintreeSubscriptionId: true,
+      billingCurrentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
     },
   });
 
@@ -60,24 +66,23 @@ export default async function CheckoutPage({ params, searchParams }) {
 
   const titleLine = titleFromListing(listing);
 
-  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "", 10);
-  const standardCents = Number.parseInt(process.env.STANDARD_PRICE_USD_CENTS || "", 10);
+  const photoCount = Array.isArray(listing.imageUrls) ? listing.imageUrls.length : 0;
 
-  const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 9900);
-  const standardPrice = moneyFromCents(Number.isFinite(standardCents) ? standardCents : 4900);
+  // ✅ constants (keep in sync with schema rules)
+  const freePhotoLimit = 3;
+  const maxPhotos = 25;
+
+  // ✅ prices ($5 each by default)
+  const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "500", 10);
+  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "500", 10);
+
+  const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 500);
+  const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 500);
 
   const success = String(searchParams?.success || "") === "1";
   const canceled = String(searchParams?.canceled || "") === "1";
 
-  const alreadyPaid = listing.paymentStatus === "PAID";
-  const pendingReview = listing.status === "PENDING_REVIEW";
-
-  // plan preference from querystring (set by /api/checkout redirect) or listing.plan fallback
-  const planFromQuery = String(searchParams?.plan || "").toUpperCase();
-  const initialPlan =
-    planFromQuery === "STANDARD" || planFromQuery === "FEATURED_HOME"
-      ? planFromQuery
-      : String(listing.plan || "FEATURED_HOME");
+  const hasSubscription = Boolean(listing.braintreeSubscriptionId);
 
   return (
     <div className="py-10">
@@ -102,7 +107,7 @@ export default async function CheckoutPage({ params, searchParams }) {
           <div className="p-6 space-y-4">
             {success ? (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
-                Payment received. Your listing is being submitted for admin review.
+                Subscription started. Your listing has been submitted for review.
               </div>
             ) : null}
 
@@ -112,59 +117,21 @@ export default async function CheckoutPage({ params, searchParams }) {
               </div>
             ) : null}
 
-            {alreadyPaid ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
-                <div className="font-extrabold text-[#0a2230]">Already paid</div>
-                <div className="mt-1">
-                  Plan: <span className="font-semibold">{planLabel(listing.plan)}</span>
-                  {listing.paidAt ? (
-                    <span className="text-slate-500"> • Paid: {new Date(listing.paidAt).toLocaleString()}</span>
-                  ) : null}
-                </div>
-                <div className="mt-2 flex gap-3">
-                  <Link href={`/listings/${listing.id}`} className="font-semibold text-blue-700 underline underline-offset-2">
-                    Return to listing
-                  </Link>
-                  {listing.previewToken ? (
-                    <Link
-                      href={`/listings/preview/${listing.previewToken}`}
-                      className="font-semibold text-blue-700 underline underline-offset-2"
-                    >
-                      View preview
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-            ) : pendingReview ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
-                <div className="font-extrabold text-[#0a2230]">Submitted for review</div>
-                {listing.submittedForReviewAt ? (
-                  <div className="mt-1 text-slate-600">
-                    Submitted: {new Date(listing.submittedForReviewAt).toLocaleString()}
-                  </div>
-                ) : null}
-                <div className="mt-2 flex gap-3">
-                  <Link href={`/listings/${listing.id}`} className="font-semibold text-blue-700 underline underline-offset-2">
-                    Return to listing
-                  </Link>
-                  {listing.previewToken ? (
-                    <Link
-                      href={`/listings/preview/${listing.previewToken}`}
-                      className="font-semibold text-blue-700 underline underline-offset-2"
-                    >
-                      View preview
-                    </Link>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <CheckoutUI
-                listingId={listing.id}
-                initialPlan={initialPlan}
-                featuredPrice={featuredPrice}
-                standardPrice={standardPrice}
-              />
-            )}
+            <CheckoutUI
+              listingId={listing.id}
+              titleLine={titleLine}
+              photoCount={photoCount}
+              freePhotoLimit={freePhotoLimit}
+              maxPhotos={maxPhotos}
+              photoPlusPrice={photoPlusPrice}
+              featuredPrice={featuredPrice}
+              initialPhotoPlan={listing.photoPlan}
+              initialFeaturedHome={Boolean(listing.featuredHome)}
+              billingStatus={String(listing.billingStatus || "")}
+              hasSubscription={hasSubscription}
+              cancelAtPeriodEnd={Boolean(listing.cancelAtPeriodEnd)}
+              currentPeriodEnd={listing.billingCurrentPeriodEnd ? listing.billingCurrentPeriodEnd.toISOString() : ""}
+            />
           </div>
         </div>
 

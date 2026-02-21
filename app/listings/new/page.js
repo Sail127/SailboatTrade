@@ -23,12 +23,9 @@ export default async function NewListingPage() {
     <main className="bg-white">
       <section className="mx-auto max-w-4xl px-5 md:px-8 pt-10 md:pt-12 pb-14">
         <h1 className="text-3xl md:text-4xl font-semibold text-[#0a2230]">
-          Post a Sailboat listing
+        Post a Sailboat listing
         </h1>
-        <p className="mt-3 text-slate-600">
-          Fields marked with <span className="font-semibold">*</span> are required.
-        </p>
-
+       
         <div className="mt-8">
           <NewListingForm />
         </div>

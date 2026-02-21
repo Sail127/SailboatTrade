@@ -8,9 +8,18 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const s = await readSession();
-  if (!s?.uid) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  if (!s?.uid) {
+    return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+  }
 
-  const gateway = getBraintreeGateway();
-  const { clientToken } = await gateway.clientToken.generate({});
-  return NextResponse.json({ clientToken });
+  try {
+    const gateway = getBraintreeGateway();
+    const { clientToken } = await gateway.clientToken.generate({});
+    return NextResponse.json({ ok: true, clientToken });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Failed to generate client token." },
+      { status: 500 }
+    );
+  }
 }

@@ -10,6 +10,9 @@ export const dynamic = "force-dynamic";
    NORMALIZERS / HELPERS (form-aligned)
 ========================================================= */
 const ALLOWED_CURRENCIES = ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"];
+
+// Must match NewListingForm constants
+const FREE_PHOTO_LIMIT = 3;
 const MAX_PHOTOS_AT_CREATE = 25;
 
 const isFtOrM = (v) => {
@@ -148,6 +151,7 @@ export async function POST(req) {
     const dinghyTextRaw = body.dinghyDetails ?? body.dinghyNotes ?? body.dinghyModel ?? null;
     const dinghyDetails = hasDinghy ? toStringOrNull(dinghyTextRaw) : null;
 
+    // Required field (matches form validation)
     const draftVal = toNumberOrNull(body.draft);
     if (draftVal == null) {
       return NextResponse.json({ ok: false, error: "Draft is required." }, { status: 400 });
@@ -161,10 +165,24 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+
     const imageUrls = imageUrlsRaw.slice(0, MAX_PHOTOS_AT_CREATE);
     const heroImageUrl = toStringOrNull(body.heroImageUrl) || imageUrls[0] || null;
 
     const brokerHeroImageUrl = sellerRole === "BROKER" ? toStringOrNull(body.brokerHeroImageUrl) : null;
+
+    // ✅ Plan alignment with NewListingForm + schema
+    // If user adds >3 photos, this listing is considered PHOTO_PLUS_25 (requires checkout before publish).
+    const photoPlan = imageUrls.length > FREE_PHOTO_LIMIT ? "PHOTO_PLUS_25" : "FREE_3";
+
+    // ✅ Track requested paid features (used by dashboard + checkout gating)
+    const billingAddons = [];
+    if (photoPlan === "PHOTO_PLUS_25") billingAddons.push("PHOTO_PLUS_25");
+
+    // NOTE: NewListingForm does not send featuredHome today.
+    // If you add a toggle later, treat it as "requested" (addon) and only activate featuredHome after billing is ACTIVE.
+    const wantsFeatured = yesNoToBool(body.featuredHome, false);
+    if (wantsFeatured) billingAddons.push("FEATURED_HOME");
 
     const listing = await prisma.listing.create({
       data: {
@@ -239,12 +257,12 @@ export async function POST(req) {
         brokerageAddress: sellerRole === "BROKER" ? toStringOrNull(body.brokerageAddress) : null,
         brokerHeroImageUrl,
 
-        // ✅ Schema fields (safe + explicit)
-        photoPlan: "FREE_3",
-        featuredHome: false,
-        billingStatus: "FREE",
+        // ✅ Schema-aligned billing/plan fields
+        photoPlan,                 // FREE_3 or PHOTO_PLUS_25
+        featuredHome: false,       // only flip true after billing ACTIVE for FEATURED_HOME
+        billingStatus: "FREE",     // no subscription yet at creation
         billingProvider: null,
-        billingAddons: [],
+        billingAddons,             // requested addons; used for checkout gating
         billingMonthlyCents: null,
 
         status: "DRAFT",

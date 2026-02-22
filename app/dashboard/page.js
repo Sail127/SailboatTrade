@@ -30,8 +30,7 @@ function initialsFromUser(user) {
   const name = (user?.name || "").trim();
   if (name) {
     const parts = name.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2)
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     return parts[0].slice(0, 2).toUpperCase();
   }
 
@@ -47,11 +46,7 @@ function SimpleLink({ href, label, right }) {
       className="flex items-center justify-between py-3 border-b border-slate-200 hover:bg-slate-50 px-2 -mx-2 rounded-lg transition"
     >
       <span className="text-sm font-semibold text-[#0a2230]">{label}</span>
-      {right ? (
-        <span className="text-xs text-slate-500">{right}</span>
-      ) : (
-        <span className="text-slate-300 text-lg leading-none">›</span>
-      )}
+      {right ? <span className="text-xs text-slate-500">{right}</span> : <span className="text-slate-300 text-lg leading-none">›</span>}
     </Link>
   );
 }
@@ -69,7 +64,7 @@ export default async function DashboardHome() {
       firstName: true,
       lastName: true,
       businessName: true,
-      role: true, // ✅ needed for admin link
+      role: true, // ✅ needed for admin link(s)
     },
   });
 
@@ -84,6 +79,7 @@ export default async function DashboardHome() {
   const initials = initialsFromUser(user);
 
   const isStaff = user.role === "ADMIN" || user.role === "MODERATOR";
+  const isAdmin = user.role === "ADMIN";
 
   return (
     <div className="bg-white">
@@ -117,11 +113,7 @@ export default async function DashboardHome() {
           <div className="mt-8">
             <SimpleLink href="/dashboard/listings" label="My Listings" />
             <SimpleLink href="/listings/new" label="Create listing" />
-            <SimpleLink
-              href="/dashboard/favorites"
-              label="Favorite Boats"
-              right={`${favoritesCount} saved`}
-            />
+            <SimpleLink href="/dashboard/favorites" label="Favorite Boats" right={`${favoritesCount} saved`} />
             <SimpleLink href="/dashboard/alerts" label="Email Alerts" />
             <SimpleLink href="/dashboard/account" label="Account" />
 
@@ -129,10 +121,12 @@ export default async function DashboardHome() {
             {isStaff ? (
               <>
                 <div className="h-3" />
-                <div className="text-[11px] font-extrabold tracking-wide text-slate-500 px-1">
-                  ADMIN
-                </div>
+                <div className="text-[11px] font-extrabold tracking-wide text-slate-500 px-1">ADMIN</div>
+
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
+
+                {/* ✅ Admin-only destructive tools */}
+                {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Draft uploads" /> : null}
               </>
             ) : null}
           </div>

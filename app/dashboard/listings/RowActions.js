@@ -38,6 +38,7 @@ export default function RowActions({ id, status, previewToken }) {
 
     setBusy(true);
     try {
+      // ✅ keep your route name
       const res = await fetch(`/api/listings/${id}/restore`, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Failed.");
@@ -50,10 +51,11 @@ export default function RowActions({ id, status, previewToken }) {
   }
 
   async function hardDelete() {
-    const typed = prompt(
-      "This will permanently delete the listing AND its images.\n\nType DELETE to confirm:"
+    // ✅ quick yes/no confirm (no typing)
+    const ok = confirm(
+      "Permanently delete this listing?\n\nThis cannot be undone."
     );
-    if (typed !== "DELETE") return;
+    if (!ok) return;
 
     setBusy(true);
     try {
@@ -70,6 +72,9 @@ export default function RowActions({ id, status, previewToken }) {
     }
   }
 
+  // ✅ your newer preview path format (matches /api/listings/create returning /listings/:id?token=...)
+  const previewHref = `/listings/${id}?token=${encodeURIComponent(previewToken || "")}`;
+
   return (
     <div className="flex flex-wrap gap-2">
       {isPublished ? (
@@ -77,7 +82,7 @@ export default function RowActions({ id, status, previewToken }) {
           View live
         </Link>
       ) : (
-        <Link className="border rounded-md px-3 py-2 text-sm" href={`/listings/preview/${previewToken}`}>
+        <Link className="border rounded-md px-3 py-2 text-sm" href={previewHref} target="_blank">
           Preview
         </Link>
       )}

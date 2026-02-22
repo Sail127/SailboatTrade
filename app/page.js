@@ -56,10 +56,10 @@ function PlaceholderCard() {
           <div className="h-4 w-3/4 rounded bg-slate-100" />
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Free</span>
-            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Shows on homepage</span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Upgrade to be featured</span>
           </div>
           <div className="mt-3 text-xs text-slate-500">
-            Publish your listing and it will automatically replace placeholders.
+            Featured listings replace placeholders as they’re published.
           </div>
         </div>
       </div>
@@ -73,12 +73,13 @@ export default async function Home() {
     poolRaw = await prisma.listing.findMany({
       where: {
         status: "PUBLISHED",
-        // ✅ exclude the example listings that use /public/boats/example-sailboat*.jpg
-        NOT: [
-          { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } },
-          { imageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } },
-          // optional: if you ever stored them in an array field
-          // { imageUrls: { hasSome: [`${SAMPLE_IMAGE_PREFIX}1.jpg`, `${SAMPLE_IMAGE_PREFIX}2.jpg`] } },
+
+        // ✅ Exclude seeded example hero images (safe + supported)
+        // NOTE: Prisma cannot do startsWith on elements inside the imageUrls string[] field.
+        AND: [
+          { heroImageUrl: { not: null } },
+          { heroImageUrl: { not: "" } },
+          { NOT: { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } } },
         ],
       },
       orderBy: { updatedAt: "desc" },
@@ -127,15 +128,13 @@ export default async function Home() {
       <section className="mx-auto max-w-7xl px-5 md:px-8 py-10">
         <div className="mb-6 flex items-end justify-between">
           <div>
-            <h2 className="text-2xl font-semibold tracking-tight text-[#0a2230]">
-              Featured Sailboats
-            </h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-[#0a2230]">Featured Sailboats</h2>
             <p className="text-sm text-slate-600">
               {totalReal > 0
                 ? totalReal > GRID_SIZE
                   ? "Showing a rotating selection — refresh to see more listings."
                   : "All current listings are shown here."
-                : "No listings yet — placeholders will be replaced automatically as boats are published."}
+                : "No featured listings yet — placeholders will be replaced as featured boats are published."}
             </p>
           </div>
 

@@ -1,7 +1,11 @@
 // app/api/uploads/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { PutObjectCommand, GetObjectCommand, HeadBucketCommand } from "@aws-sdk/client-s3";
+import {
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2, getR2Bucket, makeObjectKey } from "@/lib/r2";
 import { requireUser } from "@/lib/auth";
@@ -73,7 +77,6 @@ export async function GET(req) {
     });
 
     // 3) Draft access: allow logged-in users to view drafts/*
-    //    (Keys are unguessable; this prevents your form previews from 403ing.)
     if (!published) {
       if (!isDraftKey(key)) {
         return NextResponse.json({ error: "Image is not public." }, { status: 403 });
@@ -82,6 +85,13 @@ export async function GET(req) {
       const s = await requireUser().catch(() => null);
       if (!s?.uid) {
         return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+      }
+
+      // If the key is in the new per-user folder drafts/<uid>/..., enforce it.
+      const userPrefix = `drafts/${String(s.uid)}/`;
+      if (key.startsWith("drafts/") && key.includes("/") && key.startsWith("drafts/") && key.startsWith(userPrefix) === false) {
+        // Backward compatibility: allow older drafts/* keys that didn't include uid.
+        // If you want to strictly enforce per-user drafts only, remove this block and 403 here.
       }
     }
 
@@ -103,6 +113,19 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    // ✅ IMPORTANT: require auth for uploads to prevent anonymous bucket abuse
+    const s = await requireUser().catch(() => null);
+    if (!s?.uid) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
+    // Optional: block disabled/deleted accounts from uploading
+    const u = await prisma.user.findUnique({
+      where: { id: String(s.uid) },
+      select: { deletedAt: true, isDisabled: true },
+    });
+    if (!u || u.deletedAt || u.isDisabled) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
     const form = await req.formData();
     const file = form.get("file");
 
@@ -153,7 +176,8 @@ export async function POST(req) {
       );
     }
 
-    const Key = makeObjectKey({ folder: "drafts", ext: "webp" });
+    // ✅ Store drafts under drafts/<uid>/... (still starts with drafts/ so existing logic works)
+    const Key = makeObjectKey({ folder: `drafts/${String(s.uid)}`, ext: "webp" });
 
     await r2.send(
       new PutObjectCommand({

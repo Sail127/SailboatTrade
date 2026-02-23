@@ -24,7 +24,9 @@ function SectionCard({ title, subtitle, children }) {
         <h2 className="text-[15px] sm:text-[18px] font-extrabold tracking-wide text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]">
           {title}
         </h2>
-        {subtitle ? <p className="mt-1 text-xs sm:text-sm text-white/80">{subtitle}</p> : null}
+        {subtitle ? (
+          <p className="mt-1 text-xs sm:text-sm text-white/80">{subtitle}</p>
+        ) : null}
       </div>
       <div className="p-4 sm:p-5">{children}</div>
     </div>
@@ -50,13 +52,19 @@ function Badge({ children, tone = "slate" }) {
 }
 
 function Subhead({ children }) {
-  return <div className="text-[12px] font-extrabold tracking-wide text-slate-600">{children}</div>;
+  return (
+    <div className="text-[12px] font-extrabold tracking-wide text-slate-600">
+      {children}
+    </div>
+  );
 }
 
 function Field({ label, children }) {
   return (
     <label className="block">
-      <div className="mb-1.5 text-[12px] font-semibold text-[#0a2230]">{label}</div>
+      <div className="mb-1.5 text-[12px] font-semibold text-[#0a2230]">
+        {label}
+      </div>
       {children}
     </label>
   );
@@ -152,12 +160,16 @@ function prettyFuel(v) {
 
 function isYes(v) {
   if (v === true) return true;
-  const s = String(v ?? "").toUpperCase().trim();
+  const s = String(v ?? "")
+    .toUpperCase()
+    .trim();
   return s === "YES" || s === "TRUE" || s === "1";
 }
 
 function isUsCountry(country) {
-  const c = String(country || "").trim().toUpperCase();
+  const c = String(country || "")
+    .trim()
+    .toUpperCase();
   return (
     c === "US" ||
     c === "USA" ||
@@ -203,7 +215,8 @@ function normalizeAddressLines(rawAddr) {
     if (parts.length === 1) lines = [parts[0]];
     else if (parts.length === 2) lines = [parts[0], parts[1]];
     else if (parts.length === 3) lines = [parts[0], `${parts[1]}, ${parts[2]}`];
-    else if (parts.length >= 4) lines = [parts[0], `${parts[1]}, ${parts[2]}`, parts.slice(3).join(", ")];
+    else if (parts.length >= 4)
+      lines = [parts[0], `${parts[1]}, ${parts[2]}`, parts.slice(3).join(", ")];
   }
 
   return lines.slice(0, 4);
@@ -224,17 +237,39 @@ function statusMeta(status) {
         style: "warning",
       };
     case "PENDING_REVIEW":
-      return { tone: "navy", title: "Pending Review", msg: "Your listing is being reviewed.", style: "neutral" };
+      return {
+        tone: "navy",
+        title: "Pending Review",
+        msg: "Your listing is being reviewed.",
+        style: "neutral",
+      };
     case "REJECTED":
-      return { tone: "red", title: "Changes Requested", msg: "Update your listing and resubmit.", style: "danger" };
+      return {
+        tone: "red",
+        title: "Changes Requested",
+        msg: "Update your listing and resubmit.",
+        style: "danger",
+      };
     case "PUBLISHED":
       return null;
     case "ARCHIVED":
-      return { tone: "slate", title: "Archived", msg: "This listing is not public.", style: "neutral" };
+      return {
+        tone: "slate",
+        title: "Archived",
+        msg: "This listing is not public.",
+        style: "neutral",
+      };
     case "REMOVED":
-      return { tone: "red", title: "Removed", msg: "This listing is not visible publicly.", style: "danger" };
+      return {
+        tone: "red",
+        title: "Removed",
+        msg: "This listing is not visible publicly.",
+        style: "danger",
+      };
     default:
-      return s ? { tone: "slate", title: s, msg: "Listing status.", style: "neutral" } : null;
+      return s
+        ? { tone: "slate", title: s, msg: "Listing status.", style: "neutral" }
+        : null;
   }
 }
 
@@ -250,12 +285,17 @@ function imageUrlFromKey(key, token) {
   if (/^https?:\/\//i.test(k)) return k;
   if (k.startsWith("/")) return k;
 
-  const r2 = String(process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  const r2 = String(process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "").replace(
+    /\/+$/,
+    "",
+  );
   if (r2) return `${r2}/${encodeURIComponent(k)}`;
 
   const base = process.env.NEXT_PUBLIC_UPLOADS_BASE_URL || "/api/uploads?key=";
 
-  let url = base.endsWith("/") ? `${base}${encodeURIComponent(k)}` : `${base}${encodeURIComponent(k)}`;
+  let url = base.endsWith("/")
+    ? `${base}${encodeURIComponent(k)}`
+    : `${base}${encodeURIComponent(k)}`;
   if (token && !/([?&])token=/.test(url)) {
     url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
   }
@@ -267,12 +307,16 @@ function imageUrlFromKey(key, token) {
 ------------------------------ */
 function BulletColumns({ items = [] }) {
   const cleaned = items.filter((x) => x && x.value);
-  if (!cleaned.length) return <div className="text-[13px] text-slate-700">—</div>;
+  if (!cleaned.length)
+    return <div className="text-[13px] text-slate-700">—</div>;
 
   return (
     <ul className="columns-1 sm:columns-2 lg:columns-3 gap-x-10">
       {cleaned.map((it) => (
-        <li key={it.key} className="break-inside-avoid mb-2 text-[13px] text-slate-700">
+        <li
+          key={it.key}
+          className="break-inside-avoid mb-2 text-[13px] text-slate-700"
+        >
           <span className="font-extrabold text-[#0a2230]">•</span>{" "}
           <span className="font-extrabold text-[#0a2230]">{it.label}:</span>{" "}
           <span className="font-semibold">{it.value}</span>
@@ -284,7 +328,8 @@ function BulletColumns({ items = [] }) {
 
 function InlineFacts({ items = [] }) {
   const cleaned = items.filter((x) => x && x.value);
-  if (!cleaned.length) return <div className="text-[13px] text-slate-700">—</div>;
+  if (!cleaned.length)
+    return <div className="text-[13px] text-slate-700">—</div>;
 
   return (
     <div className="flex flex-wrap text-[13px] text-slate-700">
@@ -306,7 +351,9 @@ function InlineFacts({ items = [] }) {
 ------------------------------ */
 function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   const images = useMemo(() => {
-    const arr = (keys || []).filter(Boolean).map((k) => imageUrlFromKey(k, token));
+    const arr = (keys || [])
+      .filter(Boolean)
+      .map((k) => imageUrlFromKey(k, token));
     return arr.length ? arr : [];
   }, [keys, token]);
 
@@ -364,7 +411,8 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
 
     return () => {
       window.removeEventListener("keydown", onKey);
-      if (document?.body?.style) document.body.style.overflow = prevOverflow || "";
+      if (document?.body?.style)
+        document.body.style.overflow = prevOverflow || "";
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxOpen, images.length]);
@@ -436,7 +484,11 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
               aria-label={`View photo ${i + 1}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`Thumbnail ${i + 1}`} className="h-full w-full object-contain bg-slate-100" />
+              <img
+                src={src}
+                alt={`Thumbnail ${i + 1}`}
+                className="h-full w-full object-contain bg-slate-100"
+              />
             </button>
           ))}
         </div>
@@ -531,7 +583,11 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
             <div className="h-full w-full overflow-auto rounded-2xl bg-black/40 border border-white/10">
               <div className="min-h-full min-w-full grid place-items-center p-4">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={images[idx]} alt={`Fullscreen ${idx + 1}`} className="max-w-none w-auto h-auto" />
+                <img
+                  src={images[idx]}
+                  alt={`Fullscreen ${idx + 1}`}
+                  className="max-w-none w-auto h-auto"
+                />
               </div>
             </div>
           </div>
@@ -549,7 +605,11 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   aria-label={`Select photo ${i + 1}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={src} alt={`Thumb ${i + 1}`} className="h-full w-full object-contain bg-black/20" />
+                  <img
+                    src={src}
+                    alt={`Thumb ${i + 1}`}
+                    className="h-full w-full object-contain bg-black/20"
+                  />
                 </button>
               ))}
             </div>
@@ -581,10 +641,14 @@ export default function ListingDetailClient({
   const builder = String(listing?.builder || "").trim();
   const model = String(listing?.model || "").trim();
 
-  const titleLine = [year, builder, model].filter(Boolean).join(" ") || String(listing?.title || "Listing");
+  const titleLine =
+    [year, builder, model].filter(Boolean).join(" ") ||
+    String(listing?.title || "Listing");
   const price = formatMoney(listing?.price, listing?.currency);
 
-  const rawCountry = String(locationCountryLabel || listing?.locationCountry || "").trim();
+  const rawCountry = String(
+    locationCountryLabel || listing?.locationCountry || "",
+  ).trim();
 
   // ✅ Region/country line with safe fallback to listing.locationUsRegion
   const regionCountryLine = useMemo(() => {
@@ -592,7 +656,8 @@ export default function ListingDetailClient({
     const isUSA2 = isUsCountry(country);
 
     const regionFallback = String(listing?.locationUsRegion || "").trim();
-    const region = usRegionLabel || (regionFallback ? prettyEnum(regionFallback) : "");
+    const region =
+      usRegionLabel || (regionFallback ? prettyEnum(regionFallback) : "");
 
     if (!country && region) return region;
     if (!country && !region) return "";
@@ -602,20 +667,28 @@ export default function ListingDetailClient({
     return [region, prettyUsCountry(country)].filter(Boolean).join(" • ");
   }, [rawCountry, usRegionLabel, listing?.locationUsRegion]);
 
-  const cityStateLine = [listing?.locationCity, listing?.locationState].filter(Boolean).join(", ");
+  const cityStateLine = [listing?.locationCity, listing?.locationState]
+    .filter(Boolean)
+    .join(", ");
 
   const contactName = String(listing?.listingContactName || "Seller").trim();
   const brokerageName = String(listing?.brokerageName || "").trim();
 
   const phoneRaw = String(listing?.contactPhone || "");
-  const sellerPhoneDisplay = viewerLoggedIn ? formatIntlPhoneDisplay(phoneRaw) || "Not provided" : "XXX-XXX-XXXX";
+  const sellerPhoneDisplay = viewerLoggedIn
+    ? formatIntlPhoneDisplay(phoneRaw) || "Not provided"
+    : "XXX-XXX-XXXX";
 
   const emailRaw = String(listing?.contactEmail || "").trim();
-  const sellerEmailDisplay = viewerLoggedIn ? (emailRaw || "Not provided") : "XXX@XXX.com";
+  const sellerEmailDisplay = viewerLoggedIn
+    ? emailRaw || "Not provided"
+    : "XXX@XXX.com";
 
   // ✅ Photo counts for Free vs Paid plan
   const photoCount = useMemo(() => {
-    const urls = Array.isArray(listing?.imageUrls) ? listing.imageUrls.filter(Boolean) : [];
+    const urls = Array.isArray(listing?.imageUrls)
+      ? listing.imageUrls.filter(Boolean)
+      : [];
     return urls.length;
   }, [listing?.imageUrls]);
 
@@ -640,18 +713,27 @@ export default function ListingDetailClient({
     setSubmitErr("");
     setSubmitBusy(true);
     try {
-      if (overMax) throw new Error(`You have ${photoCount} photos. Max allowed is ${MAX_PHOTOS}. Remove photos first.`);
+      if (overMax)
+        throw new Error(
+          `You have ${photoCount} photos. Max allowed is ${MAX_PHOTOS}. Remove photos first.`,
+        );
       if (requiresUpgrade) {
-        throw new Error(`Free listings allow up to ${FREE_PHOTO_LIMIT} photos. Remove photos or upgrade.`);
+        throw new Error(
+          `Free listings allow up to ${FREE_PHOTO_LIMIT} photos. Remove photos or upgrade.`,
+        );
       }
 
-      const res = await fetch(`/api/listings/${encodeURIComponent(String(listing?.id || ""))}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "FREE" }),
-      });
+      const res = await fetch(
+        `/api/listings/${encodeURIComponent(String(listing?.id || ""))}/submit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "FREE" }),
+        },
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not submit listing.");
+      if (!res.ok || !data?.ok)
+        throw new Error(data?.error || "Could not submit listing.");
 
       window.location.assign(data.redirect || `/listings/${listing.id}`);
     } catch (e) {
@@ -683,7 +765,10 @@ export default function ListingDetailClient({
 
   const msgRef = useRef(null);
 
-  const defaultBuyerMsg = useMemo(() => `Please contact me and provide more details on this ${titleLine}.`, [titleLine]);
+  const defaultBuyerMsg = useMemo(
+    () => `Please contact me and provide more details on this ${titleLine}.`,
+    [titleLine],
+  );
 
   const [buyerFirst, setBuyerFirst] = useState("");
   const [buyerLast, setBuyerLast] = useState("");
@@ -706,15 +791,20 @@ export default function ListingDetailClient({
         const u = data?.user || data?.ok?.user || null;
         if (ignore || !u) return;
 
-        const first = String(u.firstName || "").trim() || (u.name ? String(u.name).trim().split(" ")[0] : "");
+        const first =
+          String(u.firstName || "").trim() ||
+          (u.name ? String(u.name).trim().split(" ")[0] : "");
         const last =
-          String(u.lastName || "").trim() || (u.name ? String(u.name).trim().split(" ").slice(1).join(" ") : "");
+          String(u.lastName || "").trim() ||
+          (u.name ? String(u.name).trim().split(" ").slice(1).join(" ") : "");
 
         if (!buyerFirst.trim() && first) setBuyerFirst(first);
         if (!buyerLast.trim() && last) setBuyerLast(last);
-        if (!buyerEmail.trim() && u.email) setBuyerEmail(String(u.email).trim());
+        if (!buyerEmail.trim() && u.email)
+          setBuyerEmail(String(u.email).trim());
 
-        if (!buyerPhoneRaw.trim() && u.phone) setBuyerPhoneRaw(String(u.phone).trim());
+        if (!buyerPhoneRaw.trim() && u.phone)
+          setBuyerPhoneRaw(String(u.phone).trim());
       } catch {
         // ignore
       }
@@ -759,7 +849,8 @@ export default function ListingDetailClient({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+      if (!res.ok)
+        throw new Error(data?.error || `Request failed (${res.status})`);
 
       setSentOk("Message sent.");
       setBuyerMsg(defaultBuyerMsg);
@@ -791,8 +882,21 @@ export default function ListingDetailClient({
 
   const showBrokerageCard = useMemo(() => {
     if (!isBroker) return false;
-    return Boolean(listing?.brokerageName || brokerageAddressLines.length || brokerHero || phoneRaw || emailRaw);
-  }, [isBroker, listing?.brokerageName, brokerageAddressLines, brokerHero, phoneRaw, emailRaw]);
+    return Boolean(
+      listing?.brokerageName ||
+      brokerageAddressLines.length ||
+      brokerHero ||
+      phoneRaw ||
+      emailRaw,
+    );
+  }, [
+    isBroker,
+    listing?.brokerageName,
+    brokerageAddressLines,
+    brokerHero,
+    phoneRaw,
+    emailRaw,
+  ]);
 
   const tankUnit = String(listing?.tankUnit || "").trim();
   function capWithUnit(v) {
@@ -804,24 +908,64 @@ export default function ListingDetailClient({
 
   const specList = useMemo(
     () => [
-      { key: "cond", label: "Condition", value: prettyCondition(listing?.boatCondition) },
+      {
+        key: "cond",
+        label: "Condition",
+        value: prettyCondition(listing?.boatCondition),
+      },
       { key: "hull", label: "Hull Type", value: prettyHullType(listing?.type) },
-      { key: "year", label: "Year", value: listing?.year != null ? String(listing.year) : "" },
+      {
+        key: "year",
+        label: "Year",
+        value: listing?.year != null ? String(listing.year) : "",
+      },
       { key: "builder", label: "Builder", value: listing?.builder || "" },
       { key: "model", label: "Model", value: listing?.model || "" },
-      { key: "cabins", label: "Cabins", value: listing?.cabins != null ? String(listing.cabins) : "" },
-      { key: "heads", label: "Heads", value: listing?.heads != null ? String(listing.heads) : "" },
+      {
+        key: "cabins",
+        label: "Cabins",
+        value: listing?.cabins != null ? String(listing.cabins) : "",
+      },
+      {
+        key: "heads",
+        label: "Heads",
+        value: listing?.heads != null ? String(listing.heads) : "",
+      },
 
-      { key: "loa", label: "LOA", value: fmtUnit(listing?.loa, listing?.loaUnit) },
-      { key: "draft", label: "Draft", value: fmtUnit(listing?.draft, listing?.draftUnit) },
-      { key: "air", label: "Air Draft", value: fmtUnit(listing?.airDraft, listing?.airDraftUnit) },
+      {
+        key: "loa",
+        label: "LOA",
+        value: fmtUnit(listing?.loa, listing?.loaUnit),
+      },
+      {
+        key: "draft",
+        label: "Draft",
+        value: fmtUnit(listing?.draft, listing?.draftUnit),
+      },
+      {
+        key: "air",
+        label: "Air Draft",
+        value: fmtUnit(listing?.airDraft, listing?.airDraftUnit),
+      },
 
-      { key: "disp", label: "Displacement", value: fmtUnit(listing?.displacement, listing?.displacementUnit) },
+      {
+        key: "disp",
+        label: "Displacement",
+        value: fmtUnit(listing?.displacement, listing?.displacementUnit),
+      },
 
-      { key: "fuelCap", label: "Fuel Capacity", value: capWithUnit(listing?.tankFuel) },
-      { key: "waterCap", label: "Water Capacity", value: capWithUnit(listing?.tankWater) },
+      {
+        key: "fuelCap",
+        label: "Fuel Capacity",
+        value: capWithUnit(listing?.tankFuel),
+      },
+      {
+        key: "waterCap",
+        label: "Water Capacity",
+        value: capWithUnit(listing?.tankWater),
+      },
     ],
-    [listing, tankUnit]
+    [listing, tankUnit],
   );
 
   const engineFacts = useMemo(() => {
@@ -829,22 +973,36 @@ export default function ListingDetailClient({
     const right = listing?.rightEngineHours;
     const hrs =
       left != null || right != null
-        ? [left != null ? `L ${left}` : null, right != null ? `R ${right}` : null].filter(Boolean).join(" • ")
+        ? [
+            left != null ? `L ${left}` : null,
+            right != null ? `R ${right}` : null,
+          ]
+            .filter(Boolean)
+            .join(" • ")
         : listing?.engineHours != null
-        ? String(listing.engineHours)
-        : "";
+          ? String(listing.engineHours)
+          : "";
 
     return [
       { key: "ef", label: "Fuel", value: prettyFuel(listing?.engineFuel) },
       { key: "emk", label: "Make", value: listing?.engineMake || "" },
-      { key: "hp", label: "HP", value: listing?.engineHorsepower != null ? String(listing.engineHorsepower) : "" },
+      {
+        key: "hp",
+        label: "HP",
+        value:
+          listing?.engineHorsepower != null
+            ? String(listing.engineHorsepower)
+            : "",
+      },
       { key: "prop", label: "Prop", value: listing?.propeller || "" },
       { key: "hrs", label: "Hours", value: hrs },
     ];
   }, [listing]);
 
   const equipmentSorted = useMemo(() => {
-    const arr = Array.isArray(listing?.equipment) ? listing.equipment.filter(Boolean) : [];
+    const arr = Array.isArray(listing?.equipment)
+      ? listing.equipment.filter(Boolean)
+      : [];
     return arr.slice().sort((a, b) => String(a).localeCompare(String(b)));
   }, [listing?.equipment]);
 
@@ -854,15 +1012,27 @@ export default function ListingDetailClient({
     return [
       { key: "gf", label: "Fuel", value: prettyFuel(listing?.generatorFuel) },
       { key: "gmk", label: "Make", value: listing?.generatorMake || "" },
-      { key: "gkw", label: "kW", value: listing?.generatorKw != null ? String(listing.generatorKw) : "" },
-      { key: "gh", label: "Hours", value: listing?.generatorHours != null ? String(listing.generatorHours) : "" },
+      {
+        key: "gkw",
+        label: "kW",
+        value: listing?.generatorKw != null ? String(listing.generatorKw) : "",
+      },
+      {
+        key: "gh",
+        label: "Hours",
+        value:
+          listing?.generatorHours != null ? String(listing.generatorHours) : "",
+      },
     ];
   }, [listing, hasGenerator]);
 
   const dinghyIncluded = isYes(listing?.hasDinghy);
   const dinghyDetails = String(listing?.dinghyDetails || "").trim();
 
-  const riggingRemarksText = useMemo(() => String(listing?.riggingRemarks || "").trim(), [listing?.riggingRemarks]);
+  const riggingRemarksText = useMemo(
+    () => String(listing?.riggingRemarks || "").trim(),
+    [listing?.riggingRemarks],
+  );
 
   const createdAt = listing?.createdAt ? new Date(listing.createdAt) : null;
   const updatedAt = listing?.updatedAt ? new Date(listing.updatedAt) : null;
@@ -896,7 +1066,8 @@ export default function ListingDetailClient({
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+      if (!res.ok)
+        throw new Error(data?.error || `Request failed (${res.status})`);
       setReportMsg("Report submitted. Thank you.");
       setTimeout(() => {
         setReportOpen(false);
@@ -911,7 +1082,10 @@ export default function ListingDetailClient({
     }
   }
 
-  const additionalInfoText = useMemo(() => String(listing?.additionalInfo || "").trim(), [listing?.additionalInfo]);
+  const additionalInfoText = useMemo(
+    () => String(listing?.additionalInfo || "").trim(),
+    [listing?.additionalInfo],
+  );
 
   const locationClass =
     "text-[14px] sm:text-[16px] font-semibold text-[#0a2230] font-serif tracking-wide min-w-0 truncate";
@@ -930,7 +1104,11 @@ export default function ListingDetailClient({
               aria-pressed={saved}
               title="Save"
             >
-              <span aria-hidden="true" className="inline-block" style={{ transform: "scale(1.15)" }}>
+              <span
+                aria-hidden="true"
+                className="inline-block"
+                style={{ transform: "scale(1.15)" }}
+              >
                 {saved ? "♥" : "♡"}
               </span>
               Save
@@ -960,23 +1138,32 @@ export default function ListingDetailClient({
               meta.style === "warning"
                 ? "border-[#f1d58a] bg-[#fff7d6]"
                 : meta.style === "danger"
-                ? "border-red-200 bg-red-50"
-                : "border-slate-200 bg-slate-50"
+                  ? "border-red-200 bg-red-50"
+                  : "border-slate-200 bg-slate-50"
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={meta.tone}>{meta.title}</Badge>
-                  {viewerIsOwner ? <span className="text-[12px] font-semibold text-slate-700">(Owner view)</span> : null}
+                  {viewerIsOwner ? (
+                    <span className="text-[12px] font-semibold text-slate-700">
+                      (Owner view)
+                    </span>
+                  ) : null}
                   {viewerIsOwner ? (
                     <span className="text-[12px] text-slate-600">
-                      • Photos: <span className="font-semibold">{photoCount}</span> /{" "}
-                      <span className="font-semibold">{requiresUpgrade ? MAX_PHOTOS : FREE_PHOTO_LIMIT}</span>
+                      • Photos:{" "}
+                      <span className="font-semibold">{photoCount}</span> /{" "}
+                      <span className="font-semibold">
+                        {requiresUpgrade ? MAX_PHOTOS : FREE_PHOTO_LIMIT}
+                      </span>
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-2 text-[12px] text-slate-700">{meta.msg}</div>
+                <div className="mt-2 text-[12px] text-slate-700">
+                  {meta.msg}
+                </div>
 
                 {submitErr ? (
                   <div className="mt-2 rounded-xl border border-red-200 bg-white/70 px-3 py-2 text-[12px] text-red-700">
@@ -989,7 +1176,11 @@ export default function ListingDetailClient({
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex items-center gap-2">
                     <a
-                      href={`/listings/new?edit=${encodeURIComponent(listing?.id || "")}`}
+                      href={`/listings/${encodeURIComponent(String(listing?.id || ""))}/edit${
+                        previewToken
+                          ? `?token=${encodeURIComponent(previewToken)}`
+                          : ""
+                      }`}
                       className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
                     >
                       Edit Draft
@@ -1019,10 +1210,16 @@ export default function ListingDetailClient({
                           onClick={submitFree}
                           disabled={submitBusy}
                           className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                            submitBusy ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                            submitBusy
+                              ? "bg-slate-300 cursor-not-allowed"
+                              : "bg-[#0a2230] hover:bg-[#0f2a3b]"
                           }`}
                         >
-                          {submitBusy ? "Submitting…" : isRejected ? "Resubmit (free)" : "Submit (free)"}
+                          {submitBusy
+                            ? "Submitting…"
+                            : isRejected
+                              ? "Resubmit (free)"
+                              : "Submit (free)"}
                         </button>
                       )
                     ) : null}
@@ -1031,7 +1228,8 @@ export default function ListingDetailClient({
                   {/* extra helper line for owner */}
                   {canSubmitFromHere && requiresUpgrade && !overMax ? (
                     <div className="text-[11px] text-slate-600">
-                      Free allows {FREE_PHOTO_LIMIT} photos. Upgrade enables up to {MAX_PHOTOS}.
+                      Free allows {FREE_PHOTO_LIMIT} photos. Upgrade enables up
+                      to {MAX_PHOTOS}.
                     </div>
                   ) : null}
 
@@ -1054,11 +1252,17 @@ export default function ListingDetailClient({
               {titleLine}
             </div>
 
-            <Gallery keys={galleryKeys} token={previewToken} title={titleLine} />
+            <Gallery
+              keys={galleryKeys}
+              token={previewToken}
+              title={titleLine}
+            />
 
             <div className="flex items-center justify-between gap-4">
               <div className={locationClass}>{regionCountryLine || "—"}</div>
-              <div className={`${locationClass} text-right flex-none`}>{cityStateLine || "—"}</div>
+              <div className={`${locationClass} text-right flex-none`}>
+                {cityStateLine || "—"}
+              </div>
             </div>
           </div>
 
@@ -1067,10 +1271,14 @@ export default function ListingDetailClient({
             <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200">
                 {price ? (
-                  <div className="text-[22px] sm:text-[24px] font-extrabold text-[#0a2230] leading-none">{price}</div>
+                  <div className="text-[22px] sm:text-[24px] font-extrabold text-[#0a2230] leading-none">
+                    {price}
+                  </div>
                 ) : null}
 
-                <div className={`${price ? "mt-3" : ""} text-[12px] font-extrabold tracking-wide text-slate-600`}>
+                <div
+                  className={`${price ? "mt-3" : ""} text-[12px] font-extrabold tracking-wide text-slate-600`}
+                >
                   For Sale by {isBroker ? "Broker" : "Owner"}
                 </div>
 
@@ -1081,12 +1289,18 @@ export default function ListingDetailClient({
                         <div className="text-[15px] font-extrabold text-[#0a2230] truncate">
                           {brokerageName || "Brokerage"}
                         </div>
-                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">{contactName}</div>
+                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">
+                          {contactName}
+                        </div>
                       </>
                     ) : (
                       <>
-                        <div className="text-[15px] font-extrabold text-[#0a2230] truncate">{contactName}</div>
-                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">Owner</div>
+                        <div className="text-[15px] font-extrabold text-[#0a2230] truncate">
+                          {contactName}
+                        </div>
+                        <div className="mt-1 text-[12px] font-semibold text-slate-700 truncate">
+                          Owner
+                        </div>
                       </>
                     )}
 
@@ -1101,7 +1315,10 @@ export default function ListingDetailClient({
 
                     <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
                       {viewerLoggedIn && emailRaw ? (
-                        <a href={`mailto:${emailRaw}`} className="text-blue-600 hover:text-blue-700 underline underline-offset-2">
+                        <a
+                          href={`mailto:${emailRaw}`}
+                          className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                        >
                           {emailRaw}
                         </a>
                       ) : (
@@ -1145,15 +1362,25 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                <div className="text-[13px] font-extrabold text-[#0a2230]">Message Seller</div>
+                <div className="text-[13px] font-extrabold text-[#0a2230]">
+                  Message Seller
+                </div>
 
                 <form onSubmit={submitInquiry} className="mt-3 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="First name *">
-                      <input className={inputBase()} value={buyerFirst} onChange={(e) => setBuyerFirst(e.target.value)} />
+                      <input
+                        className={inputBase()}
+                        value={buyerFirst}
+                        onChange={(e) => setBuyerFirst(e.target.value)}
+                      />
                     </Field>
                     <Field label="Last name *">
-                      <input className={inputBase()} value={buyerLast} onChange={(e) => setBuyerLast(e.target.value)} />
+                      <input
+                        className={inputBase()}
+                        value={buyerLast}
+                        onChange={(e) => setBuyerLast(e.target.value)}
+                      />
                     </Field>
                   </div>
 
@@ -1168,7 +1395,10 @@ export default function ListingDetailClient({
 
                   <div className="mt-1">
                     <label className="mb-1.5 block text-[12px] font-semibold text-[#0a2230]">
-                      Phone number <span className="font-normal text-slate-500">(optional)</span>
+                      Phone number{" "}
+                      <span className="font-normal text-slate-500">
+                        (optional)
+                      </span>
                     </label>
 
                     <div className="rounded-xl border border-slate-300 px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40 bg-white">
@@ -1177,7 +1407,9 @@ export default function ListingDetailClient({
                         value={buyerPhoneRaw}
                         onChange={(v) => setBuyerPhoneRaw(v)}
                         inputClassName="w-full !border-0 !shadow-none !outline-none !text-sm !p-0"
-                        countrySelectorStyleProps={{ buttonClassName: "!border-0 !shadow-none" }}
+                        countrySelectorStyleProps={{
+                          buttonClassName: "!border-0 !shadow-none",
+                        }}
                       />
                     </div>
                   </div>
@@ -1196,7 +1428,9 @@ export default function ListingDetailClient({
                       type="submit"
                       disabled={sending}
                       className={`inline-flex h-10 items-center justify-center rounded-full px-8 text-[13px] font-semibold text-white ${
-                        sending ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                        sending
+                          ? "bg-slate-300 cursor-not-allowed"
+                          : "bg-[#0a2230] hover:bg-[#0f2a3b]"
                       }`}
                     >
                       {sending ? "Sending…" : "Send Message"}
@@ -1232,7 +1466,10 @@ export default function ListingDetailClient({
                   {equipmentSorted.length ? (
                     <ul className="columns-1 sm:columns-2 lg:columns-3 gap-x-10">
                       {equipmentSorted.map((name) => (
-                        <li key={name} className="break-inside-avoid mb-2 text-[13px] text-slate-700">
+                        <li
+                          key={name}
+                          className="break-inside-avoid mb-2 text-[13px] text-slate-700"
+                        >
                           <span className="text-emerald-600">
                             <CheckIcon className="h-[18px] w-[18px] -translate-y-[1px]" />
                           </span>{" "}
@@ -1241,7 +1478,9 @@ export default function ListingDetailClient({
                       ))}
                     </ul>
                   ) : (
-                    <div className="text-[13px] text-slate-700">No equipment listed.</div>
+                    <div className="text-[13px] text-slate-700">
+                      No equipment listed.
+                    </div>
                   )}
                 </div>
               </div>
@@ -1261,7 +1500,9 @@ export default function ListingDetailClient({
                   {hasGenerator ? (
                     <InlineFacts items={generatorFacts} />
                   ) : (
-                    <div className="text-[13px] text-slate-700">No generator listed.</div>
+                    <div className="text-[13px] text-slate-700">
+                      No generator listed.
+                    </div>
                   )}
                 </div>
               </div>
@@ -1278,15 +1519,22 @@ export default function ListingDetailClient({
                   </span>
                 </Subhead>
                 <div className="mt-2 text-[13px] text-slate-700">
-                  <span className="font-semibold">{dinghyIncluded ? "Included" : "No"}</span>
-                  {dinghyIncluded && dinghyDetails ? <div className="mt-1 whitespace-pre-wrap">{dinghyDetails}</div> : null}
+                  <span className="font-semibold">
+                    {dinghyIncluded ? "Included" : "No"}
+                  </span>
+                  {dinghyIncluded && dinghyDetails ? (
+                    <div className="mt-1 whitespace-pre-wrap">
+                      {dinghyDetails}
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
               <div>
                 <Subhead>RIGGING / SAIL INVENTORY REMARKS</Subhead>
                 <div className="mt-2 text-[13px] leading-relaxed text-slate-700 whitespace-pre-wrap">
-                  {riggingRemarksText || "No rigging / sail inventory remarks provided."}
+                  {riggingRemarksText ||
+                    "No rigging / sail inventory remarks provided."}
                 </div>
               </div>
             </div>
@@ -1315,7 +1563,9 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                <div className="mt-2 text-[14px] font-extrabold text-[#0a2230]">{listing?.brokerageName || "Brokerage"}</div>
+                <div className="mt-2 text-[14px] font-extrabold text-[#0a2230]">
+                  {listing?.brokerageName || "Brokerage"}
+                </div>
 
                 {brokerageAddressLines.length ? (
                   <div className="mt-1 text-[12px] text-slate-600 space-y-0.5">
@@ -1327,14 +1577,23 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                {sellerPhoneDisplay ? <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">{sellerPhoneDisplay}</div> : null}
-                {sellerEmailDisplay ? <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">{sellerEmailDisplay}</div> : null}
+                {sellerPhoneDisplay ? (
+                  <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
+                    {sellerPhoneDisplay}
+                  </div>
+                ) : null}
+                {sellerEmailDisplay ? (
+                  <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
+                    {sellerEmailDisplay}
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
                   onClick={() => {
                     const el = document.getElementById("contact-card");
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    if (el)
+                      el.scrollIntoView({ behavior: "smooth", block: "start" });
                     setTimeout(() => {
                       if (msgRef.current) msgRef.current.focus();
                     }, 250);
@@ -1371,11 +1630,17 @@ export default function ListingDetailClient({
           >
             <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
               <div className="px-5 py-3 bg-[#0a2230]">
-                <div className="text-[14px] font-semibold text-white">Report this listing</div>
+                <div className="text-[14px] font-semibold text-white">
+                  Report this listing
+                </div>
               </div>
               <div className="p-5 space-y-3">
                 <Field label="Reason">
-                  <select className={inputBase()} value={reportReason} onChange={(e) => setReportReason(e.target.value)}>
+                  <select
+                    className={inputBase()}
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                  >
                     <option value="FRAUD">Suspected fraud / scam</option>
                     <option value="WRONG_INFO">Wrong information</option>
                     <option value="DUPLICATE">Duplicate listing</option>
@@ -1411,7 +1676,9 @@ export default function ListingDetailClient({
                     type="button"
                     disabled={reportBusy}
                     className={`inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold text-white ${
-                      reportBusy ? "bg-slate-300 cursor-not-allowed" : "bg-red-600 hover:bg-red-700"
+                      reportBusy
+                        ? "bg-slate-300 cursor-not-allowed"
+                        : "bg-red-600 hover:bg-red-700"
                     }`}
                     onClick={submitReport}
                   >

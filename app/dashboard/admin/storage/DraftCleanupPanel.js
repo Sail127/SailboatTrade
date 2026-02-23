@@ -7,12 +7,15 @@ const GOLD = "#c8a44d";
 
 const card =
   "rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-hidden";
+
 const btnPrimary =
   "inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold " +
   "bg-[#0a2230] text-white hover:bg-[#0f2a3b] transition disabled:opacity-60 disabled:cursor-not-allowed";
+
 const btnDanger =
   "inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold " +
   "bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60 disabled:cursor-not-allowed";
+
 const input =
   "h-10 w-28 rounded-xl border border-slate-300 px-3 text-[13px] text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40";
 
@@ -21,6 +24,7 @@ export default function DraftCleanupPanel() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [err, setErr] = useState("");
+  const [success, setSuccess] = useState("");
 
   const daysSafe = useMemo(() => {
     const n = Number(days);
@@ -28,8 +32,13 @@ export default function DraftCleanupPanel() {
     return Math.min(90, Math.max(1, Math.floor(n)));
   }, [days]);
 
-  async function run(dryRun) {
+  function clearMessages() {
     setErr("");
+    setSuccess("");
+  }
+
+  async function run(dryRun) {
+    clearMessages();
     setResult(null);
     setBusy(true);
 
@@ -46,6 +55,17 @@ export default function DraftCleanupPanel() {
       }
 
       setResult(data);
+
+      // ✅ Success banner only for destructive delete run
+      if (!dryRun && data?.mode === "delete") {
+        const attempted = data?.deletions?.attempted ?? 0;
+        const deleted = data?.deletions?.deleted ?? 0;
+        const candidates = data?.candidatesFound ?? 0;
+
+        setSuccess(
+          `Cleanup complete — deleted ${deleted}/${attempted} objects (candidates: ${candidates}).`
+        );
+      }
     } catch (e) {
       setErr(e?.message || "Cleanup failed.");
     } finally {
@@ -72,14 +92,19 @@ export default function DraftCleanupPanel() {
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-[13px] text-slate-700">
           <div className="font-semibold text-[#0a2230]">Safety rules</div>
           <div className="mt-1 text-slate-600">
-            Will NOT delete anything referenced by any listing (<code>heroImageUrl</code>, <code>brokerHeroImageUrl</code>, <code>imageUrls</code>)
-            or any user broker logo.
+            Will NOT delete anything referenced by any listing (<code>heroImageUrl</code>, <code>brokerHeroImageUrl</code>,{" "}
+            <code>imageUrls</code>) or any user broker logo.
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-[13px] font-semibold text-[#0a2230]">Older than</div>
-          <input className={input} value={days} onChange={(e) => setDays(e.target.value)} inputMode="numeric" />
+          <input
+            className={input}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            inputMode="numeric"
+          />
           <div className="text-[13px] text-slate-600">days</div>
 
           <div className="flex-1" />
@@ -92,6 +117,7 @@ export default function DraftCleanupPanel() {
             className={btnDanger}
             disabled={busy}
             onClick={() => {
+              clearMessages();
               const ok = window.confirm("Delete unreferenced draft objects now? This cannot be undone.");
               if (!ok) return;
               run(false);
@@ -101,8 +127,16 @@ export default function DraftCleanupPanel() {
           </button>
         </div>
 
+        {success ? (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+            {success}
+          </div>
+        ) : null}
+
         {err ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">{err}</div>
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+            {err}
+          </div>
         ) : null}
 
         {result ? (

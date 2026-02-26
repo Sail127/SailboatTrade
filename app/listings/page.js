@@ -2,10 +2,10 @@
 import Link from "next/link";
 import prisma from "../../lib/prisma.js";
 import ListingCard from "../../components/ListingCard.js";
-import FilterSidebar from "../../components/FilterSidebar.js";
+import AdvancedSearchBar from "../../components/AdvancedSearchBar.js";
 import SortSelect from "../../components/SortSelect.js";
-import FiltersMobile from "../../components/FiltersMobile.js";
 import ResultsPerPage from "../../components/ResultsPerPage.js";
+import { getCountryOptions } from "../../lib/countries.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,20 +64,38 @@ function toFloat(v, fb = null) {
   return Number.isFinite(n) ? n : fb;
 }
 
-function normalizeCountry(raw) {
-  const s = String(raw ?? "").trim();
-  const lower = s.toLowerCase();
-  if (
-    lower === "usa" ||
-    lower === "us" ||
-    lower === "u.s." ||
-    lower === "u.s.a." ||
-    lower === "united states" ||
-    lower === "united states of america"
-  ) {
-    return "United States";
+const COUNTRY_OPTIONS = (getCountryOptions("en") || []).filter((o) => o?.value);
+const COUNTRY_BY_CODE = new Map(COUNTRY_OPTIONS.map((o) => [String(o.value || "").toUpperCase(), o]));
+const COUNTRY_BY_LABEL = new Map(COUNTRY_OPTIONS.map((o) => [String(o.label || "").toLowerCase(), o]));
+
+function parseCountry(raw) {
+  const input = String(raw ?? "").trim();
+  if (!input) return { raw: "", code: "", label: "", variants: [] };
+
+  const upper = input.toUpperCase();
+  const lower = input.toLowerCase();
+  const isUsAlias = ["usa", "us", "u.s.", "u.s.a.", "united states", "united states of america"].includes(lower);
+  const byCode = COUNTRY_BY_CODE.get(upper);
+  const byLabel = COUNTRY_BY_LABEL.get(lower);
+
+  const country = byCode || byLabel || null;
+  const code = country?.value ? String(country.value).toUpperCase() : "";
+  const label = country?.label ? String(country.label).trim() : "";
+
+  const variants = new Set([input, upper, label, code].filter(Boolean));
+  if (code === "US" || isUsAlias) {
+    variants.add("US");
+    variants.add("USA");
+    variants.add("United States");
+    variants.add("United States of America");
   }
-  return s;
+
+  return {
+    raw: input,
+    code: code || (upper === "US" || upper === "USA" || isUsAlias ? "US" : ""),
+    label,
+    variants: Array.from(variants),
+  };
 }
 
 function parseUsRegion(raw) {
@@ -90,6 +108,8 @@ function parseUsRegion(raw) {
 }
 
 async function resolveTypeValue(desired) {
+  const now = new Date();
+  const publishedFilter = { status: "PUBLISHED", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
   const HARD =
     {
       monohull: ["MONOHULL", "Monohull", "monohull"],
@@ -98,7 +118,7 @@ async function resolveTypeValue(desired) {
     }[desired] ?? [desired];
 
   const distinct = await prisma.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: publishedFilter,
     select: { type: true },
     distinct: ["type"],
   });
@@ -144,13 +164,15 @@ function buildHref(searchParams, pageNum) {
 }
 
 export default async function Browse({ searchParams }) {
+  const now = new Date();
+  const publishedFilter = { status: "PUBLISHED", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
   const q = (searchParams?.q ?? "").toString().trim();
   const type = (searchParams?.type || "both").toString().toLowerCase();
 
   const builder = (searchParams?.builder ?? "").toString().trim();
 
   const countryRaw = searchParams?.country?.toString().trim() || "";
-  const country = normalizeCountry(countryRaw);
+  const country = parseCountry(countryRaw);
 
   const usRegionParam = searchParams?.usRegion ?? searchParams?.locationUsRegion ?? "";
   const usRegion = parseUsRegion(usRegionParam);
@@ -171,7 +193,7 @@ export default async function Browse({ searchParams }) {
 
   const page = Math.max(1, toInt(searchParams?.page, 1));
 
-  const where = { status: "PUBLISHED" };
+  const where = { ...publishedFilter, AND: [...(publishedFilter.AND || [])] };
 
   if (q) {
     where.OR = [
@@ -196,9 +218,14 @@ export default async function Browse({ searchParams }) {
     where.builder = { equals: builder, mode: "insensitive" };
   }
 
-  if (country) {
-    where.locationCountry = { equals: country, mode: "insensitive" };
-    if (country === "United States" && usRegion) {
+  if (country.raw) {
+    where.AND.push({
+      OR: country.variants.map((v) => ({
+        locationCountry: { equals: v, mode: "insensitive" },
+      })),
+    });
+
+    if (country.code === "US" && usRegion) {
       where.locationUsRegion = usRegion;
     }
   }
@@ -214,14 +241,6 @@ export default async function Browse({ searchParams }) {
     if (loaMin != null) where.loa.gte = loaMin;
     if (loaMax != null) where.loa.lte = loaMax;
   }
-
-  const countriesRaw = await prisma.listing.findMany({
-    where: { status: "PUBLISHED" },
-    select: { locationCountry: true },
-    distinct: ["locationCountry"],
-    orderBy: { locationCountry: "asc" },
-  });
-  const countries = countriesRaw.map((c) => c.locationCountry).filter(Boolean);
 
   const sort = (searchParams?.sort || "updated_desc").toString();
   const orderBy =
@@ -278,7 +297,7 @@ export default async function Browse({ searchParams }) {
     q,
     type,
     builder,
-    country,
+    country: country.code || "",
     usRegion,
     yearMin: searchParams?.yearMin || "",
     yearMax: searchParams?.yearMax || "",
@@ -294,12 +313,12 @@ export default async function Browse({ searchParams }) {
         Your adventure awaits.
       </h1>
 
+      <div className="mb-6">
+        <AdvancedSearchBar initialValues={initial} submitPath="/listings" />
+      </div>
+
       <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="lg:hidden">
-            <FiltersMobile initial={initial} countries={countries} />
-          </div>
-
           <div className="flex flex-col">
             <p className="text-sm font-semibold text-[#0a2230]">
               {total.toLocaleString()} results
@@ -318,27 +337,21 @@ export default async function Browse({ searchParams }) {
         </div>
       </div>
 
-      <div className="lg:flex lg:gap-8">
-        <aside className="hidden lg:block lg:w-72 flex-shrink-0">
-          <FilterSidebar initial={initial} countries={countries} />
-        </aside>
+      <section>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {listings.map((l) => (
+            <ListingCard key={l.id} listing={l} />
+          ))}
+        </div>
 
-        <section className="flex-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {listings.map((l) => (
-              <ListingCard key={l.id} listing={l} />
-            ))}
-          </div>
-
-          {totalPages > 1 && (
-            <Pager
-              currentPage={safePage}
-              totalPages={totalPages}
-              searchParams={searchParams}
-            />
-          )}
-        </section>
-      </div>
+        {totalPages > 1 && (
+          <Pager
+            currentPage={safePage}
+            totalPages={totalPages}
+            searchParams={searchParams}
+          />
+        )}
+      </section>
     </main>
   );
 }

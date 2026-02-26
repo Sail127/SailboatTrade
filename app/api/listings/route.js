@@ -6,14 +6,20 @@ import { requireUser } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const FREE_PHOTO_LIMIT = 3;
+
 /**
  * GET /api/listings
  * Returns published listings only
  */
 export async function GET() {
   try {
+    const now = new Date();
     const listings = await prisma.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: {
+        status: "PUBLISHED",
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(listings);
@@ -262,7 +268,6 @@ export async function POST(req) {
 
     const engineFuel = normalizeFuelType(body.engineFuel);
     const engineMake = isNonEmpty(body.engineMake) ? toStr(body.engineMake) : null;
-    const engineModel = isNonEmpty(body.engineModel) ? toStr(body.engineModel) : null;
     const propeller = isNonEmpty(body.propeller) ? toStr(body.propeller) : null;
     const engineHorsepower = toInt(body.engineHorsepower);
 
@@ -279,7 +284,6 @@ export async function POST(req) {
     const tankUnit = normalizeVolumeUnit(body.tankUnit);
     const tankFuel = toFloat(body.tankFuel);
     const tankWater = toFloat(body.tankWater);
-    const tankHolding = toFloat(body.tankHolding);
 
     const hasDinghy = coerceYesNoToBool(body.hasDinghy) ?? false;
     const dinghyDetailsRaw = isNonEmpty(body.dinghyDetails)
@@ -301,17 +305,21 @@ export async function POST(req) {
     const brokerageAddress =
       sellerRole === "BROKER" && isNonEmpty(body.brokerageAddress) ? toStr(body.brokerageAddress) : null;
 
-    const brokerLogoUrl = isNonEmpty(body.brokerLogoUrl) ? toStr(body.brokerLogoUrl) : null;
+    const brokerHeroImageUrl = isNonEmpty(body.brokerHeroImageUrl || body.brokerLogoUrl)
+      ? toStr(body.brokerHeroImageUrl || body.brokerLogoUrl)
+      : null;
 
-    const plan = body.plan === "FEATURED_HOME" || body.plan === "STANDARD" ? body.plan : "STANDARD";
+    const wantsFeatured = Boolean(body.featuredHome);
+    const photoPlan = imageUrls.length > FREE_PHOTO_LIMIT ? "PHOTO_PLUS_25" : "FREE_3";
+    const billingAddons = [];
+    if (photoPlan === "PHOTO_PLUS_25") billingAddons.push("PHOTO_PLUS_25");
+    if (wantsFeatured) billingAddons.push("FEATURED_HOME");
 
     // ---------------- create ----------------
     const created = await prisma.listing.create({
       data: {
         ownerId,
         status: "DRAFT",
-        plan,
-        paymentStatus: "NONE",
 
         title,
         description,
@@ -342,7 +350,6 @@ export async function POST(req) {
 
         engineFuel,
         engineMake,
-        engineModel,
         propeller,
         engineHorsepower,
         engineHours,
@@ -358,15 +365,9 @@ export async function POST(req) {
         tankUnit,
         tankFuel,
         tankWater,
-        tankHolding,
 
         hasDinghy,
         dinghyDetails: hasDinghy ? dinghyDetailsRaw : null,
-
-        dinghyModel: null,
-        dinghyLength: null,
-        dinghyLengthUnit: null,
-        dinghyMotor: null,
 
         equipment,
         heroImageUrl,
@@ -379,7 +380,14 @@ export async function POST(req) {
 
         brokerageName,
         brokerageAddress,
-        brokerLogoUrl,
+        brokerHeroImageUrl,
+
+        photoPlan,
+        featuredHome: false,
+        billingStatus: "FREE",
+        billingProvider: null,
+        billingAddons,
+        billingMonthlyCents: null,
       },
       select: { id: true, previewToken: true },
     });

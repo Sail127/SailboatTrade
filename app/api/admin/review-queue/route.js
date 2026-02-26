@@ -14,6 +14,22 @@ function titleFromListing(l) {
   return [year, builder, model].filter(Boolean).join(" ") || fallback;
 }
 
+function planLabelFromListing(l) {
+  const addons = Array.isArray(l?.billingAddons) ? l.billingAddons : [];
+
+  const hasPhotoPlus = l?.photoPlan === "PHOTO_PLUS_25" || addons.includes("PHOTO_PLUS_25");
+  const hasFeatured = !!l?.featuredHome || addons.includes("FEATURED_HOME");
+
+  const parts = [];
+  parts.push(hasPhotoPlus ? "Photo Plus (25)" : "Free (3)");
+  if (hasFeatured) parts.push("Featured Home");
+
+  if (l?.billingStatus === "ACTIVE") parts.push("Paid");
+  else if (addons.length > 0 && l?.billingStatus !== "ACTIVE") parts.push("Checkout required");
+
+  return parts.join(" • ");
+}
+
 export async function GET() {
   const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) {
@@ -21,8 +37,8 @@ export async function GET() {
   }
 
   const items = await prisma.listing.findMany({
-    where: { status: "PENDING_REVIEW", paymentStatus: "PAID" },
-    orderBy: { submittedForReviewAt: "desc" },
+    where: { status: "PENDING_REVIEW" },
+    orderBy: [{ contentSubmittedAt: "desc" }, { updatedAt: "desc" }],
     take: 50,
     select: {
       id: true,
@@ -31,11 +47,12 @@ export async function GET() {
       year: true,
       builder: true,
       model: true,
-      plan: true,
-      paymentStatus: true,
-      paymentProvider: true,
-      paidAt: true,
-      submittedForReviewAt: true,
+      photoPlan: true,
+      featuredHome: true,
+      billingStatus: true,
+      billingAddons: true,
+      contentSubmittedAt: true,
+      lastPaidAt: true,
       previewToken: true,
       price: true,
       currency: true,
@@ -63,12 +80,12 @@ export async function GET() {
     return {
       id: l.id,
       title: titleFromListing(l),
-      plan: l.plan,
+      plan: planLabelFromListing(l),
       ownerId: l.ownerId,
       ownerEmail: u?.email || null,
       ownerName: u?.name || null,
-      submittedForReviewAt: l.submittedForReviewAt ? new Date(l.submittedForReviewAt).toISOString() : null,
-      paidAt: l.paidAt ? new Date(l.paidAt).toISOString() : null,
+      submittedForReviewAt: l.contentSubmittedAt ? new Date(l.contentSubmittedAt).toISOString() : null,
+      paidAt: l.lastPaidAt ? new Date(l.lastPaidAt).toISOString() : null,
       previewToken: l.previewToken || null,
       location:
         [l.locationCity, l.locationState, l.locationCountry].filter(Boolean).join(", ") || null,

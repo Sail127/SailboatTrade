@@ -31,9 +31,9 @@ function PlaceholderCard({ i }) {
               </svg>
             </div>
             <div className="text-base font-semibold text-[#0a2230]">
-              Advertise your sailboat here for free!
+              Feature your sailboat here!
             </div>
-            <div className="mt-1 text-sm text-slate-600">Click to create a listing</div>
+            <div className="mt-1 text-sm text-slate-600">Upgrade a listing to featured placement</div>
           </div>
         </div>
 
@@ -41,10 +41,10 @@ function PlaceholderCard({ i }) {
           <div className="h-4 w-3/4 rounded bg-slate-100" />
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-              Free
+              Featured slot
             </span>
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-              Shows on homepage
+              Premium placement
             </span>
           </div>
           <div className="mt-3 text-xs text-slate-500">
@@ -59,9 +59,11 @@ function PlaceholderCard({ i }) {
 export default async function FeaturedSailboatsSection() {
   noStore();
 
+  const now = new Date();
   const published = await prisma.listing.findMany({
     where: {
       status: "PUBLISHED",
+      AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
       // ✅ exclude sample listings that point at /public/boats/example-sailboat*.jpg
       NOT: [
         { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } },
@@ -95,9 +97,9 @@ export default async function FeaturedSailboatsSection() {
         </Link>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {real.map((listing) => (
-          <ListingCard key={listing.id} listing={listing} />
+          <ListingCard key={listing.id} listing={listing} variant="featured" />
         ))}
 
         {Array.from({ length: placeholdersNeeded }).map((_, i) => (

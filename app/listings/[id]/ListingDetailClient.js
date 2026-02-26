@@ -192,7 +192,9 @@ function formatIntlPhoneDisplay(raw) {
   if (!s) return "";
   const compact = s.replace(/[^\d+]/g, "");
   if (/^\+1\d{10}$/.test(compact)) {
-    return `+1 (${compact.slice(2, 5)}) ${compact.slice(5, 8)}-${compact.slice(8)}`;
+    return `+1 (${compact.slice(2, 5)}) ${compact.slice(5, 8)}-${compact.slice(
+      8
+    )}`;
   }
   if (/^\+\d{7,15}$/.test(compact)) return compact;
   return s;
@@ -214,9 +216,14 @@ function normalizeAddressLines(rawAddr) {
 
     if (parts.length === 1) lines = [parts[0]];
     else if (parts.length === 2) lines = [parts[0], parts[1]];
-    else if (parts.length === 3) lines = [parts[0], `${parts[1]}, ${parts[2]}`];
+    else if (parts.length === 3)
+      lines = [parts[0], `${parts[1]}, ${parts[2]}`];
     else if (parts.length >= 4)
-      lines = [parts[0], `${parts[1]}, ${parts[2]}`, parts.slice(3).join(", ")];
+      lines = [
+        parts[0],
+        `${parts[1]}, ${parts[2]}`,
+        parts.slice(3).join(", "),
+      ];
   }
 
   return lines.slice(0, 4);
@@ -224,7 +231,6 @@ function normalizeAddressLines(rawAddr) {
 
 /* -----------------------------
    Status banner helper (schema-aligned)
-   ListingStatus: DRAFT | PENDING_REVIEW | REJECTED | PUBLISHED | ARCHIVED | REMOVED
 ------------------------------ */
 function statusMeta(status) {
   const s = String(status || "").toUpperCase();
@@ -287,7 +293,7 @@ function imageUrlFromKey(key, token) {
 
   const r2 = String(process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || "").replace(
     /\/+$/,
-    "",
+    ""
   );
   if (r2) return `${r2}/${encodeURIComponent(k)}`;
 
@@ -297,7 +303,9 @@ function imageUrlFromKey(key, token) {
     ? `${base}${encodeURIComponent(k)}`
     : `${base}${encodeURIComponent(k)}`;
   if (token && !/([?&])token=/.test(url)) {
-    url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+    url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(
+      token
+    )}`;
   }
   return url;
 }
@@ -336,7 +344,9 @@ function InlineFacts({ items = [] }) {
       {cleaned.map((it, i) => (
         <div
           key={it.key}
-          className={`flex items-center gap-2 ${i ? "ml-4 pl-4 border-l border-slate-200" : ""}`}
+          className={`flex items-center gap-2 ${
+            i ? "ml-4 pl-4 border-l border-slate-200" : ""
+          }`}
         >
           <span className="font-extrabold text-[#0a2230]">{it.label}:</span>
           <span className="font-semibold">{it.value}</span>
@@ -627,6 +637,7 @@ export default function ListingDetailClient({
   listing,
   viewerLoggedIn,
   viewerIsOwner,
+  viewerFavorited,
   canEdit,
   locationCountryLabel,
   usRegionLabel,
@@ -647,10 +658,9 @@ export default function ListingDetailClient({
   const price = formatMoney(listing?.price, listing?.currency);
 
   const rawCountry = String(
-    locationCountryLabel || listing?.locationCountry || "",
+    locationCountryLabel || listing?.locationCountry || ""
   ).trim();
 
-  // ✅ Region/country line with safe fallback to listing.locationUsRegion
   const regionCountryLine = useMemo(() => {
     const country = rawCountry || "";
     const isUSA2 = isUsCountry(country);
@@ -675,16 +685,12 @@ export default function ListingDetailClient({
   const brokerageName = String(listing?.brokerageName || "").trim();
 
   const phoneRaw = String(listing?.contactPhone || "");
-  const sellerPhoneDisplay = viewerLoggedIn
-    ? formatIntlPhoneDisplay(phoneRaw) || "Not provided"
-    : "XXX-XXX-XXXX";
+  const sellerPhoneDisplay = formatIntlPhoneDisplay(phoneRaw) || "Not provided";
 
   const emailRaw = String(listing?.contactEmail || "").trim();
-  const sellerEmailDisplay = viewerLoggedIn
-    ? emailRaw || "Not provided"
-    : "XXX@XXX.com";
+  const sellerEmailDisplay = emailRaw || "Not provided";
 
-  // ✅ Photo counts for Free vs Paid plan
+  // ✅ Photo count
   const photoCount = useMemo(() => {
     const urls = Array.isArray(listing?.imageUrls)
       ? listing.imageUrls.filter(Boolean)
@@ -692,11 +698,24 @@ export default function ListingDetailClient({
     return urls.length;
   }, [listing?.imageUrls]);
 
-  const requiresUpgrade = photoCount > FREE_PHOTO_LIMIT;
-  const overMax = photoCount > MAX_PHOTOS;
+  // ✅ Paid entitlement (schema-aligned)
+  const photoPlan = String(listing?.photoPlan || "FREE_3").toUpperCase();
+  const billingStatus = String(listing?.billingStatus || "FREE").toUpperCase();
+  const hasSubId = Boolean(String(listing?.braintreeSubscriptionId || "").trim());
 
-  const isDraftish = String(listing?.status || "").toUpperCase() === "DRAFT";
-  const isRejected = String(listing?.status || "").toUpperCase() === "REJECTED";
+  const hasPaidEntitlement =
+    photoPlan === "PHOTO_PLUS_25" && hasSubId && billingStatus === "ACTIVE";
+
+  const entitledMax = hasPaidEntitlement ? MAX_PHOTOS : FREE_PHOTO_LIMIT;
+
+  const overMax = photoCount > MAX_PHOTOS;
+  const requiresUpgrade = photoCount > FREE_PHOTO_LIMIT && !hasPaidEntitlement;
+
+  const statusUpper = String(listing?.status || "").toUpperCase();
+  const isDraftish = statusUpper === "DRAFT";
+  const isRejected = statusUpper === "REJECTED";
+  const isPending = statusUpper === "PENDING_REVIEW";
+
   const canSubmitFromHere = Boolean(canEdit && (isDraftish || isRejected));
 
   // ✅ checkout route
@@ -705,22 +724,39 @@ export default function ListingDetailClient({
     return id ? `/checkout/${id}` : "/dashboard";
   }, [listing?.id]);
 
-  // ✅ Free submit (no subscription management here — that stays in dashboard)
+  const contactInfoLoginHref = useMemo(() => {
+    const listingPath = listing?.id
+      ? `/listings/${encodeURIComponent(String(listing.id))}`
+      : "/listings";
+    return `/login?next=${encodeURIComponent(
+      listingPath
+    )}&notice=contact_info_required`;
+  }, [listing?.id]);
+
+  // ✅ submit state + handler (FREE or PAID)
   const [submitBusy, setSubmitBusy] = useState(false);
   const [submitErr, setSubmitErr] = useState("");
 
-  async function submitFree() {
+  async function submitListing(mode) {
     setSubmitErr("");
     setSubmitBusy(true);
     try {
-      if (overMax)
+      if (overMax) {
         throw new Error(
-          `You have ${photoCount} photos. Max allowed is ${MAX_PHOTOS}. Remove photos first.`,
+          `You have ${photoCount} photos. Max allowed is ${MAX_PHOTOS}. Remove photos first.`
         );
-      if (requiresUpgrade) {
+      }
+
+      const m = String(mode || "FREE").toUpperCase();
+
+      if (m === "FREE" && photoCount > FREE_PHOTO_LIMIT) {
         throw new Error(
-          `Free listings allow up to ${FREE_PHOTO_LIMIT} photos. Remove photos or upgrade.`,
+          `Free listings allow up to ${FREE_PHOTO_LIMIT} photos. Remove photos or upgrade.`
         );
+      }
+
+      if (m === "PAID" && !hasPaidEntitlement) {
+        throw new Error("No active Photo Plus subscription found. Please upgrade first.");
       }
 
       const res = await fetch(
@@ -728,12 +764,14 @@ export default function ListingDetailClient({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "FREE" }),
-        },
+          body: JSON.stringify({ mode: m }),
+        }
       );
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok)
+      if (!res.ok || !data?.ok) {
         throw new Error(data?.error || "Could not submit listing.");
+      }
 
       window.location.assign(data.redirect || `/listings/${listing.id}`);
     } catch (e) {
@@ -743,22 +781,114 @@ export default function ListingDetailClient({
     }
   }
 
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(Boolean(viewerFavorited));
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
   const [shareMsg, setShareMsg] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
 
-  async function onShare() {
+  useEffect(() => {
+    setSaved(Boolean(viewerFavorited));
+  }, [viewerFavorited]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setShareUrl(window.location.href);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!shareOpen) return;
+
+    function onKey(e) {
+      if (e.key === "Escape") setShareOpen(false);
+    }
+
+    const prevOverflow = document?.body?.style?.overflow;
+    if (document?.body?.style) document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (document?.body?.style) document.body.style.overflow = prevOverflow || "";
+    };
+  }, [shareOpen]);
+
+  function openShareDialog() {
     setShareMsg("");
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: titleLine, url });
-        return;
+    if (typeof window !== "undefined") setShareUrl(window.location.href);
+    setShareOpen(true);
+  }
+
+  async function onToggleSave() {
+    if (saveBusy) return;
+
+    if (!viewerLoggedIn) {
+      if (typeof window !== "undefined") {
+        const next = `${window.location.pathname}${window.location.search}`;
+        window.location.assign(`/login?next=${encodeURIComponent(next)}`);
       }
-      await navigator.clipboard.writeText(url);
+      return;
+    }
+
+    setSaveBusy(true);
+    setSaveMsg("");
+    try {
+      const res = await fetch("/api/favorites/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing?.id }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not update favorites.");
+      }
+
+      const nextSaved = Boolean(data?.favorited);
+      setSaved(nextSaved);
+      setSaveMsg(nextSaved ? "Saved to My Favorites." : "Removed from My Favorites.");
+      setTimeout(() => setSaveMsg(""), 2400);
+    } catch (err) {
+      setSaveMsg(err?.message || "Could not update favorites.");
+      setTimeout(() => setSaveMsg(""), 2400);
+    } finally {
+      setSaveBusy(false);
+    }
+  }
+
+  function emailShare() {
+    const url = shareUrl || (typeof window !== "undefined" ? window.location.href : "");
+    const subject = encodeURIComponent(`Sailboat listing: ${titleLine}`);
+    const body = encodeURIComponent(
+      `I thought you might be interested in this listing:\n\n${titleLine}\n${url}`
+    );
+    if (typeof window !== "undefined") {
+      window.location.href = `mailto:?subject=${subject}&body=${body}`;
+    }
+  }
+
+  async function copyShareLink() {
+    setShareMsg("");
+    const url = shareUrl || (typeof window !== "undefined" ? window.location.href : "");
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "absolute";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
       setShareMsg("Link copied.");
       setTimeout(() => setShareMsg(""), 2500);
     } catch {
-      setShareMsg("Couldn’t share. Copy the URL from the address bar.");
+      setShareMsg("Couldn’t copy link.");
       setTimeout(() => setShareMsg(""), 3000);
     }
   }
@@ -767,7 +897,7 @@ export default function ListingDetailClient({
 
   const defaultBuyerMsg = useMemo(
     () => `Please contact me and provide more details on this ${titleLine}.`,
-    [titleLine],
+    [titleLine]
   );
 
   const [buyerFirst, setBuyerFirst] = useState("");
@@ -803,6 +933,7 @@ export default function ListingDetailClient({
         if (!buyerEmail.trim() && u.email)
           setBuyerEmail(String(u.email).trim());
 
+        // note: your /api/auth/me uses phoneE164, not "phone" — keep your old behavior harmlessly
         if (!buyerPhoneRaw.trim() && u.phone)
           setBuyerPhoneRaw(String(u.phone).trim());
       } catch {
@@ -819,6 +950,7 @@ export default function ListingDetailClient({
   const [sending, setSending] = useState(false);
   const [sentOk, setSentOk] = useState("");
   const [sentErr, setSentErr] = useState("");
+  const [buyerWebsite, setBuyerWebsite] = useState("");
 
   async function submitInquiry(e) {
     e.preventDefault();
@@ -846,13 +978,17 @@ export default function ListingDetailClient({
           email,
           phone: buyerPhoneRaw?.trim() ? buyerPhoneRaw.trim() : null,
           message,
+          website: buyerWebsite,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok)
         throw new Error(data?.error || `Request failed (${res.status})`);
 
-      setSentOk("Message sent.");
+      setSentOk(
+        data?.message ||
+          "Thank you for your interest. The seller has been notified."
+      );
       setBuyerMsg(defaultBuyerMsg);
       setTimeout(() => setSentOk(""), 3000);
     } catch (err) {
@@ -884,10 +1020,10 @@ export default function ListingDetailClient({
     if (!isBroker) return false;
     return Boolean(
       listing?.brokerageName ||
-      brokerageAddressLines.length ||
-      brokerHero ||
-      phoneRaw ||
-      emailRaw,
+        brokerageAddressLines.length ||
+        brokerHero ||
+        phoneRaw ||
+        emailRaw
     );
   }, [
     isBroker,
@@ -965,7 +1101,7 @@ export default function ListingDetailClient({
         value: capWithUnit(listing?.tankWater),
       },
     ],
-    [listing, tankUnit],
+    [listing, tankUnit]
   );
 
   const engineFacts = useMemo(() => {
@@ -980,8 +1116,8 @@ export default function ListingDetailClient({
             .filter(Boolean)
             .join(" • ")
         : listing?.engineHours != null
-          ? String(listing.engineHours)
-          : "";
+        ? String(listing.engineHours)
+        : "";
 
     return [
       { key: "ef", label: "Fuel", value: prettyFuel(listing?.engineFuel) },
@@ -1031,7 +1167,7 @@ export default function ListingDetailClient({
 
   const riggingRemarksText = useMemo(
     () => String(listing?.riggingRemarks || "").trim(),
-    [listing?.riggingRemarks],
+    [listing?.riggingRemarks]
   );
 
   const createdAt = listing?.createdAt ? new Date(listing.createdAt) : null;
@@ -1084,7 +1220,7 @@ export default function ListingDetailClient({
 
   const additionalInfoText = useMemo(
     () => String(listing?.additionalInfo || "").trim(),
-    [listing?.additionalInfo],
+    [listing?.additionalInfo]
   );
 
   const locationClass =
@@ -1099,8 +1235,13 @@ export default function ListingDetailClient({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setSaved((v) => !v)}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[12px] font-semibold text-[#0a2230] hover:bg-slate-50"
+              onClick={onToggleSave}
+              disabled={saveBusy}
+              className={`inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[12px] font-semibold ${
+                saved
+                  ? "border-[#c8a44d] bg-[#fff7d6] text-[#0a2230]"
+                  : "border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+              } ${saveBusy ? "opacity-70 cursor-not-allowed" : ""}`}
               aria-pressed={saved}
               title="Save"
             >
@@ -1111,12 +1252,12 @@ export default function ListingDetailClient({
               >
                 {saved ? "♥" : "♡"}
               </span>
-              Save
+              {saved ? "Saved" : "Save"}
             </button>
 
             <button
               type="button"
-              onClick={onShare}
+              onClick={openShareDialog}
               className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[12px] font-semibold text-[#0a2230] hover:bg-slate-50"
               title="Share"
             >
@@ -1124,12 +1265,70 @@ export default function ListingDetailClient({
             </button>
           </div>
         </div>
-
-        {shareMsg ? (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] text-slate-700">
-            {shareMsg}
+        {saveMsg ? (
+          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-700">
+            {saveMsg}
           </div>
         ) : null}
+
+        {shareOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 pt-14"
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) setShareOpen(false);
+            }}
+          >
+            <div className="w-full max-w-[420px] rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                <div className="text-[21px] leading-none font-semibold text-slate-700">
+                  Share this listing
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-[26px] leading-none text-slate-600 hover:bg-slate-100"
+                  aria-label="Close share dialog"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="px-5 py-3 space-y-1">
+                <button
+                  type="button"
+                  onClick={emailShare}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-[15px] text-slate-700 hover:bg-slate-50"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M3 6h18v12H3z" />
+                    <path d="M3 8l9 6 9-6" />
+                  </svg>
+                  <span>Email</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={copyShareLink}
+                  className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-[15px] text-slate-700 hover:bg-slate-50"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5 text-blue-600" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M10 13a5 5 0 0 1 0-7l1.5-1.5a5 5 0 1 1 7 7L17 13" />
+                    <path d="M14 11a5 5 0 0 1 0 7L12.5 19.5a5 5 0 0 1-7-7L7 11" />
+                  </svg>
+                  <span>Copy Link</span>
+                </button>
+
+                {shareMsg ? (
+                  <div className="pt-1 px-2 text-[12px] font-semibold text-emerald-700">
+                    {shareMsg}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Status banner */}
         {meta ? (
@@ -1138,8 +1337,8 @@ export default function ListingDetailClient({
               meta.style === "warning"
                 ? "border-[#f1d58a] bg-[#fff7d6]"
                 : meta.style === "danger"
-                  ? "border-red-200 bg-red-50"
-                  : "border-slate-200 bg-slate-50"
+                ? "border-red-200 bg-red-50"
+                : "border-slate-200 bg-slate-50"
             }`}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1155,15 +1354,16 @@ export default function ListingDetailClient({
                     <span className="text-[12px] text-slate-600">
                       • Photos:{" "}
                       <span className="font-semibold">{photoCount}</span> /{" "}
-                      <span className="font-semibold">
-                        {requiresUpgrade ? MAX_PHOTOS : FREE_PHOTO_LIMIT}
-                      </span>
+                      <span className="font-semibold">{entitledMax}</span>
+                      {requiresUpgrade ? (
+                        <span className="ml-2 text-[11px] text-slate-600">
+                          (Upgrade needed)
+                        </span>
+                      ) : null}
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-2 text-[12px] text-slate-700">
-                  {meta.msg}
-                </div>
+                <div className="mt-2 text-[12px] text-slate-700">{meta.msg}</div>
 
                 {submitErr ? (
                   <div className="mt-2 rounded-xl border border-red-200 bg-white/70 px-3 py-2 text-[12px] text-red-700">
@@ -1176,7 +1376,9 @@ export default function ListingDetailClient({
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex items-center gap-2">
                     <a
-                      href={`/listings/${encodeURIComponent(String(listing?.id || ""))}/edit${
+                      href={`/listings/${encodeURIComponent(
+                        String(listing?.id || "")
+                      )}/edit${
                         previewToken
                           ? `?token=${encodeURIComponent(previewToken)}`
                           : ""
@@ -1186,7 +1388,6 @@ export default function ListingDetailClient({
                       Edit Draft
                     </a>
 
-                    {/* ✅ Submit/Resubmit logic (NO subscription management here) */}
                     {canSubmitFromHere ? (
                       overMax ? (
                         <button
@@ -1207,7 +1408,9 @@ export default function ListingDetailClient({
                       ) : (
                         <button
                           type="button"
-                          onClick={submitFree}
+                          onClick={() =>
+                            submitListing(hasPaidEntitlement ? "PAID" : "FREE")
+                          }
                           disabled={submitBusy}
                           className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
                             submitBusy
@@ -1218,14 +1421,23 @@ export default function ListingDetailClient({
                           {submitBusy
                             ? "Submitting…"
                             : isRejected
-                              ? "Resubmit (free)"
-                              : "Submit (free)"}
+                            ? hasPaidEntitlement
+                              ? "Resubmit"
+                              : "Resubmit (free)"
+                            : hasPaidEntitlement
+                            ? "Submit"
+                            : "Submit (free)"}
                         </button>
                       )
                     ) : null}
                   </div>
 
-                  {/* extra helper line for owner */}
+                  {isPending ? (
+                    <div className="text-[11px] text-slate-600">
+                      Editing is disabled while your listing is under review.
+                    </div>
+                  ) : null}
+
                   {canSubmitFromHere && requiresUpgrade && !overMax ? (
                     <div className="text-[11px] text-slate-600">
                       Free allows {FREE_PHOTO_LIMIT} photos. Upgrade enables up
@@ -1252,11 +1464,7 @@ export default function ListingDetailClient({
               {titleLine}
             </div>
 
-            <Gallery
-              keys={galleryKeys}
-              token={previewToken}
-              title={titleLine}
-            />
+            <Gallery keys={galleryKeys} token={previewToken} title={titleLine} />
 
             <div className="flex items-center justify-between gap-4">
               <div className={locationClass}>{regionCountryLine || "—"}</div>
@@ -1277,7 +1485,9 @@ export default function ListingDetailClient({
                 ) : null}
 
                 <div
-                  className={`${price ? "mt-3" : ""} text-[12px] font-extrabold tracking-wide text-slate-600`}
+                  className={`${
+                    price ? "mt-3" : ""
+                  } text-[12px] font-extrabold tracking-wide text-slate-600`}
                 >
                   For Sale by {isBroker ? "Broker" : "Owner"}
                 </div>
@@ -1304,34 +1514,33 @@ export default function ListingDetailClient({
                       </>
                     )}
 
-                    <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
-                      {sellerPhoneDisplay}
-                      {!viewerLoggedIn ? (
-                        <span className="ml-2 text-[11px] font-normal text-slate-500">
-                          (Number hidden unless valid user is logged in)
-                        </span>
-                      ) : null}
-                    </div>
+                    {viewerLoggedIn ? (
+                      <>
+                        <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
+                          {sellerPhoneDisplay}
+                        </div>
 
-                    <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
-                      {viewerLoggedIn && emailRaw ? (
-                        <a
-                          href={`mailto:${emailRaw}`}
-                          className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
-                        >
-                          {emailRaw}
-                        </a>
-                      ) : (
-                        <>
-                          {sellerEmailDisplay}
-                          {!viewerLoggedIn ? (
-                            <span className="ml-2 text-[11px] font-normal text-slate-500">
-                              (Email hidden unless valid user is logged in)
-                            </span>
-                          ) : null}
-                        </>
-                      )}
-                    </div>
+                        <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
+                          {emailRaw ? (
+                            <a
+                              href={`mailto:${emailRaw}`}
+                              className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                            >
+                              {emailRaw}
+                            </a>
+                          ) : (
+                            sellerEmailDisplay
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <a
+                        href={contactInfoLoginHref}
+                        className="mt-2 inline-flex h-9 items-center justify-center rounded-full bg-[#0a2230] px-4 text-[12px] font-semibold text-white hover:bg-[#0f2a3b]"
+                      >
+                        Get contact info
+                      </a>
+                    )}
                   </div>
 
                   {/* ✅ Broker hero: 3:2 aspect */}
@@ -1367,6 +1576,17 @@ export default function ListingDetailClient({
                 </div>
 
                 <form onSubmit={submitInquiry} className="mt-3 space-y-3">
+                  <input
+                    type="text"
+                    tabIndex={-1}
+                    autoComplete="off"
+                    value={buyerWebsite}
+                    onChange={(e) => setBuyerWebsite(e.target.value)}
+                    className="hidden"
+                    aria-hidden="true"
+                    name="website"
+                  />
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="First name *">
                       <input
@@ -1577,23 +1797,42 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                {sellerPhoneDisplay ? (
-                  <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
-                    {sellerPhoneDisplay}
-                  </div>
-                ) : null}
-                {sellerEmailDisplay ? (
-                  <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
-                    {sellerEmailDisplay}
-                  </div>
-                ) : null}
+                {viewerLoggedIn ? (
+                  <>
+                    <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
+                      {sellerPhoneDisplay}
+                    </div>
+                    <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
+                      {emailRaw ? (
+                        <a
+                          href={`mailto:${emailRaw}`}
+                          className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                        >
+                          {emailRaw}
+                        </a>
+                      ) : (
+                        sellerEmailDisplay
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <a
+                    href={contactInfoLoginHref}
+                    className="mt-2 inline-flex h-9 items-center justify-center rounded-full bg-[#0a2230] px-4 text-[12px] font-semibold text-white hover:bg-[#0f2a3b]"
+                  >
+                    Get contact info
+                  </a>
+                )}
 
                 <button
                   type="button"
                   onClick={() => {
                     const el = document.getElementById("contact-card");
                     if (el)
-                      el.scrollIntoView({ behavior: "smooth", block: "start" });
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
                     setTimeout(() => {
                       if (msgRef.current) msgRef.current.focus();
                     }, 250);

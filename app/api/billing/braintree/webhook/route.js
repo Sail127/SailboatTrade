@@ -1,15 +1,23 @@
 // app/api/billing/braintree/webhook/route.js
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getBraintreeGateway, getBraintreePlanIds } from "@/lib/braintree";
+import { getBraintreeGateway } from "@/lib/braintree";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function endOfDayUtcFromDateOnly(d) {
-  const [y, m, day] = String(d || "").split("-").map((x) => Number(x));
-  if (!y || !m || !day) return null;
-  return new Date(Date.UTC(y, m - 1, day, 23, 59, 59, 999));
+function addMonths(date, months) {
+  const d = new Date(date);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function toBillingStatus(raw) {
+  const s = String(raw || "").toUpperCase();
+  if (s === "ACTIVE") return "ACTIVE";
+  if (s === "PAST_DUE") return "PAST_DUE";
+  if (s === "CANCELED" || s === "CANCELLED") return "CANCELED";
+  return "PAST_DUE";
 }
 
 export async function POST(req) {
@@ -44,30 +52,31 @@ export async function POST(req) {
     const sub = await gateway.subscription.find(subId).catch(() => null);
     if (!sub) return NextResponse.json({ ok: true });
 
-    const paidThrough = endOfDayUtcFromDateOnly(sub?.paidThroughDate);
-    const status = String(sub?.status || "");
-
-    // Determine whether featured add-on is present (if you configured it)
-    const { featuredAddonId: addonId } = getBraintreePlanIds();
-    const hasFeaturedAddon =
-      addonId && Array.isArray(sub?.addOns)
-        ? sub.addOns.some((a) => String(a?.id || a?.addOnId || "") === addonId && Number(a?.quantity || 1) > 0)
-        : false;
+    const status = toBillingStatus(sub?.status);
+    const periodStart = sub?.billingPeriodStartDate ? new Date(sub.billingPeriodStartDate) : null;
+    const periodEnd = sub?.billingPeriodEndDate ? new Date(sub.billingPeriodEndDate) : null;
 
     const now = new Date();
 
-    await prisma.listing.updateMany({
+    const listings = await prisma.listing.findMany({
       where: { braintreeSubscriptionId: subId },
-      data: {
-        subscriptionStatus: status,
-        standardUntil: paidThrough || null,
-        featuredHomeUntil: hasFeaturedAddon ? (paidThrough || null) : null,
-        featuredHomeEnabled: hasFeaturedAddon,
-
-        // If paid-through has expired, downgrade plan
-        plan: paidThrough && paidThrough > now ? "STANDARD" : "FREE",
-      },
+      select: { id: true, billingAutoRenew: true, billingTermMonths: true },
     });
+
+    for (const l of listings) {
+      const termMonths = Number(l.billingTermMonths || 1);
+      const nextExpiresAt = l.billingAutoRenew && status === "ACTIVE" ? addMonths(now, termMonths) : undefined;
+
+      await prisma.listing.update({
+        where: { id: l.id },
+        data: {
+          billingStatus: status,
+          billingCurrentPeriodStart: periodStart,
+          billingCurrentPeriodEnd: periodEnd,
+          expiresAt: nextExpiresAt,
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

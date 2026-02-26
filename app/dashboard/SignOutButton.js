@@ -27,13 +27,13 @@ export default function SignOutButton({ className = "" }) {
         throw new Error(data?.error || "Logout failed");
       }
 
-      // ✅ Refresh auth state + go to login
-      router.replace("/login");
+      // ✅ Go to homepage after logout
+      router.replace("/");
       router.refresh();
     } catch (e) {
       setErr(e?.message || "Logout failed");
       // still try to recover gracefully
-      router.replace("/login");
+      router.replace("/");
       router.refresh();
     } finally {
       setLoading(false);

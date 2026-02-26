@@ -1,7 +1,7 @@
 // components/AdvancedSearchBar.js
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 
@@ -73,6 +73,27 @@ function buildLoaSuggestions(unit) {
   return ["20", "22", "25", "27", "30", "32", "35", "37", "40", "42", "45", "50", "55", "60", "65", "70", "75"];
 }
 
+function normalizeInitialValues(initialValues = {}) {
+  const nextType = String(initialValues?.type || "both").toLowerCase();
+  const safeType = ["both", "monohull", "catamaran", "trimaran"].includes(nextType) ? nextType : "both";
+
+  const nextLoaUnit = String(initialValues?.loaUnit || "ft").toLowerCase();
+  const safeLoaUnit = nextLoaUnit === "m" ? "m" : "ft";
+
+  return {
+    q: String(initialValues?.q || ""),
+    type: safeType,
+    builder: String(initialValues?.builder || ""),
+    yearMin: String(initialValues?.yearMin || ""),
+    yearMax: String(initialValues?.yearMax || ""),
+    loaUnit: safeLoaUnit,
+    loaMin: String(initialValues?.loaMin || ""),
+    loaMax: String(initialValues?.loaMax || ""),
+    country: String(initialValues?.country || "").toUpperCase(),
+    usRegion: String(initialValues?.usRegion || ""),
+  };
+}
+
 /** Small inline FT/M toggle */
 function SmallUnitToggle({ value, onChange }) {
   const btn = "px-1.5 py-[1px] rounded-md text-[11px] font-semibold transition";
@@ -130,7 +151,7 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
       <span
         className={[
           "absolute left-2 right-2 bottom-1 h-[2px] rounded-full transition",
-          active ? "bg-[#c8a44d] opacity-100" : "bg-transparent opacity-0",
+          active ? "bg-[#f3b23f] opacity-100" : "bg-transparent opacity-0",
         ].join(" ")}
         aria-hidden="true"
       />
@@ -155,23 +176,48 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-export default function AdvancedSearchBar({ variant = "dark" }) {
+export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = {} }) {
   const router = useRouter();
 
   const builders = useMemo(orderBuilders, []);
   const yearOptions = useMemo(buildYearOptions, []);
   const countryOptions = useMemo(buildCountryOptionsForSearch, []);
+  const initial = useMemo(() => normalizeInitialValues(initialValues), [initialValues]);
 
-  const [q, setQ] = useState("");
-  const [type, setType] = useState("both"); // ALL
-  const [builder, setBuilder] = useState("");
-  const [yearMin, setYearMin] = useState("");
-  const [yearMax, setYearMax] = useState("");
-  const [loaUnit, setLoaUnit] = useState("ft");
-  const [loaMin, setLoaMin] = useState("");
-  const [loaMax, setLoaMax] = useState("");
-  const [country, setCountry] = useState(""); // ✅ ISO alpha-2 or ""
-  const [usRegion, setUsRegion] = useState("");
+  const [q, setQ] = useState(initial.q);
+  const [type, setType] = useState(initial.type);
+  const [builder, setBuilder] = useState(initial.builder);
+  const [yearMin, setYearMin] = useState(initial.yearMin);
+  const [yearMax, setYearMax] = useState(initial.yearMax);
+  const [loaUnit, setLoaUnit] = useState(initial.loaUnit);
+  const [loaMin, setLoaMin] = useState(initial.loaMin);
+  const [loaMax, setLoaMax] = useState(initial.loaMax);
+  const [country, setCountry] = useState(initial.country); // ✅ ISO alpha-2 or ""
+  const [usRegion, setUsRegion] = useState(initial.usRegion);
+
+  useEffect(() => {
+    setQ(initial.q);
+    setType(initial.type);
+    setBuilder(initial.builder);
+    setYearMin(initial.yearMin);
+    setYearMax(initial.yearMax);
+    setLoaUnit(initial.loaUnit);
+    setLoaMin(initial.loaMin);
+    setLoaMax(initial.loaMax);
+    setCountry(initial.country);
+    setUsRegion(initial.usRegion);
+  }, [
+    initial.q,
+    initial.type,
+    initial.builder,
+    initial.yearMin,
+    initial.yearMax,
+    initial.loaUnit,
+    initial.loaMin,
+    initial.loaMax,
+    initial.country,
+    initial.usRegion,
+  ]);
 
   const isUSA = String(country || "").toUpperCase() === "US";
   const loaSuggestions = useMemo(() => buildLoaSuggestions(loaUnit), [loaUnit]);
@@ -182,14 +228,14 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
 
   // ✅ Force white inputs regardless of globals.css
   const input =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none " +
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
     "!bg-white !text-[#0a2230] placeholder:!text-slate-400 " +
-    "focus:border-[#c8a44d]/60 focus:ring-2 focus:ring-[#c8a44d]/30";
+    "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
 
   const select =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none " +
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
     "!bg-white !text-[#0a2230] " +
-    "focus:border-[#c8a44d]/60 focus:ring-2 focus:ring-[#c8a44d]/30";
+    "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
 
   const button =
     "h-10 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
@@ -227,64 +273,92 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
     params.delete("page");
 
     const qs = params.toString();
-    router.push(qs ? `/listings?${qs}` : "/listings");
+    router.push(qs ? `${submitPath}?${qs}` : submitPath);
   };
 
   return (
     <section className="w-full">
       <form onSubmit={submit} className={shell}>
-        {/* datalists: typing OR picking */}
-        <datalist id="st-year-options">
-          {yearOptions.map((y) => (
-            <option key={y} value={y} />
-          ))}
-        </datalist>
-
         <datalist id={`st-loa-${loaUnit}`}>
           {loaSuggestions.map((v) => (
             <option key={v} value={v} />
           ))}
         </datalist>
 
-        {/* ROW 1: Keyword + Year + Builder + Search */}
+        {/* ROW 1: Hull type first */}
         <div className="grid grid-cols-12 gap-3 items-end">
-          <div className="col-span-12 md:col-span-4 min-w-0">
+          <div className="col-span-12">
+            <div className={label}>Hull type</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
+              <HullTile
+                active={type === "monohull"}
+                onClick={() => setType("monohull")}
+                label="Monohull"
+                imgSrc="/images/hulls/monohull.png"
+              />
+              <HullTile
+                active={type === "catamaran"}
+                onClick={() => setType("catamaran")}
+                label="Catamaran"
+                imgSrc="/images/hulls/catamaran.png"
+              />
+              <HullTile
+                active={type === "trimaran"}
+                onClick={() => setType("trimaran")}
+                label="Trimaran"
+                imgSrc="/images/hulls/trimaran.png"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ROW 2: Keyword + Year + Builder */}
+        <div className="mt-4 grid grid-cols-12 gap-3 items-end">
+          <div className="col-span-12 lg:col-span-4 min-w-0">
             <label className={label}>Keyword search</label>
             <input
               type="text"
-              placeholder="Builder, model, city, region…"
+              placeholder="Builder, model, city, region..."
               className={input}
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
 
-          <div className="col-span-12 md:col-span-3 min-w-0">
+          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
             <label className={label}>Year</label>
             <div className="mt-1 grid grid-cols-2 gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                list="st-year-options"
-                placeholder="Min"
+              <select
                 className={input}
                 value={yearMin}
                 onChange={(e) => setYearMin(e.target.value)}
-              />
-              <input
-                type="text"
-                inputMode="numeric"
-                list="st-year-options"
-                placeholder="Max"
+                aria-label="Minimum year"
+              >
+                <option value="">Min</option>
+                {yearOptions.map((y) => (
+                  <option key={`year-min-${y}`} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <select
                 className={input}
                 value={yearMax}
                 onChange={(e) => setYearMax(e.target.value)}
-              />
+                aria-label="Maximum year"
+              >
+                <option value="">Max</option>
+                {yearOptions.map((y) => (
+                  <option key={`year-max-${y}`} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* ✅ Builder less wide + min-w-0 so it won’t overflow */}
-          <div className="col-span-12 md:col-span-3 min-w-0">
+          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
             <label className={label}>Builder</label>
             <select className={select} value={builder} onChange={(e) => setBuilder(e.target.value)}>
               <option value="">All</option>
@@ -296,131 +370,103 @@ export default function AdvancedSearchBar({ variant = "dark" }) {
               <option value="Other">Other</option>
             </select>
           </div>
+        </div>
 
-          {/* ✅ Give the button more space so nothing tucks under it */}
-          <div className="col-span-12 md:col-span-2 md:flex md:justify-end">
-            <button type="submit" className={`${button} w-full md:w-auto`}>
-              Search
-            </button>
+        {/* ROW 3: LOA + Country/Region */}
+        <div className="mt-4 grid grid-cols-12 gap-3 items-end">
+          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
+            <div className="flex items-center justify-between">
+              <label className={label}>
+                LOA <span className="text-white/55 font-semibold">(length overall)</span>
+                <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+              </label>
+              <span />
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                inputMode="decimal"
+                list={`st-loa-${loaUnit}`}
+                placeholder="Min Length"
+                className={input}
+                value={loaMin}
+                onChange={(e) => setLoaMin(e.target.value)}
+              />
+              <input
+                type="text"
+                inputMode="decimal"
+                list={`st-loa-${loaUnit}`}
+                placeholder="Max Length"
+                className={input}
+                value={loaMax}
+                onChange={(e) => setLoaMax(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
+            <label className={label}>{isUSA ? "Country / USA Region" : "Country"}</label>
+
+            {!isUSA ? (
+              <div className="mt-2 lg:max-w-[360px]">
+                <select
+                  className={select}
+                  value={country}
+                  onChange={(e) => {
+                    const next = String(e.target.value || "").toUpperCase();
+                    setCountry(next);
+                    if (next !== "US") setUsRegion("");
+                  }}
+                >
+                  {countryOptions.map((c) => (
+                    <option key={c.value || "all"} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="mt-2 flex gap-2 lg:max-w-[460px]">
+                <select
+                  className={`${select} flex-1 min-w-0`}
+                  value={country}
+                  onChange={(e) => {
+                    const next = String(e.target.value || "").toUpperCase();
+                    setCountry(next);
+                    if (next !== "US") setUsRegion("");
+                  }}
+                >
+                  {countryOptions.map((c) => (
+                    <option key={c.value || "all"} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className={`${select} flex-1 min-w-0`}
+                  value={usRegion}
+                  onChange={(e) => setUsRegion(e.target.value)}
+                  aria-label="USA Region"
+                >
+                  {US_REGION_OPTIONS.map((o) => (
+                    <option key={o.value || "all"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
-{/* ROW 2: Hull + LOA + Country/Region */}
-<div className="mt-4 grid grid-cols-12 gap-3 items-end">
-  {/* Hull type */}
-  <div className="col-span-12 lg:col-span-4">
-    <div className={label}>Hull type</div>
-    <div className="mt-2 flex flex-wrap gap-2">
-      <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
-      <HullTile
-        active={type === "monohull"}
-        onClick={() => setType("monohull")}
-        label="Monohull"
-        imgSrc="/images/hulls/monohull.png"
-      />
-      <HullTile
-        active={type === "catamaran"}
-        onClick={() => setType("catamaran")}
-        label="Catamaran"
-        imgSrc="/images/hulls/catamaran.png"
-      />
-      <HullTile
-        active={type === "trimaran"}
-        onClick={() => setType("trimaran")}
-        label="Trimaran"
-        imgSrc="/images/hulls/trimaran.png"
-      />
-    </div>
-  </div>
-
-  {/* ✅ LOA (narrower + matches Year width) */}
-  <div className="col-span-12 sm:col-span-6 lg:col-span-3 min-w-0">
-    <div className="flex items-center justify-between">
-      <label className={label}>
-        LOA <span className="text-white/55 font-semibold">(length overall)</span>
-        <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
-      </label>
-      <span />
-    </div>
-
-    <div className="mt-2 grid grid-cols-2 gap-2">
-      <input
-        type="text"
-        inputMode="decimal"
-        list={`st-loa-${loaUnit}`}
-        placeholder="Min Length"
-        className={input}
-        value={loaMin}
-        onChange={(e) => setLoaMin(e.target.value)}
-      />
-      <input
-        type="text"
-        inputMode="decimal"
-        list={`st-loa-${loaUnit}`}
-        placeholder="Max Length"
-        className={input}
-        value={loaMax}
-        onChange={(e) => setLoaMax(e.target.value)}
-      />
-    </div>
-  </div>
-
-  {/* ✅ Country / USA Region (wider so Region fits naturally) */}
-  <div className="col-span-12 sm:col-span-6 lg:col-span-5 min-w-0">
-    <label className={label}>{isUSA ? "Country / USA Region" : "Country"}</label>
-
-    {!isUSA ? (
-      <div className="mt-2">
-        <select
-          className={select}
-          value={country}
-          onChange={(e) => {
-            const next = String(e.target.value || "").toUpperCase();
-            setCountry(next);
-            if (next !== "US") setUsRegion("");
-          }}
-        >
-          {countryOptions.map((c) => (
-            <option key={c.value || "all"} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    ) : (
-      <div className="mt-2 flex gap-2">
-        <select
-          className={`${select} flex-1 min-w-0`}
-          value={country}
-          onChange={(e) => {
-            const next = String(e.target.value || "").toUpperCase();
-            setCountry(next);
-            if (next !== "US") setUsRegion("");
-          }}
-        >
-          {countryOptions.map((c) => (
-            <option key={c.value || "all"} value={c.value}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-
-        <select
-          className={`${select} flex-1 min-w-0`}
-          value={usRegion}
-          onChange={(e) => setUsRegion(e.target.value)}
-          aria-label="USA Region"
-        >
-          {US_REGION_OPTIONS.map((o) => (
-            <option key={o.value || "all"} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    )}
-  </div>
-</div>
+        {/* ROW 4: Search at bottom */}
+        <div className="mt-4 flex justify-end">
+          <button type="submit" className={`${button} w-full sm:w-auto sm:min-w-[180px]`}>
+            Search
+          </button>
+        </div>
       </form>
     </section>
   );

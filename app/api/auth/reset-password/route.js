@@ -2,10 +2,28 @@
 import prisma from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { verifyResetToken } from "@/lib/passwordResetToken";
+import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
+import { isTrustedOrigin } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 
 export async function POST(req) {
+  if (!isTrustedOrigin(req)) {
+    return Response.json({ ok: false, error: "Invalid origin." }, { status: 403 });
+  }
+
+  const rl = rateLimit({
+    key: makeRateLimitKey(req, "auth_reset_password"),
+    limit: 12,
+    windowMs: 30 * 60 * 1000,
+  });
+  if (!rl.ok) {
+    return Response.json(
+      { ok: false, error: "Too many password reset attempts. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   const body = await req.json().catch(() => ({}));
   const token = (body?.token ?? "").toString().trim();
   const password = (body?.password ?? "").toString();

@@ -1,6 +1,8 @@
 // app/api/auth/login/route.js
 import prisma from "@/lib/prisma";
 import { verifyPassword, signSession, setSessionCookie } from "@/lib/auth";
+import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
+import { isTrustedOrigin } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,10 @@ function safeNextPath(raw) {
 }
 
 export async function POST(req) {
+  if (!isTrustedOrigin(req)) {
+    return Response.json({ ok: false, error: "Invalid origin." }, { status: 403 });
+  }
+
   const body = await req.json().catch(() => null);
   const email = body?.email?.toLowerCase()?.trim();
   const password = body?.password;
@@ -31,6 +37,18 @@ export async function POST(req) {
     return Response.json(
       { ok: false, error: "Missing credentials." },
       { status: 400 }
+    );
+  }
+
+  const rl = rateLimit({
+    key: makeRateLimitKey(req, "auth_login", email),
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (!rl.ok) {
+    return Response.json(
+      { ok: false, error: "Too many login attempts. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
     );
   }
 

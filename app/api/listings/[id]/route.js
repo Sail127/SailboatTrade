@@ -36,13 +36,6 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function arraysEqual(a = [], b = []) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++)
-    if (String(a[i]) !== String(b[i])) return false;
-  return true;
-}
-
 export async function GET(req, { params }) {
   let s;
   try {
@@ -160,8 +153,13 @@ export async function PUT(req, { params }) {
   }
 
   const status = String(listing.status || "").toUpperCase();
-  const paymentStatus = String(listing.paymentStatus || "").toUpperCase();
-  const isPublished = status === "PUBLISHED";
+  const canEdit = ["DRAFT", "REJECTED"].includes(status);
+  if (!canEdit) {
+    return Response.json(
+      { ok: false, error: "Editing is disabled while this listing is under review or published." },
+      { status: 409 },
+    );
+  }
 
   // --------- Read incoming fields safely (partial update friendly) ----------
   const nextTitle = has(body, "title")
@@ -241,55 +239,18 @@ export async function PUT(req, { params }) {
     contactPhone: nextContactPhone,
   };
 
-  // --------- MAJOR updates: require re-approval ONLY when published ----------
-  const majorChanged =
-    (has(body, "title") && nextTitle !== (listing.title ?? null)) ||
-    (has(body, "description") &&
-      nextDescription !== (listing.description ?? null)) ||
-    (nextHeroImageUrl !== undefined &&
-      nextHeroImageUrl !== (listing.heroImageUrl ?? null)) ||
-    (nextImageUrls !== undefined &&
-      !arraysEqual(nextImageUrls, listing.imageUrls || []));
-
   const data = { ...minorData };
 
-  if (!isPublished) {
-    // Unpublished listings: apply everything directly
-    if (has(body, "title")) data.title = nextTitle;
-    if (has(body, "description")) data.description = nextDescription;
+  if (has(body, "title")) data.title = nextTitle;
+  if (has(body, "description")) data.description = nextDescription;
 
-    if (nextHeroImageUrl !== undefined) data.heroImageUrl = nextHeroImageUrl;
-    if (nextImageUrls !== undefined) data.imageUrls = nextImageUrls;
-
-    // If they edit while in new-listing pending review, bump timestamp so admin sees it as fresh
-    if (status === "PENDING_REVIEW" && paymentStatus === "PAID") {
-      data.submittedForReviewAt = new Date();
-    }
-  } else {
-    // Published listings: stage major changes for admin approval
-    if (majorChanged) {
-      if (has(body, "title")) data.pendingTitle = nextTitle;
-      if (has(body, "description")) data.pendingDescription = nextDescription;
-      if (nextHeroImageUrl !== undefined)
-        data.pendingHeroImageUrl = nextHeroImageUrl;
-      if (nextImageUrls !== undefined) data.pendingImageUrls = nextImageUrls;
-
-      data.contentReviewStatus = "PENDING";
-      data.contentSubmittedAt = new Date();
-      data.contentRejectionReason = null;
-    }
-    // Live title/desc/images remain unchanged until admin approves
-  }
+  if (nextHeroImageUrl !== undefined) data.heroImageUrl = nextHeroImageUrl;
+  if (nextImageUrls !== undefined) data.imageUrls = nextImageUrls;
 
   const updated = await prisma.listing.update({
     where: { id: listing.id },
     data,
   });
 
-  return Response.json({
-    ok: true,
-    listing: updated,
-    majorChanged: Boolean(isPublished && majorChanged),
-    contentReviewStatus: updated.contentReviewStatus,
-  });
+  return Response.json({ ok: true, listing: updated });
 }

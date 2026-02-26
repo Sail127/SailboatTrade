@@ -35,6 +35,12 @@ const baseEquip = [
   "Swim platform",
 ];
 
+function addDays(date, days) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 const samples = [
   { title: "Beneteau Oceanis 40.1",    builder: "Beneteau",       model: "Oceanis 40.1",    year: 2021, price: 289000, loa: 40.1, type: "MONOHULL",  locationCity: "Miami",           locationCountry: "USA" },
   { title: "Jeanneau Sun Odyssey 389", builder: "Jeanneau",       model: "Sun Odyssey 389", year: 2017, price: 168500, loa: 38.9, type: "MONOHULL",  locationCity: "Annapolis",       locationCountry: "USA" },
@@ -74,6 +80,7 @@ async function main() {
       description: baseDesc,
 
       status: "PUBLISHED",
+      expiresAt: addDays(new Date(), 30),
 
       price: s.price,
       currency: "USD",
@@ -101,24 +108,24 @@ async function main() {
       contactPhone: "555-555-5555",
       brokerageName: "SailboatTrade",
       brokerageAddress: "Online",
-      brokerLogoUrl: "/images/burgee.png",
+      brokerHeroImageUrl: "/images/burgee.png",
+
+      photoPlan: "FREE_3",
+      featuredHome: false,
+      billingStatus: "FREE",
+      billingAddons: [],
+      billingMonthlyCents: null,
     };
 
     const existing = await prisma.listing.findFirst({
       where: { title: baseData.title, year: baseData.year },
-      select: { id: true, publishedAt: true },
+      select: { id: true },
     });
 
     if (!existing) {
-      await prisma.listing.create({
-        data: {
-          ...baseData,
-          publishedAt: new Date(),
-        },
-      });
+      await prisma.listing.create({ data: baseData });
       console.log(`Created: ${baseData.title} (${baseData.year})`);
     } else {
-      // Don't keep bumping publishedAt on every seed run
       await prisma.listing.update({
         where: { id: existing.id },
         data: baseData,

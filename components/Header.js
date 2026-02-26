@@ -15,7 +15,7 @@ const LOGOUT_ENDPOINT = "/api/auth/logout";
 const LOGIN_HREF = "/login";
 
 const SEARCH_GOLD = "#f3b23f";
-const GOLD = "#c8a44d";
+const GOLD = SEARCH_GOLD;
 
 function hardNav(href) {
   if (typeof window === "undefined") return;
@@ -193,7 +193,7 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
           "rounded-full",
           "border border-white/15 bg-white/5 text-white",
           "hover:bg-white/10 hover:border-white/25 transition",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a44d]/40",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]/40",
           "shrink-0",
         ].join(" ")}
         onClick={() => {
@@ -362,7 +362,7 @@ export default function Header() {
       setMeLoading(false);
       setOpen(false);
       notifyAuthChanged();
-      refreshMe();
+      hardNav("/");
     }
   }
 
@@ -404,7 +404,7 @@ export default function Header() {
     "flex items-center gap-3 px-3 py-2 rounded-lg font-medium text-white/90 hover:bg-black/10 hover:text-white transition";
   const iconBox = "inline-flex h-6 w-6 items-center justify-center shrink-0";
   const navPrimary =
-    navLink + " text-[15px] text-white/95 hover:bg-[#c8a44d]/10 hover:ring-1 hover:ring-[#c8a44d]/25";
+    navLink + " text-[15px] text-white/95 hover:bg-[#f3b23f]/10 hover:ring-1 hover:ring-[#f3b23f]/25";
   const navSecondary = navLink + " text-[13px] text-white/85";
   const logoutBtn =
     "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold text-white/90 hover:bg-white/10 transition text-left";
@@ -451,7 +451,7 @@ export default function Header() {
                 textShadow: "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.18)",
               }}
             >
-              Sailboat<span className="text-[#c8a44d]">Trade</span>
+              Sailboat<span className="text-[#f3b23f]">Trade</span>
               <span className="text-slate-300" style={{ letterSpacing: "0.06em" }}>
                 .com
               </span>
@@ -465,7 +465,7 @@ export default function Header() {
               placeholder="Search…"
               className={[
                 "h-9 rounded-lg border border-white/15 bg-white text-[#0a2230]",
-                "px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40",
+                "px-3 text-sm outline-none focus:ring-2 focus:ring-[#f3b23f]/40",
                 "flex-1 min-w-0",
                 "w-[140px] sm:w-56",
               ].join(" ")}

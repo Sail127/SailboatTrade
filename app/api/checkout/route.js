@@ -2,11 +2,29 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
+import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
+import { isTrustedOrigin } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req) {
+  if (!isTrustedOrigin(req)) {
+    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+  }
+
+  const rl = rateLimit({
+    key: makeRateLimitKey(req, "checkout_init"),
+    limit: 30,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Too many checkout attempts. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   const s = await readSession();
   if (!s?.uid) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -14,17 +32,23 @@ export async function POST(req) {
 
   const ct = req.headers.get("content-type") || "";
   let listingId = "";
-  let plan = "FEATURED_HOME";
+  let photoPlus = false;
+  let featuredHome = false;
+  let termMonths = 1;
 
   try {
     if (ct.includes("application/json")) {
       const body = await req.json().catch(() => null);
       listingId = String(body?.listingId || "").trim();
-      plan = String(body?.plan || "FEATURED_HOME").trim();
+      photoPlus = Boolean(body?.photoPlus);
+      featuredHome = Boolean(body?.featuredHome);
+      termMonths = Number(body?.termMonths || 1);
     } else {
       const fd = await req.formData();
       listingId = String(fd.get("listingId") || "").trim();
-      plan = String(fd.get("plan") || "FEATURED_HOME").trim();
+      photoPlus = String(fd.get("photoPlus") || "") === "1";
+      featuredHome = String(fd.get("featuredHome") || "") === "1";
+      termMonths = Number(fd.get("termMonths") || 1);
     }
   } catch {
     // ignore
@@ -36,34 +60,25 @@ export async function POST(req) {
 
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
-    select: { id: true, ownerId: true, paymentStatus: true },
+    select: { id: true, ownerId: true },
   });
 
   if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
   if (listing.ownerId !== s.uid) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
-  // Don’t start checkout again if already paid
-  if (listing.paymentStatus === "PAID") {
-    return NextResponse.redirect(`/checkout/${encodeURIComponent(listing.id)}?success=1`, { status: 303 });
-  }
-
-  const planUpper = String(plan || "").toUpperCase();
-  const desiredPlan = planUpper === "STANDARD" ? "STANDARD" : "FEATURED_HOME";
+  const addons = [];
+  if (photoPlus) addons.push("PHOTO_PLUS_25");
+  if (featuredHome) addons.push("FEATURED_HOME");
 
   await prisma.listing.update({
     where: { id: listing.id },
     data: {
-      plan: desiredPlan,
-      paymentProvider: "BRAINTREE",
-      paymentStatus: "PENDING",
-      paymentSessionId: null, 
-      status: "READY_FOR_CHECKOUT",
+      billingAddons: addons,
+      photoPlan: photoPlus ? "PHOTO_PLUS_25" : "FREE_3",
+      featuredHome: false, // only enable after successful payment
+      billingTermMonths: Number.isFinite(termMonths) ? termMonths : 1,
     },
   });
 
-  // Redirect into your internal checkout page
-  return NextResponse.redirect(
-    `/checkout/${encodeURIComponent(listing.id)}?plan=${encodeURIComponent(desiredPlan)}`,
-    { status: 303 }
-  );
+  return NextResponse.redirect(`/checkout/${encodeURIComponent(listing.id)}`, { status: 303 });
 }

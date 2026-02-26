@@ -1,46 +1,32 @@
 // app/listings/[id]/edit/page.js
-import { redirect, notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { notFound, redirect } from "next/navigation";
+import { readSession } from "@/lib/auth";
 import ListingEditClient from "./ListingEditClient";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getOwnerId(listing) {
-  // Covers common schema variants without Prisma-select crashing.
-  return (
-    listing?.userId ??
-    listing?.ownerId ??
-    listing?.sellerId ??
-    listing?.createdById ??
-    listing?.accountId ??
-    null
-  );
-}
-
 export default async function ListingEditPage({ params, searchParams }) {
-  const user = await requireUser(); // your existing auth helper (redirects if not logged in)
-
   const id = String(params?.id || "").trim();
-  if (!id) notFound();
+  if (!id) return notFound();
+
+  const s = await readSession();
+  if (!s?.uid) redirect(`/login?next=${encodeURIComponent(`/listings/${id}/edit`)}`);
 
   const previewToken = String(searchParams?.token || "").trim();
 
   const listing = await prisma.listing.findUnique({ where: { id } });
-  if (!listing) notFound();
+  if (!listing) return notFound();
 
-  const ownerId = getOwnerId(listing);
-  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
-  const isOwner = ownerId && String(ownerId) === String(user?.id || user?.uid || "");
+  if (listing.ownerId !== s.uid) redirect(`/listings/${id}${previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""}`);
 
-  if (!isOwner && !isAdmin) {
-    const t = previewToken ? `?token=${encodeURIComponent(previewToken)}` : "";
-    redirect(`/listings/${encodeURIComponent(id)}${t}`);
+  const status = String(listing.status || "").toUpperCase();
+  if (!["DRAFT", "REJECTED"].includes(status)) {
+    // Editing blocked while pending/published/etc
+    redirect(`/listings/${id}${previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""}`);
   }
 
-  // Make Dates serializable
-  const safeListing = JSON.parse(JSON.stringify(listing));
-
-  return <ListingEditClient initialListing={safeListing} previewToken={previewToken} />;
+  const safe = JSON.parse(JSON.stringify(listing));
+  return <ListingEditClient initialListing={safe} previewToken={previewToken} />;
 }

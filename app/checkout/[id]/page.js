@@ -58,6 +58,8 @@ export default async function CheckoutPage({ params, searchParams }) {
       braintreeSubscriptionId: true,
       billingCurrentPeriodEnd: true,
       cancelAtPeriodEnd: true,
+      billingTermMonths: true,
+      billingAutoRenew: true,
     },
   });
 
@@ -73,14 +75,15 @@ export default async function CheckoutPage({ params, searchParams }) {
   const maxPhotos = 25;
 
   // ✅ prices ($5 each by default)
-  const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "500", 10);
-  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "500", 10);
+  const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "700", 10);
+  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "1000", 10);
 
   const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 500);
   const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 500);
 
   const success = String(searchParams?.success || "") === "1";
   const canceled = String(searchParams?.canceled || "") === "1";
+  const showConfirmation = success;
 
   const hasSubscription = Boolean(listing.braintreeSubscriptionId);
 
@@ -105,33 +108,83 @@ export default async function CheckoutPage({ params, searchParams }) {
           </div>
 
           <div className="p-6 space-y-4">
-            {success ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
-                Subscription started. Your listing has been submitted for review.
-              </div>
-            ) : null}
+            {showConfirmation ? (
+              <>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+                  <div className="text-[12px] font-extrabold tracking-wide text-emerald-800">
+                    Purchase Complete
+                  </div>
+                  <div className="mt-1 text-[20px] font-extrabold text-[#0a2230]">
+                    Thank you for your purchase
+                  </div>
+                </div>
 
-            {canceled ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
-                Checkout canceled. You can try again anytime.
-              </div>
-            ) : null}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[14px] text-slate-700 space-y-2">
+                  <div>Your payment information has been received.</div>
+                  <div>
+                    Your listing is pending review and will be published within 48 hours if it meets community guidelines.
+                  </div>
+                  <div>
+                    If it does not meet community guidelines, the listing will be returned to draft so it can be edited and resubmitted.
+                  </div>
+                </div>
 
-            <CheckoutUI
-              listingId={listing.id}
-              titleLine={titleLine}
-              photoCount={photoCount}
-              freePhotoLimit={freePhotoLimit}
-              maxPhotos={maxPhotos}
-              photoPlusPrice={photoPlusPrice}
-              featuredPrice={featuredPrice}
-              initialPhotoPlan={listing.photoPlan}
-              initialFeaturedHome={Boolean(listing.featuredHome)}
-              billingStatus={String(listing.billingStatus || "")}
-              hasSubscription={hasSubscription}
-              cancelAtPeriodEnd={Boolean(listing.cancelAtPeriodEnd)}
-              currentPeriodEnd={listing.billingCurrentPeriodEnd ? listing.billingCurrentPeriodEnd.toISOString() : ""}
-            />
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={`/listings/${listing.id}`}
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-5 text-[13px] font-semibold text-white hover:bg-[#0f2a3b]"
+                  >
+                    View listing
+                  </Link>
+                  <Link
+                    href="/dashboard/listings"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
+                  >
+                    Go to dashboard
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                {canceled ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900">
+                    Checkout canceled. You can try again anytime.
+                  </div>
+                ) : null}
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
+                  <div className="font-extrabold text-[#0a2230]">How listings expire</div>
+                  <div className="mt-1">
+                    Free listings run for <span className="font-semibold">30 days</span> and can be renewed anytime.
+                    Premium terms are <span className="font-semibold">1, 3, or 6 months</span> with built-in discounts.
+                  </div>
+                  <div className="mt-1">
+                    When a listing expires it is archived (not public). Archived listings keep photos for 30 days,
+                    then only the hero image is retained to reduce storage.
+                  </div>
+                </div>
+
+                <CheckoutUI
+                  listingId={listing.id}
+                  titleLine={titleLine}
+                  photoCount={photoCount}
+                  freePhotoLimit={freePhotoLimit}
+                  maxPhotos={maxPhotos}
+                  photoPlusPrice={photoPlusPrice}
+                  featuredPrice={featuredPrice}
+                  photoPlusCents={Number.isFinite(photoPlusCents) ? photoPlusCents : 700}
+                  featuredCents={Number.isFinite(featuredCents) ? featuredCents : 1000}
+                  initialPhotoPlan={listing.photoPlan}
+                  initialFeaturedHome={Boolean(listing.featuredHome)}
+                  billingStatus={String(listing.billingStatus || "")}
+                  hasSubscription={hasSubscription}
+                  cancelAtPeriodEnd={Boolean(listing.cancelAtPeriodEnd)}
+                  currentPeriodEnd={listing.billingCurrentPeriodEnd ? listing.billingCurrentPeriodEnd.toISOString() : ""}
+                  initialTermMonths={listing.billingTermMonths || 1}
+                  initialAutoRenew={Boolean(listing.billingAutoRenew)}
+                />
+              </>
+            )}
           </div>
         </div>
 

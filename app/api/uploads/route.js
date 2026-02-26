@@ -68,9 +68,11 @@ export async function GET(req) {
     }
 
     // 2) Public access (PUBLISHED only)
+    const now = new Date();
     const published = await prisma.listing.findFirst({
       where: {
         status: "PUBLISHED",
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }],
         OR: [{ heroImageUrl: key }, { brokerHeroImageUrl: key }, { imageUrls: { has: key } }],
       },
       select: { id: true },

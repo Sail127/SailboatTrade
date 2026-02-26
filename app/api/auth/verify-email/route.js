@@ -1,11 +1,24 @@
 // app/api/auth/verify-email/route.js
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
+  const rl = rateLimit({
+    key: makeRateLimitKey(req, "auth_verify_email"),
+    limit: 20,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Too many verification attempts. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   const url = new URL(req.url);
   const token = url.searchParams.get("token")?.trim();
 

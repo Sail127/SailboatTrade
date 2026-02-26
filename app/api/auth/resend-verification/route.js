@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { sendEmail, getAppUrl } from "@/lib/email";
 import crypto from "crypto";
 import { NextResponse } from "next/server";
+import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
+import { isTrustedOrigin } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +19,22 @@ const COOLDOWN_SECONDS = Number(
 );
 
 export async function POST(req) {
+  if (!isTrustedOrigin(req)) {
+    return NextResponse.json({ ok: false, error: "Invalid origin." }, { status: 403 });
+  }
+
+  const rl = rateLimit({
+    key: makeRateLimitKey(req, "auth_resend_verification"),
+    limit: 10,
+    windowMs: 30 * 60 * 1000,
+  });
+  if (!rl.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Too many resend attempts. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   let s;
   try {
     try {

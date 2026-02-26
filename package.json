@@ -12,7 +12,9 @@
     "prisma": "prisma",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "security:audit": "npm audit --audit-level=high",
+    "security:deps": "npm outdated || exit 0"
   },
   "prisma": {
     "seed": "node prisma/seed.mjs"

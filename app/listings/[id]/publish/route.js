@@ -1,54 +1,74 @@
+import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req, { params }) {
-  let s;
-  try {
-    try {
-      try {
-        try {
-          s = await requireUser();
-        } catch {
-          return NextResponse.json(
-            { ok: false, error: "Authentication required" },
-            { status: 401 },
-          );
-        }
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) {
+    return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+  }
+
+  const id = String(params?.id || "").trim();
+  if (!id) {
+    return NextResponse.json({ ok: false, error: "Missing id." }, { status: 400 });
+  }
+
+  const listing = await prisma.listing.findFirst({
+    where: { id, ownerId: s.uid },
+    select: {
+      id: true,
+      status: true,
+      photoPlan: true,
+      featuredHome: true,
+      billingAddons: true,
+      billingStatus: true,
+    },
+  });
+  if (!listing) return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
+
+  const addons = Array.isArray(listing.billingAddons) ? listing.billingAddons : [];
+  const requiresPaid =
+    listing.photoPlan === "PHOTO_PLUS_25" || !!listing.featuredHome || addons.length > 0;
+
+  if (requiresPaid) {
+    const billingOk = String(listing.billingStatus || "").toUpperCase() === "ACTIVE";
+    if (!billingOk) {
       return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
+        { ok: false, error: "Paid upgrades require an active subscription before submitting." },
+        { status: 400 }
       );
     }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
-  }
-  const listing = await prisma.listing.findFirst({
-    where: { id: params.id, ownerId: s.uid },
-  });
-  if (!listing)
-    return Response.json({ ok: false, error: "Not found." }, { status: 404 });
-
-  if (listing.paymentStatus !== "PAID") {
-    return Response.json(
-      { ok: false, error: "Payment required before publishing." },
-      { status: 402 },
-    );
   }
 
-  const published = await prisma.listing.update({
+  const now = new Date();
+
+  const updated = await prisma.listing.update({
     where: { id: listing.id },
-    data: { status: "PUBLISHED", publishedAt: new Date() },
+    data: {
+      status: "PENDING_REVIEW",
+      contentReviewStatus: "PENDING",
+      contentSubmittedAt: now,
+
+      rejectionReason: null,
+      reviewedAt: null,
+      reviewedById: null,
+      contentRejectionReason: null,
+      contentReviewedAt: null,
+      contentReviewedById: null,
+      expiresAt: null,
+      archivedAt: null,
+      archivedImagesPrunedAt: null,
+    },
+  });
+  await notifyAdminListingPendingReview({
+    req,
+    listingId: updated.id,
+    source: "listings/[id]/publish",
   });
 
-  return Response.json({ ok: true, publicUrl: `/listings/${published.id}` });
+  return NextResponse.json({ ok: true, listingId: updated.id });
 }

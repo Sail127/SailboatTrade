@@ -68,9 +68,17 @@ export default function UserMenu({ initials = "U", favoritesCount = null }) {
           </div>
 
           <div className="border-t border-slate-200 p-2">
-            {/* If you already have SignOutButton elsewhere and want to reuse it,
-                swap this <form> for <SignOutButton ... /> */}
-            <form action="/api/auth/logout" method="post">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                } catch {
+                  // ignore and continue redirect
+                }
+                window.location.assign("/");
+              }}
+            >
               <button
                 type="submit"
                 className="w-full rounded-lg px-3 py-2 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 text-left"

@@ -17,7 +17,7 @@ export default async function PreviewListingPage({ params }) {
   if (!listing) return notFound();
 
   const status = String(listing.status || "").toUpperCase();
-  if (status === "REMOVED") return notFound(); // no token previews for removed listings
+  if (status === "REMOVED" || status === "ARCHIVED") return notFound(); // no token previews for archived/removed listings
 
   redirect(`/listings/${listing.id}?token=${encodeURIComponent(token)}`);
 }

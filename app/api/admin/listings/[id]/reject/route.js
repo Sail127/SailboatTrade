@@ -20,23 +20,34 @@ export async function POST(req, { params }) {
 
   const listing = await prisma.listing.findUnique({
     where: { id },
-    select: { id: true, status: true, ownerId: true, paymentStatus: true, plan: true },
+    select: {
+      id: true,
+      status: true,
+      ownerId: true,
+      photoPlan: true,
+      featuredHome: true,
+      billingStatus: true,
+      billingAddons: true,
+    },
   });
 
   if (!listing) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
 
-  // Keep paymentStatus as PAID so they do NOT repay
   const now = new Date();
 
   await prisma.listing.update({
     where: { id },
     data: {
       status: "REJECTED",
-      submittedForReviewAt: null,
 
       reviewedAt: now,
       reviewedById: guard.me.id,
       rejectionReason: reason || "Changes required before publishing.",
+
+      contentReviewStatus: "REJECTED",
+      contentReviewedAt: now,
+      contentReviewedById: guard.me.id,
+      contentRejectionReason: reason || "Changes required before publishing.",
     },
   });
 
@@ -46,7 +57,13 @@ export async function POST(req, { params }) {
     entityType: "Listing",
     entityId: id,
     reason: reason || null,
-    meta: { plan: listing.plan, ownerId: listing.ownerId },
+    meta: {
+      ownerId: listing.ownerId,
+      photoPlan: listing.photoPlan,
+      featuredHome: listing.featuredHome,
+      billingStatus: listing.billingStatus,
+      billingAddons: listing.billingAddons,
+    },
   });
 
   return NextResponse.json({ ok: true });

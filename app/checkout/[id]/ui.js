@@ -7,6 +7,40 @@ import dropin from "braintree-web-drop-in";
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
 
+const TERM_OPTIONS = [1, 3, 6];
+const TERM_DISCOUNT = {
+  3: 0.9,
+  6: 0.8,
+};
+
+function clampTerm(v) {
+  const n = Number(v);
+  if (TERM_OPTIONS.includes(n)) return n;
+  return 1;
+}
+
+function formatMoneyFromCents(cents) {
+  const n = Number(cents);
+  if (!Number.isFinite(n)) return "$0.00";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(n / 100);
+}
+
+function discountFactor(termMonths) {
+  return TERM_DISCOUNT[termMonths] || 1;
+}
+
+function isNonceReuseErrorMessage(msg) {
+  const s = String(msg || "").toLowerCase();
+  return (
+    s.includes("payment_method_nonce") &&
+    (s.includes("more than once") || s.includes("already used") || s.includes("cannot use"))
+  );
+}
+
 function Pill({ active, disabled, children, onClick }) {
   return (
     <button
@@ -34,15 +68,21 @@ export default function CheckoutUI({
   maxPhotos,
   photoPlusPrice,
   featuredPrice,
+  photoPlusCents,
+  featuredCents,
   initialPhotoPlan,        // "FREE_3" | "PHOTO_PLUS_25"
   initialFeaturedHome,     // boolean
   billingStatus,           // "FREE" | "ACTIVE" | "PAST_DUE" | "CANCELED"
   hasSubscription,
   cancelAtPeriodEnd,
   currentPeriodEnd,
+  initialTermMonths,
+  initialAutoRenew,
 }) {
   const [photoPlus, setPhotoPlus] = useState(String(initialPhotoPlan || "") === "PHOTO_PLUS_25");
   const [featuredHome, setFeaturedHome] = useState(Boolean(initialFeaturedHome));
+  const [termMonths, setTermMonths] = useState(clampTerm(initialTermMonths));
+  const [autoRenew, setAutoRenew] = useState(Boolean(initialAutoRenew));
 
   const requirePhotoPlusByPhotos = photoCount > freePhotoLimit;
   const overMax = photoCount > maxPhotos;
@@ -64,6 +104,14 @@ export default function CheckoutUI({
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
+  const baseMonthlyCents =
+    (photoPlus ? Number(photoPlusCents || 0) : 0) +
+    (featuredHome ? Number(featuredCents || 0) : 0);
+  const termFactor = discountFactor(termMonths);
+  const discountedMonthlyCents = Math.round(baseMonthlyCents * termFactor);
+  const totalCents = discountedMonthlyCents * termMonths;
+  const disableChanges = busy || (hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE"));
+
   // Braintree drop-in
   const dropinRef = useRef(null);
   const instanceRef = useRef(null);
@@ -79,7 +127,12 @@ export default function CheckoutUI({
     const inst = await dropin.create({
       authorization: data.clientToken,
       container: dropinRef.current,
+      paymentOptionPriority: ["paypal", "card"],
       card: { cardholderName: { required: true } },
+      paypal: {
+        flow: "vault",
+        billingAgreementDescription: "SailboatTrade listing subscription",
+      },
     });
 
     instanceRef.current = inst;
@@ -150,6 +203,8 @@ export default function CheckoutUI({
     try {
       if (overMax) throw new Error(`You have ${photoCount} photos. Max allowed is ${maxPhotos}. Remove photos first.`);
       if (photoCount > freePhotoLimit && !photoPlus) throw new Error("Photo Plus is required for more than the free photo limit.");
+      const termSafe = clampTerm(termMonths);
+      if (termSafe !== termMonths) setTermMonths(termSafe);
 
       if (hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE")) {
         throw new Error("You already have an active subscription for this listing. Cancel it first if you want to change upgrades.");
@@ -169,6 +224,8 @@ export default function CheckoutUI({
           listingId,
           photoPlus: Boolean(photoPlus),
           featuredHome: Boolean(featuredHome),
+          termMonths,
+          autoRenew: Boolean(autoRenew),
           paymentMethodNonce: nonce,
         }),
       });
@@ -176,9 +233,19 @@ export default function CheckoutUI({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Subscription failed.");
 
-      window.location.assign(data.redirect || `/listings/${listingId}?success=1`);
+      window.location.assign(data.redirect || `/checkout/${listingId}?success=1`);
     } catch (e) {
-      setErr(e?.message || "Subscription failed.");
+      const rawMsg = e?.message || "Subscription failed.";
+      if (isNonceReuseErrorMessage(rawMsg)) {
+        try {
+          if (instanceRef.current?.clearSelectedPaymentMethod) {
+            await instanceRef.current.clearSelectedPaymentMethod();
+          }
+        } catch {}
+        setErr("Your previous payment authorization expired. Please choose your payment method again, then click Purchase.");
+      } else {
+        setErr(rawMsg);
+      }
     } finally {
       setBusy(false);
     }
@@ -257,7 +324,7 @@ export default function CheckoutUI({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Pill
             active={photoPlus}
-            disabled={requirePhotoPlusByPhotos || busy || (hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE"))}
+            disabled={requirePhotoPlusByPhotos || disableChanges}
             onClick={() => setPhotoPlus((v) => !v)}
           >
             Photo Plus (up to {maxPhotos}) {photoPlusPrice}/mo
@@ -265,20 +332,106 @@ export default function CheckoutUI({
 
           <Pill
             active={featuredHome}
-            disabled={busy || (hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE"))}
+            disabled={disableChanges}
             onClick={() => setFeaturedHome((v) => !v)}
           >
             Featured Home {featuredPrice}/mo
           </Pill>
         </div>
 
-        <div className="mt-3 text-[12px] text-slate-600">
-          Upgrades auto-renew monthly until canceled.
-          {(hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE")) ? (
-            <span className="ml-1">To change upgrades, cancel first (preproduction simplification).</span>
-          ) : null}
-        </div>
+        {needsPaymentUI ? (
+          <>
+            <div className="mt-4 text-[12px] font-extrabold tracking-wide text-slate-600">Term length</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {TERM_OPTIONS.map((m) => (
+                <Pill
+                  key={m}
+                  active={termMonths === m}
+                  disabled={disableChanges}
+                  onClick={() => setTermMonths(m)}
+                >
+                  {m} month{m === 1 ? "" : "s"}
+                </Pill>
+              ))}
+            </div>
+            <div className="mt-2 text-[12px] text-slate-600">
+              3 months = 10% off. 6 months = 20% off.
+            </div>
+
+            <div
+              className={`mt-4 flex items-center justify-between gap-3 rounded-xl border px-3 py-3 ${
+                disableChanges ? "border-slate-200 bg-slate-100" : "border-slate-300 bg-white"
+              }`}
+            >
+              <div>
+                <div className="text-[13px] font-extrabold text-[#0a2230]">Auto-renew at end of term</div>
+                <div className="mt-0.5 text-[12px] text-slate-600">
+                  Optional. Keep this listing active without manually renewing.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoRenew}
+                aria-label="Auto-renew at end of term"
+                onClick={() => setAutoRenew((v) => !v)}
+                disabled={disableChanges}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+                  disableChanges
+                    ? "cursor-not-allowed bg-slate-300 opacity-70"
+                    : autoRenew
+                    ? "bg-emerald-500"
+                    : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                    autoRenew ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="mt-3 text-[12px] text-slate-600">
+            Free checkout. Your listing will be sent to admin review after submit.
+          </div>
+        )}
+
+        {needsPaymentUI && (hasSubscription && (billingStatus === "ACTIVE" || billingStatus === "PAST_DUE")) ? (
+          <div className="mt-3 text-[12px] text-slate-600">
+            To change upgrades, cancel first (preproduction simplification).
+          </div>
+        ) : null}
       </div>
+
+      {needsPaymentUI ? (
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
+          <div className="text-[13px] font-extrabold text-[#0a2230]">Pricing summary</div>
+          <div className="mt-2 text-[12px] text-slate-700 space-y-1">
+            <div>
+              Monthly (after discount):{" "}
+              <span className="font-semibold">{formatMoneyFromCents(discountedMonthlyCents)}</span>
+            </div>
+            <div>
+              Term: <span className="font-semibold">{termMonths} month{termMonths === 1 ? "" : "s"}</span>
+            </div>
+            <div>
+              Estimated total for term:{" "}
+              <span className="font-semibold">{formatMoneyFromCents(totalCents)}</span>
+            </div>
+            {autoRenew ? (
+              <div className="text-slate-600">
+                Auto-renew is on. Billing continues monthly at the discounted rate until you cancel.
+              </div>
+            ) : (
+              <div className="text-slate-600">
+                Auto-renew is off. Billing stops after the selected term.
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {err ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">{err}</div>
@@ -290,17 +443,21 @@ export default function CheckoutUI({
       {needsPaymentUI ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
           <div className="text-[13px] font-extrabold text-[#0a2230]">Payment</div>
+          <div className="mt-1 text-[12px] text-slate-600">Pay with card or PayPal.</div>
           <div className="mt-2" ref={dropinRef} />
           <div className="mt-4 flex justify-end">
             <button
               type="button"
               disabled={busy || overMax}
               onClick={subscribeAndSubmit}
-              className={`inline-flex h-10 items-center justify-center rounded-full px-6 text-[13px] font-semibold text-white ${
-                busy ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+              className={`inline-flex h-10 items-center justify-center rounded-full px-6 text-[13px] font-semibold ${
+                busy
+                  ? "bg-slate-300 text-slate-600 cursor-not-allowed"
+                  : "hover:brightness-95"
               }`}
+              style={busy ? undefined : { backgroundColor: GOLD, color: NAVY }}
             >
-              {busy ? "Processing…" : "Start subscription & submit"}
+              {busy ? "Processing…" : "Purchase"}
             </button>
           </div>
         </div>

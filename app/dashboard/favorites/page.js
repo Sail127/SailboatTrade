@@ -1,66 +1,57 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import FavoritesUI from "./ui";
 
-export default async function Favorites() {
-  let s;
-  try {
-    try {
-      try {
-        s = await requireUser();
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
+export const dynamic = "force-dynamic";
+
+export default async function FavoritesPage() {
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) {
+    redirect(`/login?next=${encodeURIComponent("/dashboard/favorites")}`);
   }
-  const favs = await prisma.favorite.findMany({
+
+  const favorites = await prisma.favorite.findMany({
     where: { userId: s.uid },
-    include: { listing: true },
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      createdAt: true,
+      listing: {
+        select: {
+          id: true,
+          title: true,
+          heroImageUrl: true,
+          imageUrls: true,
+          price: true,
+          currency: true,
+          year: true,
+          builder: true,
+          model: true,
+          loa: true,
+          loaUnit: true,
+          type: true,
+          locationCity: true,
+          locationState: true,
+          locationCountry: true,
+          locationUsRegion: true,
+          status: true,
+          expiresAt: true,
+          updatedAt: true,
+        },
+      },
+    },
   });
 
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Favorites</h1>
-      <div className="mt-6 space-y-3">
-        {favs.map((f) => (
-          <div
-            key={f.id}
-            className="border rounded-lg p-4 flex items-center justify-between"
-          >
-            <div>
-              <div className="font-medium">
-                {f.listing.title || "(Untitled)"}
-              </div>
-              <div className="text-sm text-gray-600">
-                {f.listing.locationCity || "—"}
-              </div>
-            </div>
-            <Link
-              className="border rounded-md px-3 py-2 text-sm"
-              href={`/listings/${f.listing.id}`}
-            >
-              View
-            </Link>
-          </div>
-        ))}
-        {favs.length === 0 && (
-          <div className="text-gray-600">No favorites yet.</div>
-        )}
-      </div>
-    </div>
-  );
+  const items = favorites.map((f) => ({
+    id: f.id,
+    createdAt: f.createdAt.toISOString(),
+    listing: {
+      ...f.listing,
+      expiresAt: f.listing?.expiresAt ? f.listing.expiresAt.toISOString() : null,
+      updatedAt: f.listing?.updatedAt ? f.listing.updatedAt.toISOString() : null,
+    },
+  }));
+
+  return <FavoritesUI initialItems={items} />;
 }

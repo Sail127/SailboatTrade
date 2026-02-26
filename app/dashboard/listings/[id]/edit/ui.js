@@ -58,10 +58,10 @@ export default function EditListingForm({ listing }) {
   const router = useRouter();
 
   const status = String(listing?.status || "").toUpperCase();
-  const paymentStatus = String(listing?.paymentStatus || "").toUpperCase();
+  const billingStatus = String(listing?.billingStatus || "FREE").toUpperCase();
   const contentReviewStatus = String(listing?.contentReviewStatus || "NONE").toUpperCase();
 
-  const isPaid = paymentStatus === "PAID";
+  const isPaid = billingStatus === "ACTIVE";
   const isPublished = status === "PUBLISHED";
   const isPendingReview = status === "PENDING_REVIEW";
   const isRejected = status === "REJECTED";
@@ -341,7 +341,7 @@ export default function EditListingForm({ listing }) {
       if (!res.ok) throw new Error(data?.error || "Save failed.");
 
       if (isPublished && data?.majorChanged) {
-        setOk("Saved. Title/description/photos changes are pending admin approval. Minor edits update immediately.");
+        setOk("Saved.");
       } else if (isPublished) {
         setOk("Saved. Minor edits updated the live listing.");
       } else {
@@ -388,9 +388,9 @@ export default function EditListingForm({ listing }) {
               {status.replaceAll("_", " ") || "—"}
             </StatusPill>
 
-            <StatusPill tone={isPaid ? "green" : paymentStatus === "PENDING" ? "amber" : paymentStatus === "FAILED" ? "red" : "slate"}>
-              Payment: {paymentStatus || "—"}
-            </StatusPill>
+              <StatusPill tone={isPaid ? "green" : billingStatus === "PAST_DUE" ? "red" : billingStatus === "CANCELED" ? "amber" : "slate"}>
+                Billing: {billingStatus || "—"}
+              </StatusPill>
 
             {isPublished && (
               <StatusPill tone={contentReviewStatus === "PENDING" ? "amber" : contentReviewStatus === "REJECTED" ? "red" : "slate"}>

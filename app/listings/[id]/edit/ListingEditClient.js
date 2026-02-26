@@ -1,4 +1,3 @@
-// app/listings/[id]/edit/ListingEditClient.js
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,13 +9,9 @@ const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
 const CONTAINER = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-8";
 
-// schema-aligned constants you already use
 const FREE_PHOTO_LIMIT = 3;
 const MAX_PHOTOS = 25;
 
-/* -----------------------------
-   UI primitives (match preview)
------------------------------- */
 function SectionCard({ title, subtitle, children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-hidden">
@@ -40,11 +35,7 @@ function Badge({ children, tone = "slate" }) {
     emerald: "border-emerald-200 bg-emerald-50 text-emerald-800",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
-        map[tone] || map.slate
-      }`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${map[tone] || map.slate}`}>
       {children}
     </span>
   );
@@ -66,7 +57,6 @@ function inputBase() {
     "outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
   );
 }
-
 function textareaBase() {
   return (
     "w-full min-h-[120px] rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-[13px] text-[#0a2230] " +
@@ -74,32 +64,22 @@ function textareaBase() {
   );
 }
 
-function isYes(v) {
-  if (v === true) return true;
-  const s = String(v ?? "").toUpperCase().trim();
-  return s === "YES" || s === "TRUE" || s === "1";
-}
-function yesNoEncode(valBool, originalVal) {
-  const origType = typeof originalVal;
-  if (origType === "string") return valBool ? "YES" : "NO";
-  return Boolean(valBool);
-}
 function numOrNull(v) {
-  if (v == null) return null;
-  const s = String(v).trim();
+  const s = String(v ?? "").trim();
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
+function intOrNull(v) {
+  const n = numOrNull(v);
+  if (n == null) return null;
+  return Math.trunc(n);
+}
 function strOrNull(v) {
-  if (v == null) return null;
-  const s = String(v).trim();
+  const s = String(v ?? "").trim();
   return s ? s : null;
 }
 
-/* -----------------------------
-   Upload key -> image URL
------------------------------- */
 function imageUrlFromKey(key, token) {
   if (!key) return "";
   const k = String(key).trim();
@@ -113,24 +93,16 @@ function imageUrlFromKey(key, token) {
   if (r2) return `${r2}/${encodeURIComponent(k)}`;
 
   const base = process.env.NEXT_PUBLIC_UPLOADS_BASE_URL || "/api/uploads?key=";
-
   let url = base.endsWith("/") ? `${base}${encodeURIComponent(k)}` : `${base}${encodeURIComponent(k)}`;
-  if (token && !/([?&])token=/.test(url)) {
-    url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
-  }
+  if (token && !/([?&])token=/.test(url)) url += `${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
   return url;
 }
 
-/* -----------------------------
-   Gallery (same look, used in editor)
------------------------------- */
 function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   const images = useMemo(() => (keys || []).filter(Boolean).map((k) => imageUrlFromKey(k, token)), [keys, token]);
   const [idx, setIdx] = useState(0);
 
-  useEffect(() => {
-    setIdx((v) => Math.max(0, Math.min(v, Math.max(0, images.length - 1))));
-  }, [images.length]);
+  useEffect(() => setIdx((v) => Math.max(0, Math.min(v, Math.max(0, images.length - 1)))), [images.length]);
 
   if (!images.length) {
     return (
@@ -175,32 +147,12 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
           {idx + 1} / {images.length}
         </div>
       </div>
-
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {images.map((src, i) => (
-          <button
-            key={src + i}
-            type="button"
-            onClick={() => setIdx(i)}
-            className={`relative h-16 w-24 flex-none overflow-hidden rounded-xl border ${
-              i === idx ? "border-[#c8a44d]" : "border-slate-200"
-            } bg-white`}
-            aria-label={`View photo ${i + 1}`}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={src} alt={`Thumbnail ${i + 1}`} className="h-full w-full object-contain bg-slate-100" />
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
 
-/* -----------------------------
-   Upload helper (works with common patterns)
------------------------------- */
 async function uploadOneFile(file) {
-  // Pattern A: POST multipart -> { ok:true, key } or { key } or { url }
+  // Tries common “POST FormData” pattern
   const fd = new FormData();
   fd.append("file", file);
 
@@ -218,7 +170,7 @@ async function uploadOneFile(file) {
     if (Array.isArray(data?.keys) && data.keys[0]) return data.keys[0];
     if (data?.url) return data.url;
 
-    // Pattern B: server returns presigned URL -> { uploadUrl, key }
+    // Presign pattern
     if (data?.uploadUrl && data?.key) {
       const put = await fetch(data.uploadUrl, {
         method: "PUT",
@@ -230,26 +182,17 @@ async function uploadOneFile(file) {
     }
   }
 
-  const err = data?.error || (text && text.length < 180 ? text : null) || "Upload failed.";
-  throw new Error(err);
+  throw new Error(data?.error || (text && text.length < 180 ? text : "Upload failed."));
 }
 
-/* =========================================================
-   Page
-========================================================= */
 export default function ListingEditClient({ initialListing, previewToken = "" }) {
   const router = useRouter();
-
-  // snapshot originals for type-safe save (YES/NO strings vs booleans)
-  const originals = useRef(initialListing);
 
   const [form, setForm] = useState(() => {
     const l = initialListing || {};
     return {
       id: l.id,
 
-      // basics
-      status: l.status ?? "DRAFT",
       title: l.title ?? "",
       year: l.year ?? "",
       builder: l.builder ?? "",
@@ -259,13 +202,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       boatCondition: l.boatCondition ?? "USED",
       type: l.type ?? "MONOHULL",
 
-      // location
       locationCountry: l.locationCountry ?? "",
       locationUsRegion: l.locationUsRegion ?? "",
       locationCity: l.locationCity ?? "",
       locationState: l.locationState ?? "",
 
-      // contact / seller
       sellerRole: l.sellerRole ?? "OWNER",
       listingContactName: l.listingContactName ?? "",
       brokerageName: l.brokerageName ?? "",
@@ -274,19 +215,23 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       contactEmail: l.contactEmail ?? "",
       brokerHeroImageUrl: l.brokerHeroImageUrl ?? "",
 
-      // photos
       imageUrls: Array.isArray(l.imageUrls) ? l.imageUrls.filter(Boolean) : [],
       heroImageUrl: l.heroImageUrl ?? "",
 
-      // specs
+      description: l.description ?? "",
+      riggingRemarks: l.riggingRemarks ?? "",
+      additionalInfo: l.additionalInfo ?? "",
+
       cabins: l.cabins ?? "",
       heads: l.heads ?? "",
+
       loa: l.loa ?? "",
       loaUnit: l.loaUnit ?? "ft",
       draft: l.draft ?? "",
       draftUnit: l.draftUnit ?? "ft",
       airDraft: l.airDraft ?? "",
       airDraftUnit: l.airDraftUnit ?? "ft",
+
       displacement: l.displacement ?? "",
       displacementUnit: l.displacementUnit ?? "lb",
 
@@ -294,7 +239,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       tankFuel: l.tankFuel ?? "",
       tankWater: l.tankWater ?? "",
 
-      // engine
       engineFuel: l.engineFuel ?? "DIESEL",
       engineMake: l.engineMake ?? "",
       engineHorsepower: l.engineHorsepower ?? "",
@@ -303,62 +247,50 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       leftEngineHours: l.leftEngineHours ?? "",
       rightEngineHours: l.rightEngineHours ?? "",
 
-      // equipment
-      equipment: Array.isArray(l.equipment) ? l.equipment.filter(Boolean) : [],
-
-      // generator / dinghy
-      hasGenerator: isYes(l.hasGenerator),
+      hasGenerator: Boolean(l.hasGenerator),
       generatorFuel: l.generatorFuel ?? "DIESEL",
       generatorMake: l.generatorMake ?? "",
       generatorKw: l.generatorKw ?? "",
       generatorHours: l.generatorHours ?? "",
 
-      hasDinghy: isYes(l.hasDinghy),
+      hasDinghy: Boolean(l.hasDinghy),
       dinghyDetails: l.dinghyDetails ?? "",
 
-      // text sections
-      description: l.description ?? "",
-      riggingRemarks: l.riggingRemarks ?? "",
-      additionalInfo: l.additionalInfo ?? "",
+      equipment: Array.isArray(l.equipment) ? l.equipment.filter(Boolean) : [],
     };
   });
 
-  const id = String(form?.id || "").trim();
+  const id = String(form.id || "").trim();
   const token = String(previewToken || "").trim();
 
   const previewHref = useMemo(() => {
-    if (!id) return "/dashboard";
     const t = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `/listings/${encodeURIComponent(id)}${t}`;
+    return id ? `/listings/${encodeURIComponent(id)}${t}` : "/dashboard";
   }, [id, token]);
 
-  const editTitle = useMemo(() => {
-    const year = form.year != null && String(form.year).trim() ? String(form.year).trim() : "";
-    const builder = String(form.builder || "").trim();
-    const model = String(form.model || "").trim();
+  const titleLine = useMemo(() => {
+    const year = String(form.year ?? "").trim();
+    const builder = String(form.builder ?? "").trim();
+    const model = String(form.model ?? "").trim();
     return [year, builder, model].filter(Boolean).join(" ") || String(form.title || "Listing");
   }, [form.year, form.builder, form.model, form.title]);
 
   const photoCount = form.imageUrls.length;
-  const requiresUpgrade = photoCount > FREE_PHOTO_LIMIT;
   const overMax = photoCount > MAX_PHOTOS;
 
-  // equipment editor
-  const [equipInput, setEquipInput] = useState("");
-
-  // photo editor
   const fileRef = useRef(null);
   const [photoUrlInput, setPhotoUrlInput] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
 
-  // save state
+  const [equipInput, setEquipInput] = useState("");
+
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const [saveOk, setSaveOk] = useState("");
 
-  function setField(key, value) {
-    setForm((p) => ({ ...p, [key]: value }));
+  function setField(k, v) {
+    setForm((p) => ({ ...p, [k]: v }));
   }
 
   function movePhoto(from, to) {
@@ -370,27 +302,24 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       return { ...p, imageUrls: arr };
     });
   }
-
-  function removePhoto(idx) {
-    setForm((p) => ({ ...p, imageUrls: p.imageUrls.filter((_, i) => i !== idx) }));
+  function removePhoto(i) {
+    setForm((p) => ({ ...p, imageUrls: p.imageUrls.filter((_, idx) => idx !== i) }));
   }
-
-  function makeCover(idx) {
-    if (idx <= 0) return;
-    movePhoto(idx, 0);
+  function makeCover(i) {
+    if (i <= 0) return;
+    movePhoto(i, 0);
   }
 
   async function addPhotosFromFiles(files) {
     setPhotoErr("");
     if (!files?.length) return;
 
-    const current = form.imageUrls.length;
-    if (current >= MAX_PHOTOS) {
+    if (form.imageUrls.length >= MAX_PHOTOS) {
       setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
       return;
     }
 
-    const slice = Array.from(files).slice(0, Math.max(0, MAX_PHOTOS - current));
+    const slice = Array.from(files).slice(0, Math.max(0, MAX_PHOTOS - form.imageUrls.length));
 
     setPhotoBusy(true);
     try {
@@ -400,9 +329,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         const k = await uploadOneFile(f);
         if (k) keys.push(k);
       }
-      if (keys.length) {
-        setForm((p) => ({ ...p, imageUrls: [...p.imageUrls, ...keys].slice(0, MAX_PHOTOS) }));
-      }
+      if (keys.length) setForm((p) => ({ ...p, imageUrls: [...p.imageUrls, ...keys].slice(0, MAX_PHOTOS) }));
     } catch (e) {
       setPhotoErr(e?.message || "Upload failed.");
     } finally {
@@ -420,7 +347,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
       return;
     }
-
     setForm((p) => ({ ...p, imageUrls: [...p.imageUrls, u].slice(0, MAX_PHOTOS) }));
     setPhotoUrlInput("");
   }
@@ -428,7 +354,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   function addEquipment() {
     const v = String(equipInput || "").trim();
     if (!v) return;
-
     setForm((p) => {
       const next = Array.from(new Set([...(p.equipment || []), v]));
       next.sort((a, b) => String(a).localeCompare(String(b)));
@@ -436,12 +361,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     });
     setEquipInput("");
   }
-
   function removeEquipment(name) {
     setForm((p) => ({ ...p, equipment: (p.equipment || []).filter((x) => x !== name) }));
   }
 
-  async function save({ returnToPreview = false } = {}) {
+  async function save(returnToPreview = false) {
     setSaveErr("");
     setSaveOk("");
 
@@ -449,7 +373,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       setSaveErr("Missing listing id.");
       return;
     }
-
     if (overMax) {
       setSaveErr(`You have ${photoCount} photos. Max is ${MAX_PHOTOS}. Remove photos first.`);
       return;
@@ -457,15 +380,12 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
     setSaving(true);
     try {
-      const orig = originals.current || {};
-
-      // Build payload with proper types
       const payload = {
         title: strOrNull(form.title),
-        year: numOrNull(form.year),
+        year: intOrNull(form.year),
         builder: strOrNull(form.builder),
         model: strOrNull(form.model),
-        price: numOrNull(form.price),
+        price: intOrNull(form.price),
         currency: strOrNull(form.currency),
 
         boatCondition: strOrNull(form.boatCondition),
@@ -484,11 +404,15 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         contactEmail: strOrNull(form.contactEmail),
         brokerHeroImageUrl: strOrNull(form.brokerHeroImageUrl),
 
-        imageUrls: (form.imageUrls || []).filter(Boolean).slice(0, MAX_PHOTOS),
         heroImageUrl: strOrNull(form.heroImageUrl),
+        imageUrls: (form.imageUrls || []).filter(Boolean).slice(0, MAX_PHOTOS),
 
-        cabins: numOrNull(form.cabins),
-        heads: numOrNull(form.heads),
+        description: strOrNull(form.description),
+        riggingRemarks: strOrNull(form.riggingRemarks),
+        additionalInfo: strOrNull(form.additionalInfo),
+
+        cabins: intOrNull(form.cabins),
+        heads: intOrNull(form.heads),
 
         loa: numOrNull(form.loa),
         loaUnit: strOrNull(form.loaUnit),
@@ -496,6 +420,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         draftUnit: strOrNull(form.draftUnit),
         airDraft: numOrNull(form.airDraft),
         airDraftUnit: strOrNull(form.airDraftUnit),
+
         displacement: numOrNull(form.displacement),
         displacementUnit: strOrNull(form.displacementUnit),
 
@@ -505,26 +430,22 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
         engineFuel: strOrNull(form.engineFuel),
         engineMake: strOrNull(form.engineMake),
-        engineHorsepower: numOrNull(form.engineHorsepower),
+        engineHorsepower: intOrNull(form.engineHorsepower),
         propeller: strOrNull(form.propeller),
-        engineHours: numOrNull(form.engineHours),
-        leftEngineHours: numOrNull(form.leftEngineHours),
-        rightEngineHours: numOrNull(form.rightEngineHours),
+        engineHours: intOrNull(form.engineHours),
+        leftEngineHours: intOrNull(form.leftEngineHours),
+        rightEngineHours: intOrNull(form.rightEngineHours),
 
-        equipment: (form.equipment || []).filter(Boolean),
-
-        hasGenerator: yesNoEncode(Boolean(form.hasGenerator), orig.hasGenerator),
+        hasGenerator: Boolean(form.hasGenerator),
         generatorFuel: strOrNull(form.generatorFuel),
         generatorMake: strOrNull(form.generatorMake),
         generatorKw: numOrNull(form.generatorKw),
-        generatorHours: numOrNull(form.generatorHours),
+        generatorHours: intOrNull(form.generatorHours),
 
-        hasDinghy: yesNoEncode(Boolean(form.hasDinghy), orig.hasDinghy),
+        hasDinghy: Boolean(form.hasDinghy),
         dinghyDetails: strOrNull(form.dinghyDetails),
 
-        description: strOrNull(form.description),
-        riggingRemarks: strOrNull(form.riggingRemarks),
-        additionalInfo: strOrNull(form.additionalInfo),
+        equipment: (form.equipment || []).filter(Boolean),
       };
 
       const res = await fetch(`/api/listings/${encodeURIComponent(id)}/edit`, {
@@ -541,7 +462,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         router.push(previewHref);
         return;
       }
-
       setTimeout(() => setSaveOk(""), 2000);
     } catch (e) {
       setSaveErr(e?.message || "Save failed.");
@@ -550,34 +470,25 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     }
   }
 
-  // Nice UX: if user typed “title” but uses year/builder/model, show it anyway
-  useEffect(() => {
-    // no-op; keeps parity with preview’s computed title concept
-  }, []);
-
   return (
     <div className="py-8">
       <div className={CONTAINER}>
-        {/* Top actions */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Badge tone="navy">Edit Draft</Badge>
-            <Badge tone={overMax ? "red" : requiresUpgrade ? "gold" : "emerald"}>
-              Photos: {photoCount} / {requiresUpgrade ? MAX_PHOTOS : FREE_PHOTO_LIMIT}
+            <Badge tone={overMax ? "red" : photoCount > FREE_PHOTO_LIMIT ? "gold" : "emerald"}>
+              Photos: {photoCount} / {photoCount > FREE_PHOTO_LIMIT ? MAX_PHOTOS : FREE_PHOTO_LIMIT}
             </Badge>
           </div>
 
           <div className="flex items-center gap-2">
-            <a
-              href={previewHref}
-              className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
-            >
+            <a href={previewHref} className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50">
               Return to preview
             </a>
 
             <button
               type="button"
-              onClick={() => save({ returnToPreview: false })}
+              onClick={() => save(false)}
               disabled={saving}
               className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
                 saving ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
@@ -588,7 +499,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
             <button
               type="button"
-              onClick={() => save({ returnToPreview: true })}
+              onClick={() => save(true)}
               disabled={saving}
               className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-[#c8a44d] bg-[#c8a44d] text-[#0a2230] hover:brightness-95 ${
                 saving ? "opacity-70 cursor-not-allowed" : ""
@@ -604,30 +515,24 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             {saveOk}
           </div>
         ) : null}
-
         {saveErr ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
             {saveErr}
           </div>
         ) : null}
 
-        {/* Top layout mirrors preview */}
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Left: Title + gallery */}
           <div className="lg:col-span-8 space-y-3">
             <div className="text-[22px] sm:text-[30px] font-extrabold tracking-tight leading-tight text-[#0a2230]">
-              {editTitle}
+              {titleLine}
             </div>
 
-            <Gallery keys={form.imageUrls.length ? form.imageUrls : form.heroImageUrl ? [form.heroImageUrl] : []} token={token} title={editTitle} />
+            <Gallery keys={form.imageUrls.length ? form.imageUrls : form.heroImageUrl ? [form.heroImageUrl] : []} token={token} title={titleLine} />
 
-            {/* Photo editor */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[13px] font-extrabold text-[#0a2230]">Edit photos</div>
-                <div className="text-[11px] text-slate-600">
-                  Max {MAX_PHOTOS}. Free preview limit is {FREE_PHOTO_LIMIT}.
-                </div>
+                <div className="text-[11px] text-slate-600">Max {MAX_PHOTOS}. Free limit is {FREE_PHOTO_LIMIT}.</div>
               </div>
 
               {photoErr ? (
@@ -637,40 +542,22 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => addPhotosFromFiles(e.target.files)}
-                />
+                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
                 <button
                   type="button"
                   disabled={photoBusy || form.imageUrls.length >= MAX_PHOTOS}
                   onClick={() => fileRef.current?.click()}
                   className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                    photoBusy || form.imageUrls.length >= MAX_PHOTOS
-                      ? "bg-slate-300 cursor-not-allowed"
-                      : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                    photoBusy || form.imageUrls.length >= MAX_PHOTOS ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
                   }`}
                 >
                   {photoBusy ? "Uploading…" : "Upload photos"}
                 </button>
 
                 <div className="flex-1 min-w-[220px] flex items-center gap-2">
-                  <input
-                    className={inputBase()}
-                    placeholder="Paste image URL or existing upload key…"
-                    value={photoUrlInput}
-                    onChange={(e) => setPhotoUrlInput(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={addPhotoByUrl}
-                    disabled={!photoUrlInput.trim() || form.imageUrls.length >= MAX_PHOTOS}
-                    className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-60"
-                  >
+                  <input className={inputBase()} placeholder="Paste image URL or existing key…" value={photoUrlInput} onChange={(e) => setPhotoUrlInput(e.target.value)} />
+                  <button type="button" onClick={addPhotoByUrl} disabled={!photoUrlInput.trim() || form.imageUrls.length >= MAX_PHOTOS}
+                    className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-60">
                     Add
                   </button>
                 </div>
@@ -682,44 +569,24 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     <div key={k + i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                       <div className="rounded-xl overflow-hidden border border-slate-200 bg-white">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={imageUrlFromKey(k, token)}
-                          alt={`Photo ${i + 1}`}
-                          className="w-full aspect-[4/3] object-contain bg-slate-100"
-                          loading="lazy"
-                        />
+                        <img src={imageUrlFromKey(k, token)} alt={`Photo ${i + 1}`} className="w-full aspect-[4/3] object-contain bg-slate-100" loading="lazy" />
                       </div>
 
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => makeCover(i)}
-                          disabled={i === 0}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50"
-                        >
+                        <button type="button" onClick={() => makeCover(i)} disabled={i === 0}
+                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
                           Make cover
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => movePhoto(i, i - 1)}
-                          disabled={i === 0}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50"
-                        >
+                        <button type="button" onClick={() => movePhoto(i, i - 1)} disabled={i === 0}
+                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
                           ←
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => movePhoto(i, i + 1)}
-                          disabled={i === form.imageUrls.length - 1}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50"
-                        >
+                        <button type="button" onClick={() => movePhoto(i, i + 1)} disabled={i === form.imageUrls.length - 1}
+                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
                           →
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(i)}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                        >
+                        <button type="button" onClick={() => removePhoto(i)}
+                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
                           Remove
                         </button>
                       </div>
@@ -732,72 +599,68 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   ))}
                 </div>
               ) : (
-                <div className="mt-3 text-[12px] text-slate-600">No photos yet. Upload or paste a URL/key above.</div>
+                <div className="mt-3 text-[12px] text-slate-600">No photos yet.</div>
               )}
             </div>
           </div>
 
-          {/* Right: editable contact card mirrors preview */}
           <div className="lg:col-span-4">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-200">
-                <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Listing basics</div>
+              <div className="px-5 py-4 border-b border-slate-200 space-y-3">
+                <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Basics</div>
 
-                <div className="mt-3 space-y-3">
-                  <Field label="Price">
-                    <input className={inputBase()} value={form.price ?? ""} onChange={(e) => setField("price", e.target.value)} />
+                <Field label="Price">
+                  <input className={inputBase()} value={form.price ?? ""} onChange={(e) => setField("price", e.target.value)} />
+                </Field>
+
+                <Field label="Currency">
+                  <select className={inputBase()} value={form.currency || "USD"} onChange={(e) => setField("currency", e.target.value)}>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                    <option value="CAD">CAD</option>
+                    <option value="AUD">AUD</option>
+                  </select>
+                </Field>
+
+                <Field label="Condition">
+                  <select className={inputBase()} value={form.boatCondition || "USED"} onChange={(e) => setField("boatCondition", e.target.value)}>
+                    <option value="NEW">New</option>
+                    <option value="USED">Used</option>
+                  </select>
+                </Field>
+
+                <Field label="Hull Type">
+                  <select className={inputBase()} value={form.type || "MONOHULL"} onChange={(e) => setField("type", e.target.value)}>
+                    <option value="MONOHULL">Monohull</option>
+                    <option value="CATAMARAN">Catamaran</option>
+                    <option value="TRIMARAN">Trimaran</option>
+                  </select>
+                </Field>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field label="Year">
+                    <input className={inputBase()} value={form.year ?? ""} onChange={(e) => setField("year", e.target.value)} />
                   </Field>
-
-                  <Field label="Currency">
-                    <select className={inputBase()} value={form.currency || "USD"} onChange={(e) => setField("currency", e.target.value)}>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                      <option value="GBP">GBP</option>
-                      <option value="CAD">CAD</option>
-                      <option value="AUD">AUD</option>
-                    </select>
+                  <Field label="Builder">
+                    <input className={inputBase()} value={form.builder ?? ""} onChange={(e) => setField("builder", e.target.value)} />
                   </Field>
-
-                  <Field label="Condition">
-                    <select className={inputBase()} value={form.boatCondition || "USED"} onChange={(e) => setField("boatCondition", e.target.value)}>
-                      <option value="NEW">New</option>
-                      <option value="USED">Used</option>
-                    </select>
-                  </Field>
-
-                  <Field label="Hull type">
-                    <select className={inputBase()} value={form.type || "MONOHULL"} onChange={(e) => setField("type", e.target.value)}>
-                      <option value="MONOHULL">Monohull</option>
-                      <option value="CATAMARAN">Catamaran</option>
-                      <option value="TRIMARAN">Trimaran</option>
-                    </select>
-                  </Field>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Field label="Year">
-                      <input className={inputBase()} value={form.year ?? ""} onChange={(e) => setField("year", e.target.value)} />
-                    </Field>
-                    <Field label="Builder">
-                      <input className={inputBase()} value={form.builder ?? ""} onChange={(e) => setField("builder", e.target.value)} />
-                    </Field>
-                    <Field label="Model">
-                      <input className={inputBase()} value={form.model ?? ""} onChange={(e) => setField("model", e.target.value)} />
-                    </Field>
-                  </div>
-
-                  <Field label="Custom title (optional)" hint="If you leave this blank, your preview title uses Year + Builder + Model.">
-                    <input className={inputBase()} value={form.title ?? ""} onChange={(e) => setField("title", e.target.value)} />
+                  <Field label="Model">
+                    <input className={inputBase()} value={form.model ?? ""} onChange={(e) => setField("model", e.target.value)} />
                   </Field>
                 </div>
+
+                <Field label="Custom title (optional)">
+                  <input className={inputBase()} value={form.title ?? ""} onChange={(e) => setField("title", e.target.value)} />
+                </Field>
               </div>
 
-              <div className="p-5 space-y-3">
+              <div className="p-5 space-y-4">
                 <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Location</div>
 
                 <Field label="Country">
                   <input className={inputBase()} value={form.locationCountry ?? ""} onChange={(e) => setField("locationCountry", e.target.value)} />
                 </Field>
-
                 <Field label="US Region (if US)">
                   <input className={inputBase()} value={form.locationUsRegion ?? ""} onChange={(e) => setField("locationUsRegion", e.target.value)} />
                 </Field>
@@ -811,7 +674,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   </Field>
                 </div>
 
-                <div className="mt-4 text-[14px] font-extrabold tracking-wide text-slate-600">Contact</div>
+                <div className="text-[14px] font-extrabold tracking-wide text-slate-600 mt-2">Contact</div>
 
                 <Field label="Seller role">
                   <select className={inputBase()} value={form.sellerRole || "OWNER"} onChange={(e) => setField("sellerRole", e.target.value)}>
@@ -821,11 +684,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 </Field>
 
                 <Field label="Contact name">
-                  <input
-                    className={inputBase()}
-                    value={form.listingContactName ?? ""}
-                    onChange={(e) => setField("listingContactName", e.target.value)}
-                  />
+                  <input className={inputBase()} value={form.listingContactName ?? ""} onChange={(e) => setField("listingContactName", e.target.value)} />
                 </Field>
 
                 {String(form.sellerRole || "").toUpperCase() === "BROKER" ? (
@@ -833,18 +692,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     <Field label="Brokerage name">
                       <input className={inputBase()} value={form.brokerageName ?? ""} onChange={(e) => setField("brokerageName", e.target.value)} />
                     </Field>
-
                     <Field label="Brokerage address (multi-line allowed)">
                       <textarea className={textareaBase()} value={form.brokerageAddress ?? ""} onChange={(e) => setField("brokerageAddress", e.target.value)} />
                     </Field>
-
-                    <Field label="Broker hero image key/URL (optional)">
-                      <input
-                        className={inputBase()}
-                        value={form.brokerHeroImageUrl ?? ""}
-                        onChange={(e) => setField("brokerHeroImageUrl", e.target.value)}
-                        placeholder="Paste key or URL…"
-                      />
+                    <Field label="Broker hero image key/URL">
+                      <input className={inputBase()} value={form.brokerHeroImageUrl ?? ""} onChange={(e) => setField("brokerHeroImageUrl", e.target.value)} />
                     </Field>
                   </>
                 ) : null}
@@ -869,7 +721,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
           </div>
         </div>
 
-        {/* Sections mirror preview, but editable */}
         <div className="mt-6 space-y-6">
           <SectionCard title="Description">
             <textarea className={textareaBase()} value={form.description ?? ""} onChange={(e) => setField("description", e.target.value)} />
@@ -877,50 +728,24 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
           <SectionCard title="Specifications">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Field label="Cabins">
-                <input className={inputBase()} value={form.cabins ?? ""} onChange={(e) => setField("cabins", e.target.value)} />
-              </Field>
-              <Field label="Heads">
-                <input className={inputBase()} value={form.heads ?? ""} onChange={(e) => setField("heads", e.target.value)} />
-              </Field>
+              <Field label="Cabins"><input className={inputBase()} value={form.cabins ?? ""} onChange={(e) => setField("cabins", e.target.value)} /></Field>
+              <Field label="Heads"><input className={inputBase()} value={form.heads ?? ""} onChange={(e) => setField("heads", e.target.value)} /></Field>
 
-              <Field label="LOA">
-                <input className={inputBase()} value={form.loa ?? ""} onChange={(e) => setField("loa", e.target.value)} />
-              </Field>
-              <Field label="LOA Unit">
-                <input className={inputBase()} value={form.loaUnit ?? ""} onChange={(e) => setField("loaUnit", e.target.value)} />
-              </Field>
+              <Field label="LOA"><input className={inputBase()} value={form.loa ?? ""} onChange={(e) => setField("loa", e.target.value)} /></Field>
+              <Field label="LOA Unit"><input className={inputBase()} value={form.loaUnit ?? ""} onChange={(e) => setField("loaUnit", e.target.value)} /></Field>
 
-              <Field label="Draft">
-                <input className={inputBase()} value={form.draft ?? ""} onChange={(e) => setField("draft", e.target.value)} />
-              </Field>
-              <Field label="Draft Unit">
-                <input className={inputBase()} value={form.draftUnit ?? ""} onChange={(e) => setField("draftUnit", e.target.value)} />
-              </Field>
+              <Field label="Draft"><input className={inputBase()} value={form.draft ?? ""} onChange={(e) => setField("draft", e.target.value)} /></Field>
+              <Field label="Draft Unit"><input className={inputBase()} value={form.draftUnit ?? ""} onChange={(e) => setField("draftUnit", e.target.value)} /></Field>
 
-              <Field label="Air Draft">
-                <input className={inputBase()} value={form.airDraft ?? ""} onChange={(e) => setField("airDraft", e.target.value)} />
-              </Field>
-              <Field label="Air Draft Unit">
-                <input className={inputBase()} value={form.airDraftUnit ?? ""} onChange={(e) => setField("airDraftUnit", e.target.value)} />
-              </Field>
+              <Field label="Air Draft"><input className={inputBase()} value={form.airDraft ?? ""} onChange={(e) => setField("airDraft", e.target.value)} /></Field>
+              <Field label="Air Draft Unit"><input className={inputBase()} value={form.airDraftUnit ?? ""} onChange={(e) => setField("airDraftUnit", e.target.value)} /></Field>
 
-              <Field label="Displacement">
-                <input className={inputBase()} value={form.displacement ?? ""} onChange={(e) => setField("displacement", e.target.value)} />
-              </Field>
-              <Field label="Displacement Unit">
-                <input className={inputBase()} value={form.displacementUnit ?? ""} onChange={(e) => setField("displacementUnit", e.target.value)} />
-              </Field>
+              <Field label="Displacement"><input className={inputBase()} value={form.displacement ?? ""} onChange={(e) => setField("displacement", e.target.value)} /></Field>
+              <Field label="Displacement Unit"><input className={inputBase()} value={form.displacementUnit ?? ""} onChange={(e) => setField("displacementUnit", e.target.value)} /></Field>
 
-              <Field label="Tank Unit">
-                <input className={inputBase()} value={form.tankUnit ?? ""} onChange={(e) => setField("tankUnit", e.target.value)} />
-              </Field>
-              <Field label="Fuel Capacity">
-                <input className={inputBase()} value={form.tankFuel ?? ""} onChange={(e) => setField("tankFuel", e.target.value)} />
-              </Field>
-              <Field label="Water Capacity">
-                <input className={inputBase()} value={form.tankWater ?? ""} onChange={(e) => setField("tankWater", e.target.value)} />
-              </Field>
+              <Field label="Tank Unit"><input className={inputBase()} value={form.tankUnit ?? ""} onChange={(e) => setField("tankUnit", e.target.value)} /></Field>
+              <Field label="Fuel Capacity"><input className={inputBase()} value={form.tankFuel ?? ""} onChange={(e) => setField("tankFuel", e.target.value)} /></Field>
+              <Field label="Water Capacity"><input className={inputBase()} value={form.tankWater ?? ""} onChange={(e) => setField("tankWater", e.target.value)} /></Field>
             </div>
           </SectionCard>
 
@@ -932,29 +757,16 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   <option value="GAS">Gas</option>
                 </select>
               </Field>
-              <Field label="Make">
-                <input className={inputBase()} value={form.engineMake ?? ""} onChange={(e) => setField("engineMake", e.target.value)} />
-              </Field>
-              <Field label="Horsepower">
-                <input className={inputBase()} value={form.engineHorsepower ?? ""} onChange={(e) => setField("engineHorsepower", e.target.value)} />
-              </Field>
-              <Field label="Propeller">
-                <input className={inputBase()} value={form.propeller ?? ""} onChange={(e) => setField("propeller", e.target.value)} />
-              </Field>
-
-              <Field label="Hours (single)">
-                <input className={inputBase()} value={form.engineHours ?? ""} onChange={(e) => setField("engineHours", e.target.value)} />
-              </Field>
-              <Field label="Left engine hours">
-                <input className={inputBase()} value={form.leftEngineHours ?? ""} onChange={(e) => setField("leftEngineHours", e.target.value)} />
-              </Field>
-              <Field label="Right engine hours">
-                <input className={inputBase()} value={form.rightEngineHours ?? ""} onChange={(e) => setField("rightEngineHours", e.target.value)} />
-              </Field>
+              <Field label="Make"><input className={inputBase()} value={form.engineMake ?? ""} onChange={(e) => setField("engineMake", e.target.value)} /></Field>
+              <Field label="Horsepower"><input className={inputBase()} value={form.engineHorsepower ?? ""} onChange={(e) => setField("engineHorsepower", e.target.value)} /></Field>
+              <Field label="Propeller"><input className={inputBase()} value={form.propeller ?? ""} onChange={(e) => setField("propeller", e.target.value)} /></Field>
+              <Field label="Hours (single)"><input className={inputBase()} value={form.engineHours ?? ""} onChange={(e) => setField("engineHours", e.target.value)} /></Field>
+              <Field label="Left engine hours"><input className={inputBase()} value={form.leftEngineHours ?? ""} onChange={(e) => setField("leftEngineHours", e.target.value)} /></Field>
+              <Field label="Right engine hours"><input className={inputBase()} value={form.rightEngineHours ?? ""} onChange={(e) => setField("rightEngineHours", e.target.value)} /></Field>
             </div>
           </SectionCard>
 
-          <SectionCard title="Equipment" subtitle="Add / remove equipment items (saved as an array).">
+          <SectionCard title="Equipment">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 {(form.equipment || []).length ? (
@@ -977,7 +789,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
               <div className="mt-3 flex gap-2">
                 <input
                   className={inputBase()}
-                  placeholder="Add equipment item (e.g., Autopilot)…"
+                  placeholder="Add equipment item…"
                   value={equipInput}
                   onChange={(e) => setEquipInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -987,23 +799,15 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     }
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={addEquipment}
-                  disabled={!equipInput.trim()}
-                  className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-60"
-                >
+                <button type="button" onClick={addEquipment} disabled={!equipInput.trim()}
+                  className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-60">
                   Add
                 </button>
               </div>
 
               <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Generator included?">
-                  <select
-                    className={inputBase()}
-                    value={form.hasGenerator ? "YES" : "NO"}
-                    onChange={(e) => setField("hasGenerator", e.target.value === "YES")}
-                  >
+                  <select className={inputBase()} value={form.hasGenerator ? "YES" : "NO"} onChange={(e) => setField("hasGenerator", e.target.value === "YES")}>
                     <option value="NO">No</option>
                     <option value="YES">Yes</option>
                   </select>
@@ -1017,24 +821,14 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                         <option value="GAS">Gas</option>
                       </select>
                     </Field>
-                    <Field label="Generator make">
-                      <input className={inputBase()} value={form.generatorMake ?? ""} onChange={(e) => setField("generatorMake", e.target.value)} />
-                    </Field>
-                    <Field label="Generator kW">
-                      <input className={inputBase()} value={form.generatorKw ?? ""} onChange={(e) => setField("generatorKw", e.target.value)} />
-                    </Field>
-                    <Field label="Generator hours">
-                      <input className={inputBase()} value={form.generatorHours ?? ""} onChange={(e) => setField("generatorHours", e.target.value)} />
-                    </Field>
+                    <Field label="Generator make"><input className={inputBase()} value={form.generatorMake ?? ""} onChange={(e) => setField("generatorMake", e.target.value)} /></Field>
+                    <Field label="Generator kW"><input className={inputBase()} value={form.generatorKw ?? ""} onChange={(e) => setField("generatorKw", e.target.value)} /></Field>
+                    <Field label="Generator hours"><input className={inputBase()} value={form.generatorHours ?? ""} onChange={(e) => setField("generatorHours", e.target.value)} /></Field>
                   </>
                 ) : null}
 
                 <Field label="Dinghy included?">
-                  <select
-                    className={inputBase()}
-                    value={form.hasDinghy ? "YES" : "NO"}
-                    onChange={(e) => setField("hasDinghy", e.target.value === "YES")}
-                  >
+                  <select className={inputBase()} value={form.hasDinghy ? "YES" : "NO"} onChange={(e) => setField("hasDinghy", e.target.value === "YES")}>
                     <option value="NO">No</option>
                     <option value="YES">Yes</option>
                   </select>
@@ -1047,7 +841,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 ) : null}
               </div>
 
-              <div className="mt-5 grid grid-cols-1 gap-4">
+              <div className="mt-5">
                 <Field label="Rigging / sail inventory remarks">
                   <textarea className={textareaBase()} value={form.riggingRemarks ?? ""} onChange={(e) => setField("riggingRemarks", e.target.value)} />
                 </Field>

@@ -57,6 +57,18 @@ function hullLabel(v) {
   return v;
 }
 
+function usRegionLabel(v) {
+  const s = String(v || "").toUpperCase();
+  if (s === "WEST_COAST") return "West Coast";
+  if (s === "EAST_COAST") return "East Coast";
+  if (s === "GULF_COAST") return "Gulf Coast";
+  if (s === "GREAT_LAKES") return "Great Lakes";
+  if (s === "HAWAII") return "Hawaii";
+  if (s === "OTHER_INLAND_WATERS") return "Other Inland waters";
+  if (s === "OTHER_US_TERRITORIAL") return "Other U.S. Territorial waters";
+  return "";
+}
+
 function Pill({ children }) {
   return (
     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
@@ -103,18 +115,26 @@ export default function ListingCard({ listing, variant = "default" }) {
     locationCity,
     locationState,
     locationCountry,
+    locationUsRegion,
     location,
   } = listing || {};
 
   const displayTitle = [builder, model].filter(Boolean).join(" ") || title || "Untitled";
   const photo = resolveImage(listing);
   const isRemote = photo.startsWith("http://") || photo.startsWith("https://");
+  const isUnoptimized = isRemote || photo.startsWith("/api/uploads");
 
   const priceText = money(price, currency) || "Price on request";
 
+  const countryUpper = String(locationCountry || "").toUpperCase();
+  const regionText = countryUpper === "US" ? usRegionLabel(locationUsRegion) : "";
+  const cityState = [locationCity, locationState].map((x) => String(x || "").trim()).filter(Boolean).join(", ");
+
   const loc =
     location ||
-    [locationCity, locationState, locationCountry].map((x) => String(x || "").trim()).filter(Boolean).join(", ") ||
+    (countryUpper === "US"
+      ? [cityState, [regionText, "US"].filter(Boolean).join(", ")].filter(Boolean).join(" · ")
+      : [locationCity, locationState, locationCountry].map((x) => String(x || "").trim()).filter(Boolean).join(", ")) ||
     null;
 
   const hull = hullLabel(type);
@@ -135,17 +155,22 @@ export default function ListingCard({ listing, variant = "default" }) {
           src={photo}
           alt={displayTitle}
           fill
-          className="object-cover object-center transition-transform duration-300 group-hover:scale-105"
+          className={`${
+            isFeatured ? "object-contain object-center p-2 bg-slate-100" : "object-cover object-center"
+          } transition-transform duration-300 group-hover:scale-105`}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
-          unoptimized={isRemote}
+          unoptimized={isUnoptimized}
         />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+        {!isFeatured ? (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+        ) : null}
 
-        {/* Price badge */}
-        <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[12px] font-semibold text-[#0a2230] shadow-sm">
-          {priceText}
-        </div>
+        {!isFeatured ? (
+          <div className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1 text-[12px] font-semibold text-[#0a2230] shadow-sm">
+            {priceText}
+          </div>
+        ) : null}
       </div>
 
       <div className="p-4">

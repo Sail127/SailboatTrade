@@ -6,7 +6,10 @@ import { useMemo, useState } from "react";
 const NAVY = "#0a2230";
 
 function planLabel(p) {
-  return p === "FEATURED_HOME" ? "Featured on Homepage" : "Standard Listing";
+  if (!p) return "Standard Listing";
+  if (p === "FEATURED_HOME") return "Featured on Homepage";
+  if (p === "STANDARD") return "Standard Listing";
+  return String(p);
 }
 
 function fmt(iso) {
@@ -97,7 +100,7 @@ export default function AdminReviewClient({ initialItems }) {
               Review Queue
             </div>
             <div className="mt-1 text-[13px] text-slate-600">
-              Paid listings waiting for approval to publish.
+              Listings waiting for approval to publish.
             </div>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -151,6 +154,14 @@ export default function AdminReviewClient({ initialItems }) {
                         </div>
 
                         <div className="mt-2 flex flex-wrap gap-3 text-[13px]">
+                          <a
+                            href={`/dashboard/admin/review/${encodeURIComponent(x.id)}`}
+                            className="font-semibold text-blue-700 underline underline-offset-2"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Preview + approve
+                          </a>
                           {x.previewToken ? (
                             <a
                               href={`/listings/preview/${encodeURIComponent(x.previewToken)}`}
@@ -158,7 +169,7 @@ export default function AdminReviewClient({ initialItems }) {
                               target="_blank"
                               rel="noreferrer"
                             >
-                              Open preview
+                              Open raw preview
                             </a>
                           ) : null}
                           <a

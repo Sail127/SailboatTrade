@@ -41,6 +41,7 @@ export async function POST(req) {
         billingStatus: "CANCELED",
         cancelAtPeriodEnd: true,
         canceledAt: new Date(),
+        billingAutoRenew: false,
         billingCurrentPeriodEnd: sub?.billingPeriodEndDate ? new Date(sub.billingPeriodEndDate) : undefined,
       },
     });

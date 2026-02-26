@@ -1,125 +1,192 @@
+// app/dashboard/listings/RowActions.js
 "use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export default function RowActions({ id, status, previewToken }) {
+function upper(v) {
+  return String(v || "").toUpperCase();
+}
+
+export default function RowActions({
+  id,
+  status,
+  previewToken,
+  canEdit,
+  showRenew,
+  renewMode, // "FREE" | "PAID"
+  showUpgrade,
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
 
-  const s = String(status || "").toUpperCase();
-
-  const isPublished = s === "PUBLISHED";
+  const s = upper(status);
   const isArchived = s === "ARCHIVED";
-  const isRemoved = s === "REMOVED";
+
+  const previewHref =
+    s === "PUBLISHED"
+      ? `/listings/${encodeURIComponent(id)}`
+      : `/listings/${encodeURIComponent(id)}${
+          previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""
+        }`;
+
+  const editHref = `/listings/${encodeURIComponent(id)}/edit${
+    previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""
+  }`;
+
+  const showEdit = Boolean(canEdit);
+  const showAdminReviewHint = s === "PENDING_REVIEW";
 
   async function archive() {
-    const label = isPublished ? "unpublish (archive)" : "archive";
-    const ok = confirm(`Are you sure you want to ${label} this listing?`);
+    if (busy) return;
+    setMsg("");
+
+    const ok = window.confirm(
+      "Archive this listing? It will no longer be public. Photos remain for 30 days, then only the hero image is kept."
+    );
     if (!ok) return;
 
     setBusy(true);
     try {
-      const res = await fetch(`/api/listings/${id}/archive`, { method: "POST" });
+      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/archive`, {
+        method: "POST",
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed.");
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not archive.");
       router.refresh();
     } catch (e) {
-      alert(e?.message || "Failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function restore() {
-    const ok = confirm("Restore this listing back to Draft?");
-    if (!ok) return;
-
-    setBusy(true);
-    try {
-      // ✅ keep your route name
-      const res = await fetch(`/api/listings/${id}/restore`, { method: "POST" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed.");
-      router.refresh();
-    } catch (e) {
-      alert(e?.message || "Failed.");
+      setMsg(e?.message || "Could not archive.");
     } finally {
       setBusy(false);
     }
   }
 
   async function hardDelete() {
-    // ✅ quick yes/no confirm (no typing)
-    const ok = confirm(
-      "Permanently delete this listing?\n\nThis cannot be undone."
-    );
+    if (busy) return;
+    setMsg("");
+
+    const ok = window.confirm("Permanently delete this listing? This cannot be undone.");
     if (!ok) return;
 
     setBusy(true);
     try {
-      const res = await fetch(`/api/listings/${id}/hard-delete`, { method: "POST" });
+      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/hard-delete`, {
+        method: "POST",
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Hard delete failed.");
-
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not delete.");
       router.refresh();
-      alert("Listing permanently deleted.");
     } catch (e) {
-      alert(e?.message || "Hard delete failed.");
+      setMsg(e?.message || "Could not delete.");
     } finally {
       setBusy(false);
     }
   }
 
-  // ✅ your newer preview path format (matches /api/listings/create returning /listings/:id?token=...)
-  const previewHref = `/listings/${id}?token=${encodeURIComponent(previewToken || "")}`;
+  async function renewFree() {
+    if (busy) return;
+    setMsg("");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/renew`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not renew.");
+      router.refresh();
+    } catch (e) {
+      setMsg(e?.message || "Could not renew.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {isPublished ? (
-        <Link className="border rounded-md px-3 py-2 text-sm" href={`/listings/${id}`} target="_blank">
-          View live
-        </Link>
-      ) : (
-        <Link className="border rounded-md px-3 py-2 text-sm" href={previewHref} target="_blank">
+    <div className="flex flex-col items-stretch gap-2 sm:min-w-[260px]">
+      <div className="flex flex-wrap gap-2 sm:justify-end">
+        <Link
+          href={previewHref}
+          className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+        >
           Preview
         </Link>
-      )}
 
-      <Link className="border rounded-md px-3 py-2 text-sm" href={`/dashboard/listings/${id}/edit`}>
-        Edit
-      </Link>
+        {showEdit ? (
+          <Link
+            href={editHref}
+            className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+          >
+            Edit
+          </Link>
+        ) : null}
 
-      {/* Archive / Unpublish */}
-      {!isRemoved && !isArchived && (
-        <button
-          disabled={busy}
-          className="border rounded-md px-3 py-2 text-sm border-red-200 bg-red-50 text-red-700"
-          onClick={archive}
-        >
-          {busy ? "Working…" : isPublished ? "Unpublish" : "Archive"}
-        </button>
-      )}
+        {showUpgrade ? (
+          <Link
+            href={`/checkout/${encodeURIComponent(id)}`}
+            className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-[#f3b23f] bg-[#f3b23f] text-[#0a2230] hover:brightness-95"
+          >
+            Upgrade
+          </Link>
+        ) : null}
 
-      {/* Restore */}
-      {!isRemoved && isArchived && (
-        <button disabled={busy} className="border rounded-md px-3 py-2 text-sm" onClick={restore}>
-          {busy ? "Working…" : "Restore"}
-        </button>
-      )}
+        {showRenew ? (
+          renewMode === "PAID" ? (
+            <Link
+              href={`/checkout/${encodeURIComponent(id)}`}
+              className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-[#f3b23f] bg-[#f3b23f] text-[#0a2230] hover:brightness-95"
+            >
+              Renew
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={renewFree}
+              disabled={busy}
+              className={`inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-[#f3b23f] bg-[#f3b23f] text-[#0a2230] hover:brightness-95 ${
+                busy ? "opacity-70 cursor-not-allowed" : ""
+              }`}
+            >
+              {busy ? "Working." : "Renew"}
+            </button>
+          )
+        ) : null}
+      </div>
 
-      {/* Hard delete ONLY for archived */}
-      {!isRemoved && isArchived && (
-        <button
-          disabled={busy}
-          className="border rounded-md px-3 py-2 text-sm border-red-300 bg-red-100 text-red-800"
-          onClick={hardDelete}
-          title="Permanently delete listing and images"
-        >
-          {busy ? "Working…" : "Delete permanently"}
-        </button>
-      )}
+      <div className="flex justify-center">
+        {!isArchived ? (
+          <button
+            type="button"
+            onClick={archive}
+            disabled={busy}
+            className={`text-[12px] font-semibold text-red-600 underline underline-offset-2 hover:text-red-700 ${
+              busy ? "opacity-70 cursor-not-allowed" : ""
+            }`}
+          >
+            {busy ? "Working." : "Archive"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={hardDelete}
+            disabled={busy}
+            className={`text-[12px] font-semibold text-red-600 underline underline-offset-2 hover:text-red-700 ${
+              busy ? "opacity-70 cursor-not-allowed" : ""
+            }`}
+          >
+            {busy ? "Working." : "Delete listing"}
+          </button>
+        )}
+      </div>
+
+      {showAdminReviewHint ? (
+        <div className="text-[11px] text-slate-600 sm:text-center">
+          Editing is disabled during admin review.
+        </div>
+      ) : null}
+
+      {msg ? <div className="text-[11px] text-red-700 sm:text-center">{msg}</div> : null}
     </div>
   );
 }

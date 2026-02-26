@@ -53,6 +53,8 @@ export async function POST(req, { params }) {
       status: "DRAFT",
       // Keep archived safety: restored drafts should never be featured automatically
       featuredHome: false,
+      archivedAt: null,
+      archivedImagesPrunedAt: null,
     },
   });
 

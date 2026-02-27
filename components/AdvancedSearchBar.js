@@ -133,38 +133,17 @@ function normalizeInitialValues(initialValues = {}) {
 
 /** Small inline FT/M toggle */
 function SmallUnitToggle({ value, onChange }) {
-  const btn =
-    "px-1.5 py-[1px] rounded-md text-[11px] font-semibold border transition " +
-    "bg-white text-[#0a2230] border-white/70 hover:bg-slate-50";
+  const nextValue = value === "ft" ? "m" : "ft";
   return (
-    <span className="inline-flex items-center gap-1 ml-2 align-middle">
-      <button
-        type="button"
-        onClick={() => onChange("ft")}
-        className={[
-          btn,
-          value === "ft"
-            ? "ring-2 ring-[#f3b23f]/70 border-[#f3b23f]/70"
-            : "opacity-85",
-        ].join(" ")}
-        aria-pressed={value === "ft"}
-      >
-        FT
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("m")}
-        className={[
-          btn,
-          value === "m"
-            ? "ring-2 ring-[#f3b23f]/70 border-[#f3b23f]/70"
-            : "opacity-85",
-        ].join(" ")}
-        aria-pressed={value === "m"}
-      >
-        M
-      </button>
-    </span>
+    <button
+      type="button"
+      onClick={() => onChange(nextValue)}
+      className="ml-2 inline -translate-y-[1px] align-middle text-[12px] font-semibold text-[#f3b23f] underline underline-offset-2 hover:text-[#f9c860]"
+      aria-label={`Switch LOA unit to ${nextValue.toUpperCase()}`}
+      title={`Switch to ${nextValue.toUpperCase()}`}
+    >
+      {value.toUpperCase()}
+    </button>
   );
 }
 
@@ -284,7 +263,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     );
   }, [q, type, builder, yearMin, yearMax, loaMin, loaMax, country, isUSA, usRegion]);
 
-  const shell = "w-full rounded-2xl bg-[#0a2230] p-5 shadow-lg ring-1 ring-white/15";
+  const shell = "w-full rounded-2xl bg-[#0a2230] p-4 shadow-lg ring-1 ring-white/15";
 
   const label = "block text-[12px] font-semibold tracking-wide text-white/80";
 
@@ -360,22 +339,20 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   return (
     <section className="w-full">
-      <form onSubmit={submit} className={shell}>
-        <div className="mb-2 flex justify-end">
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
-          >
-            Clear filters
-          </button>
-        </div>
+      <form onSubmit={submit} className={`${shell} relative`}>
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="lg:hidden absolute right-4 top-4 text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
+        >
+          Clear filters
+        </button>
 
-        {/* ROW 1: Hull type first */}
-        <div className="grid grid-cols-12 gap-3 items-end">
-          <div className="col-span-12">
+        {/* ROW 1: Hull type + Keyword search (left), Clear (right) */}
+        <div className="grid grid-cols-12 gap-3 items-start">
+          <div className="col-span-12 lg:col-span-10 min-w-0">
             <div className={label}>Hull type</div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-1.5 flex flex-wrap xl:flex-nowrap items-center gap-2">
               <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
               <HullTile
                 active={type === "monohull"}
@@ -395,28 +372,43 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 label="Trimaran"
                 imgSrc="/images/hulls/trimaran.png"
               />
+
+              <div className="basis-full xl:basis-auto w-full mt-2 xl:mt-0 xl:w-auto xl:ml-5 shrink-0">
+                <label htmlFor="home-keyword-search" className="sr-only">
+                  Keyword search
+                </label>
+                <input
+                  id="home-keyword-search"
+                  type="text"
+                  placeholder="Keyword Search"
+                  className={`${input} max-w-[380px] xl:w-[33ch] xl:max-w-[33ch]`}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden lg:block lg:col-span-2 min-w-0 lg:pt-[18px]">
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
+              >
+                Clear filters
+              </button>
             </div>
           </div>
         </div>
 
-        {/* ROW 2: Keyword + Year + Builder */}
-        <div className="mt-4 grid grid-cols-12 gap-3 items-end">
-          <div className="col-span-12 lg:col-span-4 min-w-0">
-            <label className={label}>Keyword search</label>
-            <input
-              type="text"
-              placeholder="Builder, model, city, region..."
-              className={input}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
+        {/* ROW 2: Year + Builder + LOA */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[252px_360px_252px] lg:items-start">
+          <div className="min-w-0">
             <label className={label}>Year</label>
-            <div className="mt-1 grid grid-cols-2 gap-2">
+            <div className="mt-2 flex gap-2">
               <select
-                className={`${input} ${selectTextClass(yearMin)}`}
+                className={`${select} !w-[120px] ${selectTextClass(yearMin)}`}
                 value={yearMin}
                 onChange={(e) => setYearMin(e.target.value)}
                 aria-label="Minimum year"
@@ -429,7 +421,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 ))}
               </select>
               <select
-                className={`${input} ${selectTextClass(yearMax)}`}
+                className={`${select} !w-[120px] ${selectTextClass(yearMax)}`}
                 value={yearMax}
                 onChange={(e) => setYearMax(e.target.value)}
                 aria-label="Maximum year"
@@ -444,10 +436,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             </div>
           </div>
 
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
+          <div className="min-w-0 lg:w-[360px]">
             <label className={label}>Builder</label>
             <select
-              className={`${select} ${selectTextClass(builder)}`}
+              className={`${select} mt-2 w-full max-w-[380px] lg:max-w-none ${selectTextClass(builder)}`}
               value={builder}
               onChange={(e) => setBuilder(e.target.value)}
             >
@@ -460,27 +452,21 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               <option value="Other">Other</option>
             </select>
           </div>
-        </div>
 
-        {/* ROW 3: LOA + Country/Region */}
-        <div className="mt-4 grid grid-cols-12 gap-3 items-end">
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
-            <div className="flex items-center justify-between">
-              <label className={label}>
-                LOA <span className="text-white/55 font-semibold">(length overall)</span>
-                <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
-              </label>
-              <span />
-            </div>
+          <div className="min-w-0">
+            <label className={label}>
+              LOA <span className="text-white/55 font-semibold">(length overall)</span>
+              <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+            </label>
 
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2 lg:mt-1 flex gap-2">
               <select
-                className={`${select} ${selectTextClass(loaMin)}`}
+                className={`${select} !w-[120px] ${selectTextClass(loaMin)}`}
                 value={loaMin}
                 onChange={(e) => setLoaMin(e.target.value)}
                 aria-label={`Minimum LOA (${loaUnit})`}
               >
-                <option value="">Min Length</option>
+                <option value="">{loaUnit.toUpperCase()} Min</option>
                 {loaOptions.map((v) => (
                   <option key={`loa-min-${loaUnit}-${v}`} value={v}>
                     {v}
@@ -488,12 +474,12 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 ))}
               </select>
               <select
-                className={`${select} ${selectTextClass(loaMax)}`}
+                className={`${select} !w-[120px] ${selectTextClass(loaMax)}`}
                 value={loaMax}
                 onChange={(e) => setLoaMax(e.target.value)}
                 aria-label={`Maximum LOA (${loaUnit})`}
               >
-                <option value="">Max Length</option>
+                <option value="">{loaUnit.toUpperCase()} Max</option>
                 {loaOptions.map((v) => (
                   <option key={`loa-max-${loaUnit}-${v}`} value={v}>
                     {v}
@@ -502,48 +488,41 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               </select>
             </div>
           </div>
+        </div>
 
-          <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
-            <label className={label}>{isUSA ? "Country / USA Region" : "Country"}</label>
+        {/* ROW 3: Country + Region slot + Search */}
+        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_280px] lg:gap-2">
+            <div className="min-w-0">
+            <label className={label}>Country</label>
 
-            {!isUSA ? (
-              <div className="mt-2 lg:max-w-[360px]">
-                <select
-                  className={`${select} ${selectTextClass(country)}`}
-                  value={country}
-                  onChange={(e) => {
-                    const next = String(e.target.value || "").toUpperCase();
-                    setCountry(next);
-                    if (next !== "US") setUsRegion("");
-                  }}
-                >
-                  {countryOptions.map((c) => (
-                    <option key={c.value || "all"} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="mt-2 flex gap-2 lg:max-w-[460px]">
-                <select
-                  className={`${select} flex-1 min-w-0 ${selectTextClass(country)}`}
-                  value={country}
-                  onChange={(e) => {
-                    const next = String(e.target.value || "").toUpperCase();
-                    setCountry(next);
-                    if (next !== "US") setUsRegion("");
-                  }}
-                >
-                  {countryOptions.map((c) => (
-                    <option key={c.value || "all"} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+            <div className="mt-2">
+              <select
+                className={`${select} w-full max-w-[380px] lg:max-w-none ${selectTextClass(country)}`}
+                value={country}
+                onChange={(e) => {
+                  const next = String(e.target.value || "").toUpperCase();
+                  setCountry(next);
+                  if (next !== "US") setUsRegion("");
+                }}
+              >
+                {countryOptions.map((c) => (
+                  <option key={c.value || "all"} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            </div>
 
+            <div className="min-w-0">
+            <label className={label}>
+              {isUSA ? "USA Region" : <span className="invisible">USA Region</span>}
+            </label>
+            <div className="mt-2">
+              {isUSA ? (
                 <select
-                  className={`${select} flex-1 min-w-0 ${selectTextClass(usRegion)}`}
+                  className={`${select} w-full max-w-[380px] lg:max-w-none ${selectTextClass(usRegion)}`}
                   value={usRegion}
                   onChange={(e) => setUsRegion(e.target.value)}
                   aria-label="USA Region"
@@ -554,21 +533,23 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     </option>
                   ))}
                 </select>
-              </div>
-            )}
+              ) : (
+                <div className="hidden h-10 lg:block" aria-hidden="true" />
+              )}
+            </div>
+            </div>
           </div>
-        </div>
 
-        {/* ROW 4: Search at bottom */}
-        <div className="mt-4 flex justify-end">
-          <button
-            type="submit"
-            className={`${button} w-full sm:w-auto sm:min-w-[220px]`}
-            aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
-          >
-            {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
-            <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
-          </button>
+          <div className="lg:ml-auto lg:pl-4">
+            <button
+              type="submit"
+              className={`${button} mt-2 w-full max-w-[380px] lg:mt-0 lg:w-auto lg:min-w-[220px]`}
+              aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
+            >
+              {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
+              <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
+            </button>
+          </div>
         </div>
       </form>
     </section>

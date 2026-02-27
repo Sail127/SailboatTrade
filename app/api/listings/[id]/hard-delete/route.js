@@ -69,7 +69,7 @@ async function deleteR2Keys(keys) {
  * Hard delete:
  * - Only owner can delete
  * - Require listing to be ARCHIVED (prevents accidental nukes)
- * - Blocks delete if billing is ACTIVE/PAST_DUE with a subscription id
+ * - Blocks delete if billing is ACTIVE/PAST_DUE
  * - Deletes favorites first to avoid FK constraint errors
  *
  * No "type DELETE" confirmation required anymore. UI uses confirm().
@@ -96,7 +96,6 @@ export async function POST(req, { params }) {
         brokerHeroImageUrl: true,
         imageUrls: true,
         billingStatus: true,
-        braintreeSubscriptionId: true,
       },
     });
 
@@ -111,16 +110,12 @@ export async function POST(req, { params }) {
       );
     }
 
-    // Prevent deleting listings that still have an active subscription attached
-    if (
-      (listing.billingStatus === "ACTIVE" || listing.billingStatus === "PAST_DUE") &&
-      listing.braintreeSubscriptionId
-    ) {
+    // Prevent deleting listings that still have active billing.
+    if (listing.billingStatus === "ACTIVE" || listing.billingStatus === "PAST_DUE") {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "This listing still has an active billing subscription. Cancel billing first, then try deleting again.",
+          error: "This listing still has active billing. Wait for billing to end, then try deleting again.",
         },
         { status: 400 }
       );

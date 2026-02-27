@@ -108,11 +108,9 @@ export async function POST(req, { params }) {
           featuredHome: false,
           billingStatus: "FREE",
           billingProvider: null,
-          braintreeSubscriptionId: null,
           billingAddons: [],
           billingMonthlyCents: null,
           billingTermMonths: null,
-          billingAutoRenew: false,
           billingCurrentPeriodStart: null,
           billingCurrentPeriodEnd: null,
           cancelAtPeriodEnd: false,
@@ -151,7 +149,7 @@ export async function POST(req, { params }) {
       const okPaid = isActivePaidPlan(listing);
       if (!okPaid) {
         return NextResponse.json(
-          { ok: false, error: "No active subscription found for Photo Plus." },
+          { ok: false, error: "No active billing found for Photo Plus." },
           { status: 400 }
         );
       }

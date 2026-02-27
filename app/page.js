@@ -138,7 +138,7 @@ export default async function Home() {
                 List your sailboat where serious sailors search first.
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-[#0a2230]/80 sm:text-base">
-                Launch a basic listing today for free and connect with serious sailboat buyers.
+                Create a basic listing today for free and discover why we are the best place to sell and buy SailBoats!
               </p>
             </div>
 

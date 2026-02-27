@@ -55,11 +55,9 @@ export default async function CheckoutPage({ params, searchParams }) {
 
       billingStatus: true,
       billingAddons: true,
-      braintreeSubscriptionId: true,
+      billingProvider: true,
       billingCurrentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
       billingTermMonths: true,
-      billingAutoRenew: true,
     },
   });
 
@@ -74,18 +72,16 @@ export default async function CheckoutPage({ params, searchParams }) {
   const freePhotoLimit = 3;
   const maxPhotos = 25;
 
-  // ✅ prices ($5 each by default)
+  // ✅ prices from env (Featured defaults to $7/month)
   const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "700", 10);
-  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "1000", 10);
+  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "700", 10);
 
-  const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 500);
-  const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 500);
+  const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 700);
+  const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 700);
 
   const success = String(searchParams?.success || "") === "1";
   const canceled = String(searchParams?.canceled || "") === "1";
   const showConfirmation = success;
-
-  const hasSubscription = Boolean(listing.braintreeSubscriptionId);
 
   return (
     <div className="py-10">
@@ -153,14 +149,17 @@ export default async function CheckoutPage({ params, searchParams }) {
                 ) : null}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
-                  <div className="font-extrabold text-[#0a2230]">How listings expire</div>
+                  <div className="font-extrabold text-[#0a2230]">Listing workflow</div>
                   <div className="mt-1">
-                    Free listings run for <span className="font-semibold">30 days</span> and can be renewed anytime.
-                    Premium terms are <span className="font-semibold">1, 3, or 6 months</span> with built-in discounts.
+                    Create or edit your listing in draft, then submit for admin review. Once approved, the listing goes live.
                   </div>
                   <div className="mt-1">
-                    When a listing expires it is archived (not public). Archived listings keep photos for 30 days,
-                    then only the hero image is retained to reduce storage.
+                    Free listings stay active for <span className="font-semibold">30 days</span>. Paid upgrades run for
+                    <span className="font-semibold"> 1, 3, or 6 months</span> depending on your selected term.
+                  </div>
+                  <div className="mt-1">
+                    When a listing expires, it moves to archived (not public). Renew from your dashboard:
+                    free renewals use the Renew action, paid renewals continue through checkout.
                   </div>
                 </div>
 
@@ -173,15 +172,13 @@ export default async function CheckoutPage({ params, searchParams }) {
                   photoPlusPrice={photoPlusPrice}
                   featuredPrice={featuredPrice}
                   photoPlusCents={Number.isFinite(photoPlusCents) ? photoPlusCents : 700}
-                  featuredCents={Number.isFinite(featuredCents) ? featuredCents : 1000}
+                  featuredCents={Number.isFinite(featuredCents) ? featuredCents : 700}
                   initialPhotoPlan={listing.photoPlan}
                   initialFeaturedHome={Boolean(listing.featuredHome)}
                   billingStatus={String(listing.billingStatus || "")}
-                  hasSubscription={hasSubscription}
-                  cancelAtPeriodEnd={Boolean(listing.cancelAtPeriodEnd)}
+                  billingProvider={String(listing.billingProvider || "")}
                   currentPeriodEnd={listing.billingCurrentPeriodEnd ? listing.billingCurrentPeriodEnd.toISOString() : ""}
                   initialTermMonths={listing.billingTermMonths || 1}
-                  initialAutoRenew={Boolean(listing.billingAutoRenew)}
                 />
               </>
             )}

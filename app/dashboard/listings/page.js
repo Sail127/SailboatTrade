@@ -113,7 +113,7 @@ function billingLabel(listing) {
 
   switch (String(listing.billingStatus || "FREE").toUpperCase()) {
     case "ACTIVE":
-      return listing.billingAutoRenew ? "Active (auto-renew)" : "Active (no auto-renew)";
+      return "Active";
     case "PAST_DUE":
       return "Past due";
     case "CANCELED":
@@ -221,7 +221,6 @@ export default async function MyListings() {
       cancelAtPeriodEnd: true,
       billingCurrentPeriodEnd: true,
       billingTermMonths: true,
-      billingAutoRenew: true,
       expiresAt: true,
       archivedAt: true,
     },

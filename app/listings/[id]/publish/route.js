@@ -38,7 +38,7 @@ export async function POST(req, { params }) {
     const billingOk = String(listing.billingStatus || "").toUpperCase() === "ACTIVE";
     if (!billingOk) {
       return NextResponse.json(
-        { ok: false, error: "Paid upgrades require an active subscription before submitting." },
+        { ok: false, error: "Paid upgrades require active billing before submitting." },
         { status: 400 }
       );
     }

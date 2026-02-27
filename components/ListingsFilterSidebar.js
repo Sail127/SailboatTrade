@@ -200,6 +200,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
   const [usRegion, setUsRegion] = useState(initial.usRegion);
   const [saveMsg, setSaveMsg] = useState("");
   const [showHullPicker, setShowHullPicker] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const readyRef = useRef(false);
   const syncingRef = useRef(false);
   const applyTimerRef = useRef(null);
@@ -315,6 +316,17 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
 
   const selectTextClass = (value) => (String(value || "").trim() ? "text-[#0a2230]" : "text-slate-400");
 
+  const drawerLabel = "block text-[12px] font-bold tracking-wide text-white/80";
+  const drawerSection = "space-y-2 border-t border-white/15 pt-3";
+  const drawerInput =
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
+    "!bg-white !text-[#0a2230] placeholder:!text-slate-400 focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+  const drawerSelect =
+    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
+    "!bg-white !text-[#0a2230] focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+  const drawerSelectTextClass = (value) =>
+    String(value || "").trim() ? "!text-[#0a2230]" : "!text-slate-400";
+
   function buildParams() {
     const params = new URLSearchParams();
     const put = (k, v) => {
@@ -356,6 +368,12 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     router.push(submitPath);
   }
 
+  function applyNow() {
+    const params = buildParams();
+    const qs = params.toString();
+    router.push(qs ? `${submitPath}?${qs}` : submitPath);
+  }
+
   function toggleHullPicker() {
     setShowHullPicker((v) => !v);
   }
@@ -367,6 +385,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
 
   useEffect(() => {
     if (!readyRef.current || syncingRef.current) return;
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) return;
 
     if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
     applyTimerRef.current = setTimeout(() => {
@@ -382,6 +401,24 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, type, builder, yearMin, yearMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath, router]);
+
+  useEffect(() => {
+    if (!mobileDrawerOpen || typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileDrawerOpen]);
+
+  useEffect(() => {
+    if (!mobileDrawerOpen || typeof window === "undefined") return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileDrawerOpen]);
 
   async function saveSearch() {
     const params = buildParams();
@@ -418,186 +455,394 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
   }, [type]);
 
   return (
-    <aside className="rounded-2xl border border-slate-200 bg-[#efefef] p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="text-[18px] leading-tight font-extrabold text-[#5a5a5a]">
-          Your Search Includes:
-        </h2>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="text-[12px] font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-800"
-        >
-          Clear all filters
-        </button>
-      </div>
-
-      <div className="mt-2 flex flex-wrap gap-1.5 min-h-8">
-        {activeFilterPills.length ? (
-          activeFilterPills.map((p) => (
-            <Pill key={p.id} onClick={p.onRemove}>
-              {p.label}
-            </Pill>
-          ))
-        ) : (
-          <Pill>All Sailboats</Pill>
-        )}
-      </div>
-
-      <div className="mt-3 space-y-1.5">
-        <Link href="/dashboard/favorites" className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
-          MY FAVORITES
-        </Link>
-        <button
-          type="button"
-          onClick={saveSearch}
-          className="w-full rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
-        >
-          SAVE SEARCH
-        </button>
-        <a href={emailHref} className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
-          EMAIL ALERT
-        </a>
-        {saveMsg ? <div className="text-[12px] font-semibold text-slate-600">{saveMsg}</div> : null}
-      </div>
-
-      <div className="mt-4 space-y-3">
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <label className="block text-[12px] font-bold tracking-wide text-slate-700">HULL TYPE</label>
-          <div className="flex flex-wrap gap-2">
-            {!showHullPicker ? (
-              <HullButton
-                active={true}
-                onClick={toggleHullPicker}
-                label={selectedHull.label}
-                imgSrc={selectedHull.imgSrc}
-                isAll={selectedHull.isAll}
-              />
-            ) : (
-              <>
-                <HullButton
-                  active={type === "both"}
-                  onClick={() => chooseHull("both")}
-                  label="All"
-                  isAll
-                />
-                <HullButton
-                  active={type === "monohull"}
-                  onClick={() => chooseHull("monohull")}
-                  label="Monohull"
-                  imgSrc="/images/hulls/monohull.png"
-                />
-                <HullButton
-                  active={type === "catamaran"}
-                  onClick={() => chooseHull("catamaran")}
-                  label="Catamaran"
-                  imgSrc="/images/hulls/catamaran.png"
-                />
-                <HullButton
-                  active={type === "trimaran"}
-                  onClick={() => chooseHull("trimaran")}
-                  label="Trimaran"
-                  imgSrc="/images/hulls/trimaran.png"
-                />
-              </>
-            )}
+    <>
+      <div className="lg:hidden rounded-2xl bg-[#0a2230] p-3 shadow-lg ring-1 ring-white/15">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-extrabold text-white">Search Filters</p>
+            <p className="text-xs text-white/70">
+              {activeFilterPills.length ? `${activeFilterPills.length} active` : "All sailboats"}
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(true)}
+            className="inline-flex h-9 items-center justify-center rounded-full bg-[#f3b23f] px-4 text-sm font-bold text-[#0a2230] hover:bg-[#f9c860]"
+          >
+            Open Filters
+          </button>
         </div>
+      </div>
 
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
-          <input
-            type="text"
-            placeholder="Builder, model, city, region..."
-            className={input}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
+      {mobileDrawerOpen ? (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close filters panel"
+            onClick={() => setMobileDrawerOpen(false)}
+            className="absolute inset-0 bg-black/55"
           />
+
+          <aside className="absolute right-0 top-0 h-full w-[min(92vw,390px)] overflow-y-auto bg-[#0a2230] p-4 shadow-2xl ring-1 ring-white/15">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-extrabold text-white">Search Filters</h2>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                className="text-sm font-semibold text-white/85 underline underline-offset-2 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-2 flex flex-wrap gap-1.5 min-h-8">
+              {activeFilterPills.length ? (
+                activeFilterPills.map((p) => (
+                  <Pill key={`mobile-${p.id}`} onClick={p.onRemove}>
+                    {p.label}
+                  </Pill>
+                ))
+              ) : (
+                <Pill>All Sailboats</Pill>
+              )}
+            </div>
+
+            <div className="mt-4 space-y-3 pb-24">
+              <div className={drawerSection}>
+                <label className={drawerLabel}>HULL TYPE</label>
+                <div className="flex flex-wrap gap-2">
+                  {!showHullPicker ? (
+                    <HullButton
+                      active={true}
+                      onClick={toggleHullPicker}
+                      label={selectedHull.label}
+                      imgSrc={selectedHull.imgSrc}
+                      isAll={selectedHull.isAll}
+                    />
+                  ) : (
+                    <>
+                      <HullButton active={type === "both"} onClick={() => chooseHull("both")} label="All" isAll />
+                      <HullButton active={type === "monohull"} onClick={() => chooseHull("monohull")} label="Monohull" imgSrc="/images/hulls/monohull.png" />
+                      <HullButton active={type === "catamaran"} onClick={() => chooseHull("catamaran")} label="Catamaran" imgSrc="/images/hulls/catamaran.png" />
+                      <HullButton active={type === "trimaran"} onClick={() => chooseHull("trimaran")} label="Trimaran" imgSrc="/images/hulls/trimaran.png" />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className={drawerSection}>
+                <label className={drawerLabel}>KEYWORD SEARCH</label>
+                <input
+                  type="text"
+                  placeholder="Builder, model, city, region..."
+                  className={drawerInput}
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+
+              <div className={drawerSection}>
+                <label className={drawerLabel}>BUILDER</label>
+                <select className={`${drawerSelect} ${drawerSelectTextClass(builder)}`} value={builder} onChange={(e) => setBuilder(e.target.value)}>
+                  <option value="">All</option>
+                  {builders.map((b) => (
+                    <option key={`mobile-builder-${b}`} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div className={drawerSection}>
+                <label className={drawerLabel}>YEAR</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className={`${drawerSelect} ${drawerSelectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
+                    <option value="">Min</option>
+                    {yearOptions.map((y) => (
+                      <option key={`mobile-year-min-${y}`} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                  <select className={`${drawerSelect} ${drawerSelectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
+                    <option value="">Max</option>
+                    {yearOptions.map((y) => (
+                      <option key={`mobile-year-max-${y}`} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={drawerSection}>
+                <div className="flex items-center justify-between gap-2">
+                  <label className={drawerLabel}>LOA</label>
+                  <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className={`${drawerSelect} ${drawerSelectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
+                    <option value="">Min</option>
+                    {loaOptions.map((v) => (
+                      <option key={`mobile-loa-min-${loaUnit}-${v}`} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                  <select className={`${drawerSelect} ${drawerSelectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
+                    <option value="">Max</option>
+                    {loaOptions.map((v) => (
+                      <option key={`mobile-loa-max-${loaUnit}-${v}`} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={drawerSection}>
+                <label className={drawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
+
+                {!isUSA ? (
+                  <select
+                    className={`${drawerSelect} ${drawerSelectTextClass(country)}`}
+                    value={country}
+                    onChange={(e) => {
+                      const next = String(e.target.value || "").toUpperCase();
+                      setCountry(next);
+                      if (next !== "US") setUsRegion("");
+                    }}
+                  >
+                    {countryOptions.map((c) => (
+                      <option key={`mobile-country-${c.value || "all"}`} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      className={`${drawerSelect} ${drawerSelectTextClass(country)}`}
+                      value={country}
+                      onChange={(e) => {
+                        const next = String(e.target.value || "").toUpperCase();
+                        setCountry(next);
+                        if (next !== "US") setUsRegion("");
+                      }}
+                    >
+                      {countryOptions.map((c) => (
+                        <option key={`mobile-country-usa-${c.value || "all"}`} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className={`${drawerSelect} ${drawerSelectTextClass(usRegion)}`}
+                      value={usRegion}
+                      onChange={(e) => setUsRegion(e.target.value)}
+                      aria-label="USA Region"
+                    >
+                      {US_REGION_OPTIONS.map((o) => (
+                        <option key={`mobile-us-region-${o.value || "all"}`} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end border-t border-white/15 pt-3">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-[12px] font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+                >
+                  Clear all filters
+                </button>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 -mx-4 border-t border-white/15 bg-[#0a2230]/95 px-4 py-3 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => {
+                  applyNow();
+                  setMobileDrawerOpen(false);
+                }}
+                className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#f3b23f] px-6 text-sm font-extrabold text-[#0a2230] hover:bg-[#f9c860]"
+              >
+                Apply Filters
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      <aside className="hidden lg:block rounded-2xl border border-slate-200 bg-[#efefef] p-3 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-[18px] leading-tight font-extrabold text-[#5a5a5a]">
+            Your Search Includes:
+          </h2>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-[12px] font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-800"
+          >
+            Clear all filters
+          </button>
         </div>
 
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <label className="block text-[12px] font-bold tracking-wide text-slate-700">BUILDER</label>
-          <select className={`${select} ${selectTextClass(builder)}`} value={builder} onChange={(e) => setBuilder(e.target.value)}>
-            <option value="">All</option>
-            {builders.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <label className="block text-[12px] font-bold tracking-wide text-slate-700">YEAR</label>
-          <div className="grid grid-cols-2 gap-2">
-            <select className={`${select} ${selectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
-              <option value="">Min</option>
-              {yearOptions.map((y) => (
-                <option key={`year-min-${y}`} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-            <select className={`${select} ${selectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
-              <option value="">Max</option>
-              {yearOptions.map((y) => (
-                <option key={`year-max-${y}`} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <label className="block text-[12px] font-bold tracking-wide text-slate-700">LOA</label>
-            <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <select className={`${select} ${selectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
-              <option value="">Min</option>
-              {loaOptions.map((v) => (
-                <option key={`loa-min-${loaUnit}-${v}`} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <select className={`${select} ${selectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
-              <option value="">Max</option>
-              {loaOptions.map((v) => (
-                <option key={`loa-max-${loaUnit}-${v}`} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-2 border-t border-slate-300 pt-3">
-          <label className="block text-[12px] font-bold tracking-wide text-slate-700">
-            {isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}
-          </label>
-
-          {!isUSA ? (
-            <select
-              className={`${select} ${selectTextClass(country)}`}
-              value={country}
-              onChange={(e) => {
-                const next = String(e.target.value || "").toUpperCase();
-                setCountry(next);
-                if (next !== "US") setUsRegion("");
-              }}
-            >
-              {countryOptions.map((c) => (
-                <option key={c.value || "all"} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
+        <div className="mt-2 flex flex-wrap gap-1.5 min-h-8">
+          {activeFilterPills.length ? (
+            activeFilterPills.map((p) => (
+              <Pill key={p.id} onClick={p.onRemove}>
+                {p.label}
+              </Pill>
+            ))
           ) : (
-            <div className="grid grid-cols-1 gap-2">
+            <Pill>All Sailboats</Pill>
+          )}
+        </div>
+
+        <div className="mt-3 space-y-1.5">
+          <Link href="/dashboard/favorites" className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+            MY FAVORITES
+          </Link>
+          <button
+            type="button"
+            onClick={saveSearch}
+            className="w-full rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+          >
+            SAVE SEARCH
+          </button>
+          <a href={emailHref} className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+            EMAIL ALERT
+          </a>
+          {saveMsg ? <div className="text-[12px] font-semibold text-slate-600">{saveMsg}</div> : null}
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">HULL TYPE</label>
+            <div className="flex flex-wrap gap-2">
+              {!showHullPicker ? (
+                <HullButton
+                  active={true}
+                  onClick={toggleHullPicker}
+                  label={selectedHull.label}
+                  imgSrc={selectedHull.imgSrc}
+                  isAll={selectedHull.isAll}
+                />
+              ) : (
+                <>
+                  <HullButton
+                    active={type === "both"}
+                    onClick={() => chooseHull("both")}
+                    label="All"
+                    isAll
+                  />
+                  <HullButton
+                    active={type === "monohull"}
+                    onClick={() => chooseHull("monohull")}
+                    label="Monohull"
+                    imgSrc="/images/hulls/monohull.png"
+                  />
+                  <HullButton
+                    active={type === "catamaran"}
+                    onClick={() => chooseHull("catamaran")}
+                    label="Catamaran"
+                    imgSrc="/images/hulls/catamaran.png"
+                  />
+                  <HullButton
+                    active={type === "trimaran"}
+                    onClick={() => chooseHull("trimaran")}
+                    label="Trimaran"
+                    imgSrc="/images/hulls/trimaran.png"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
+            <input
+              type="text"
+              placeholder="Builder, model, city, region..."
+              className={input}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">BUILDER</label>
+            <select className={`${select} ${selectTextClass(builder)}`} value={builder} onChange={(e) => setBuilder(e.target.value)}>
+              <option value="">All</option>
+              {builders.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">YEAR</label>
+            <div className="grid grid-cols-2 gap-2">
+              <select className={`${select} ${selectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
+                <option value="">Min</option>
+                {yearOptions.map((y) => (
+                  <option key={`year-min-${y}`} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+              <select className={`${select} ${selectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
+                <option value="">Max</option>
+                {yearOptions.map((y) => (
+                  <option key={`year-max-${y}`} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="block text-[12px] font-bold tracking-wide text-slate-700">LOA</label>
+              <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select className={`${select} ${selectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
+                <option value="">Min</option>
+                {loaOptions.map((v) => (
+                  <option key={`loa-min-${loaUnit}-${v}`} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <select className={`${select} ${selectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
+                <option value="">Max</option>
+                {loaOptions.map((v) => (
+                  <option key={`loa-max-${loaUnit}-${v}`} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">
+              {isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}
+            </label>
+
+            {!isUSA ? (
               <select
                 className={`${select} ${selectTextClass(country)}`}
                 value={country}
@@ -613,32 +858,50 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                   </option>
                 ))}
               </select>
-              <select
-                className={`${select} ${selectTextClass(usRegion)}`}
-                value={usRegion}
-                onChange={(e) => setUsRegion(e.target.value)}
-                aria-label="USA Region"
-              >
-                {US_REGION_OPTIONS.map((o) => (
-                  <option key={o.value || "all"} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                <select
+                  className={`${select} ${selectTextClass(country)}`}
+                  value={country}
+                  onChange={(e) => {
+                    const next = String(e.target.value || "").toUpperCase();
+                    setCountry(next);
+                    if (next !== "US") setUsRegion("");
+                  }}
+                >
+                  {countryOptions.map((c) => (
+                    <option key={c.value || "all"} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={`${select} ${selectTextClass(usRegion)}`}
+                  value={usRegion}
+                  onChange={(e) => setUsRegion(e.target.value)}
+                  aria-label="USA Region"
+                >
+                  {US_REGION_OPTIONS.map((o) => (
+                    <option key={o.value || "all"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
 
-        <div className="flex justify-end border-t border-slate-300 pt-3">
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-[12px] font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-800"
-          >
-            Clear all filters
-          </button>
+          <div className="flex justify-end border-t border-slate-300 pt-3">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-[12px] font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-800"
+            >
+              Clear all filters
+            </button>
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

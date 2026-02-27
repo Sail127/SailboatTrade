@@ -73,11 +73,11 @@ enum PhotoPlan {
 }
 
 /**
- * ✅ Billing state for subscription upgrades (Braintree)
+ * ✅ Billing state for paid listing upgrades
  * FREE => no subscription
  * ACTIVE => subscription active
  * PAST_DUE => billing problem
- * CANCELED => canceled (may still be active until period end if cancelAtPeriodEnd=true)
+ * CANCELED => billing canceled/closed
  */
 enum BillingStatus {
   FREE
@@ -124,9 +124,6 @@ model User {
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
   emailVerificationSentAt  DateTime?
-
-  // ✅ Braintree vault linkage (one per user, reused across listings)
-  braintreeCustomerId String? @unique
 
   role       UserRole  @default(USER)
   isDisabled Boolean   @default(false)
@@ -215,15 +212,14 @@ model Listing {
   // ============================
   photoPlan PhotoPlan @default(FREE_3)
 
-  // ✅ Upgrade: featured on home page ($5/mo)
+  // ✅ Upgrade: featured on home page
   featuredHome Boolean @default(false)
 
   // ✅ Subscription billing state (for upgrades)
   billingStatus BillingStatus @default(FREE)
 
-  // provider details (Braintree)
-  billingProvider         String? // "BRAINTREE"
-  braintreeSubscriptionId String?  @unique
+  // provider details
+  billingProvider String? // "PAYPAL"
   billingAddons           String[] @default([]) // e.g. ["PHOTO_PLUS_25","FEATURED_HOME"]
 
   billingCurrency     String @default("USD")

@@ -701,10 +701,7 @@ export default function ListingDetailClient({
   // ✅ Paid entitlement (schema-aligned)
   const photoPlan = String(listing?.photoPlan || "FREE_3").toUpperCase();
   const billingStatus = String(listing?.billingStatus || "FREE").toUpperCase();
-  const hasSubId = Boolean(String(listing?.braintreeSubscriptionId || "").trim());
-
-  const hasPaidEntitlement =
-    photoPlan === "PHOTO_PLUS_25" && hasSubId && billingStatus === "ACTIVE";
+  const hasPaidEntitlement = photoPlan === "PHOTO_PLUS_25" && billingStatus === "ACTIVE";
 
   const entitledMax = hasPaidEntitlement ? MAX_PHOTOS : FREE_PHOTO_LIMIT;
 

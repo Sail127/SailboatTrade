@@ -591,6 +591,7 @@ export default function NewListingForm() {
   useEffect(() => {
     photoItemsRef.current = photoItems;
   }, [photoItems]);
+  const draggingPhotoIdRef = useRef("");
 
   function addPhotos(filesList) {
     const files = Array.from(filesList || []).filter((f) => /^image\//i.test(f.type));
@@ -638,6 +639,62 @@ export default function NewListingForm() {
       return prev.filter((p) => p.id !== id);
     });
     setPhotoLimitMsg("");
+  }
+
+  function reorderPhotos(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+
+    setPhotoItems((prev) => {
+      const len = Array.isArray(prev) ? prev.length : 0;
+      if (!len) return prev;
+      if (fromIndex < 0 || fromIndex >= len) return prev;
+      if (toIndex < 0 || toIndex >= len) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    setDraftSessionReady(true);
+    setPhotoLimitMsg("");
+  }
+
+  function movePhotoById(id, direction) {
+    const list = photoItemsRef.current || [];
+    const from = list.findIndex((p) => p.id === id);
+    if (from < 0) return;
+    const to = direction === "up" ? from - 1 : from + 1;
+    reorderPhotos(from, to);
+  }
+
+  function onPhotoDragStart(e, id) {
+    draggingPhotoIdRef.current = String(id || "");
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(id || ""));
+    } catch {}
+  }
+
+  function onPhotoDragOver(e) {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {}
+  }
+
+  function onPhotoDrop(e, dropId) {
+    e.preventDefault();
+    const fromId = draggingPhotoIdRef.current || "";
+    if (!fromId || fromId === dropId) return;
+
+    const list = photoItemsRef.current || [];
+    const fromIndex = list.findIndex((p) => p.id === fromId);
+    const toIndex = list.findIndex((p) => p.id === dropId);
+    reorderPhotos(fromIndex, toIndex);
+  }
+
+  function onPhotoDragEnd() {
+    draggingPhotoIdRef.current = "";
   }
 
   async function uploadAllPhotosIfNeeded(itemsSnapshot = null) {
@@ -1628,7 +1685,7 @@ export default function NewListingForm() {
               <div className="text-[12px] font-extrabold tracking-wide text-slate-500">SAILBOAT-ONLY MARKETPLACE</div>
               <div className="mt-2 text-[24px] sm:text-[34px] font-extrabold tracking-tight text-[#0a2230] leading-tight">
                 Get your boat in front of buyers —{" "}
-                <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list</span>.
+                <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list*</span>.
               </div>
               <div className="mt-2 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
                 No credit card required. Post now and upgrade later only if you want more photos or homepage exposure.
@@ -1636,10 +1693,10 @@ export default function NewListingForm() {
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                  Free: {FREE_PHOTO_LIMIT} photos
+                  *Free: {FREE_PHOTO_LIMIT} photos
                 </span>
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                  Upgrade: up to {MAX_PHOTO_LIMIT} photos
+                  Upgradable: up to {MAX_PHOTO_LIMIT} photos
                 </span>
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
                   12MB/photo
@@ -1648,12 +1705,12 @@ export default function NewListingForm() {
             </div>
 
             <div className="w-full lg:w-[360px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Upgrades ($5/mo each)</div>
+              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Available Upgrades:</div>
               <div className="mt-2 space-y-1.5 text-[12px] text-slate-700">
                 <div>• Photo Plus (up to {MAX_PHOTO_LIMIT})</div>
                 <div>• Featured Home placement</div>
               </div>
-              <div className="mt-3 text-[11px] text-slate-500">Auto-renews monthly until canceled from your dashboard.</div>
+              <div className="mt-3 text-[11px] text-slate-500"></div>
 
               <div className="mt-4 flex justify-end">
                 <button
@@ -2194,7 +2251,7 @@ export default function NewListingForm() {
             <div className="font-extrabold text-[#0a2230]">Photo limits</div>
             <div className="mt-1">
               Free listings include <span className="font-extrabold">{FREE_PHOTO_LIMIT}</span> photos. Upgraded listings allow up to{" "}
-              <span className="font-extrabold">{MAX_PHOTO_LIMIT}</span> photos. (Max 12MB per photo — we resize/compress automatically after upload.)
+              <span className="font-extrabold">{MAX_PHOTO_LIMIT}</span> photos.
             </div>
             <div className="mt-1 text-slate-600">
               You currently have <span className="font-extrabold">{photoItems.length}</span> selected.
@@ -2244,12 +2301,26 @@ export default function NewListingForm() {
             </button>
           </div>
 
+          {photoItems.length > 1 ? (
+            <div className="text-[12px] text-slate-600">
+              Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
+            </div>
+          ) : null}
+
           {photoItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-[13px] text-slate-600">No photos yet.</div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {photoItems.map((p, idx) => (
-                <div key={p.id} className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm">
+                <div
+                  key={p.id}
+                  draggable={!uploadingPhotos}
+                  onDragStart={(e) => onPhotoDragStart(e, p.id)}
+                  onDragOver={onPhotoDragOver}
+                  onDrop={(e) => onPhotoDrop(e, p.id)}
+                  onDragEnd={onPhotoDragEnd}
+                  className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.previewUrl} alt="Photo preview" className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
 
@@ -2257,15 +2328,41 @@ export default function NewListingForm() {
                     <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">Hero</div>
                   )}
 
+                  <div className="absolute left-2 bottom-2 rounded-full bg-black/65 px-2 py-1 text-[10px] font-semibold text-white hidden sm:block">
+                    Drag
+                  </div>
+
                   {p.status === "uploaded" && (
                     <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">✓</div>
                   )}
 
                   <div className="p-2 flex items-center justify-between gap-2">
                     <div className="text-[12px] text-slate-600">{p.status === "uploaded" ? "Uploaded" : "Local"}</div>
-                    <button type="button" className={btnGhost} onClick={() => removePhoto(p.id)}>
-                      Remove
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <div className="sm:hidden flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          aria-label="Move photo up"
+                          onClick={() => movePhotoById(p.id, "up")}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === photoItems.length - 1}
+                          aria-label="Move photo down"
+                          onClick={() => movePhotoById(p.id, "down")}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                      <button type="button" className={btnGhost} onClick={() => removePhoto(p.id)}>
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

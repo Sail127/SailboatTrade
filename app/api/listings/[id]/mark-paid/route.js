@@ -38,7 +38,6 @@ export async function POST(req, { params }) {
   const photoPlus = Boolean(body?.photoPlus ?? true);
   const featuredHome = Boolean(body?.featuredHome ?? false);
   const termMonths = parseTermMonths(body?.termMonths);
-  const autoRenew = Boolean(body?.autoRenew ?? false);
 
   const listing = await prisma.listing.findUnique({
     where: { id },
@@ -48,7 +47,7 @@ export async function POST(req, { params }) {
   if (!listing) return NextResponse.json({ ok: false, error: "Listing not found" }, { status: 404 });
 
   const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "700", 10);
-  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "1000", 10);
+  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "700", 10);
   const baseMonthlyCents = (photoPlus ? photoPlusCents : 0) + (featuredHome ? featuredCents : 0);
   const monthlyCents = Math.round(baseMonthlyCents * discountFactor(termMonths));
 
@@ -77,7 +76,6 @@ export async function POST(req, { params }) {
       ],
       billingMonthlyCents: monthlyCents,
       billingTermMonths: termMonths,
-      billingAutoRenew: autoRenew,
       billingCurrentPeriodStart: now,
       billingCurrentPeriodEnd: addMonths(now, termMonths),
       lastPaidAt: now,
@@ -104,7 +102,7 @@ export async function POST(req, { params }) {
     entityType: "Listing",
     entityId: listing.id,
     reason: null,
-    meta: { ownerId: listing.ownerId, termMonths, autoRenew },
+    meta: { ownerId: listing.ownerId, termMonths },
   });
 
   return NextResponse.json({

@@ -39,8 +39,8 @@ export default function Footer() {
 
               {/* Row 2 (links) */}
               <nav className="mt-1 flex items-center justify-center gap-4 text-[12px] text-white/80 leading-none">
-                <Link href="/about" className="hover:text-white transition">
-                  About Us
+                <Link href="/why-list" className="hover:text-white transition">
+                  Why List with ST.com?
                 </Link>
                 <Link href="/contact" className="hover:text-white transition">
                   Contact Us

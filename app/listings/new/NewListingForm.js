@@ -287,9 +287,9 @@ function Pill({ active, children, onClick }) {
 }
 
 function UnitSystemToggle({ value, onChange }) {
-  const base = "h-8 px-3 rounded-full text-[12px] font-semibold border transition inline-flex items-center justify-center";
-  const active = "bg-white text-[#0a2230] border-white";
-  const inactive = "bg-transparent text-white/80 border-white/30 hover:bg-white/10";
+  const base = "h-8 px-3 rounded-full text-[12px] font-semibold transition inline-flex items-center justify-center";
+  const active = "bg-white text-[#0a2230] border border-white";
+  const inactive = "bg-transparent text-white/80 border border-transparent hover:bg-white/10";
 
   return (
     <div className="inline-flex items-center gap-2">
@@ -1618,7 +1618,7 @@ export default function NewListingForm() {
   function FreeListingPromo() {
     return (
       <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-[0_16px_48px_rgba(2,6,23,0.16)] bg-white">
-        <div className="absolute -right-14 top-8 rotate-45 bg-emerald-600 text-white px-16 py-2 text-[12px] font-extrabold tracking-wide shadow-md">
+        <div className="absolute -right-14 top-8 rotate-45 bg-[#f3b23f] text-[#0a2230] px-16 py-2 text-[12px] font-extrabold tracking-wide shadow-md">
           FREE LISTING
         </div>
 
@@ -1627,7 +1627,8 @@ export default function NewListingForm() {
             <div className="min-w-0">
               <div className="text-[12px] font-extrabold tracking-wide text-slate-500">SAILBOAT-ONLY MARKETPLACE</div>
               <div className="mt-2 text-[24px] sm:text-[34px] font-extrabold tracking-tight text-[#0a2230] leading-tight">
-                Get your boat in front of buyers — <span className="text-emerald-600">free to list</span>.
+                Get your boat in front of buyers —{" "}
+                <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list</span>.
               </div>
               <div className="mt-2 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
                 No credit card required. Post now and upgrade later only if you want more photos or homepage exposure.
@@ -1657,7 +1658,7 @@ export default function NewListingForm() {
               <div className="mt-4 flex justify-end">
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[12px] font-extrabold bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[12px] font-extrabold bg-[#f3b23f] text-[#0a2230] hover:bg-[#e6a62f]"
                   onClick={() => {
                     const el = document.getElementById("photos-section");
                     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });

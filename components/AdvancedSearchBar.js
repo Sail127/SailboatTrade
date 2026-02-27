@@ -64,13 +64,50 @@ function buildCountryOptionsForSearch() {
   return [{ value: "", label: "All" }, ...rest];
 }
 
-function buildLoaSuggestions(unit) {
-  // Simple “common picks” while still allowing typing
+function buildLoaOptions(unit) {
   if (unit === "m") {
-    return ["6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "18", "20", "22", "24"];
+    const out = [];
+    for (let v = 3; v <= 35; v += 1) out.push(String(v));
+    return out;
   }
-  // ft
-  return ["20", "22", "25", "27", "30", "32", "35", "37", "40", "42", "45", "50", "55", "60", "65", "70", "75"];
+  const out = [];
+  for (let v = 10; v <= 100; v += 1) out.push(String(v));
+  return out;
+}
+
+function CompassIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 8.5l-2.3 5.3-5.3 2.3 2.3-5.3z" />
+    </svg>
+  );
+}
+
+function FunnelIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 5h18l-7 8v5l-4 2v-7z" />
+    </svg>
+  );
 }
 
 function normalizeInitialValues(initialValues = {}) {
@@ -96,7 +133,9 @@ function normalizeInitialValues(initialValues = {}) {
 
 /** Small inline FT/M toggle */
 function SmallUnitToggle({ value, onChange }) {
-  const btn = "px-1.5 py-[1px] rounded-md text-[11px] font-semibold transition";
+  const btn =
+    "px-1.5 py-[1px] rounded-md text-[11px] font-semibold border transition " +
+    "bg-white text-[#0a2230] border-white/70 hover:bg-slate-50";
   return (
     <span className="inline-flex items-center gap-1 ml-2 align-middle">
       <button
@@ -105,8 +144,8 @@ function SmallUnitToggle({ value, onChange }) {
         className={[
           btn,
           value === "ft"
-            ? "bg-white text-[#0a2230]"
-            : "bg-white/10 text-white/75 hover:text-white hover:bg-white/15",
+            ? "ring-2 ring-[#f3b23f]/70 border-[#f3b23f]/70"
+            : "opacity-85",
         ].join(" ")}
         aria-pressed={value === "ft"}
       >
@@ -118,8 +157,8 @@ function SmallUnitToggle({ value, onChange }) {
         className={[
           btn,
           value === "m"
-            ? "bg-white text-[#0a2230]"
-            : "bg-white/10 text-white/75 hover:text-white hover:bg-white/15",
+            ? "ring-2 ring-[#f3b23f]/70 border-[#f3b23f]/70"
+            : "opacity-85",
         ].join(" ")}
         aria-pressed={value === "m"}
       >
@@ -220,7 +259,30 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   ]);
 
   const isUSA = String(country || "").toUpperCase() === "US";
-  const loaSuggestions = useMemo(() => buildLoaSuggestions(loaUnit), [loaUnit]);
+  const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
+  const hasActiveFilters = useMemo(() => {
+    const hasQuery = !!String(q || "").trim();
+    const hasType = String(type || "both").toLowerCase() !== "both";
+    const hasBuilder = !!String(builder || "").trim();
+    const hasYearMin = !!String(yearMin || "").trim();
+    const hasYearMax = !!String(yearMax || "").trim();
+    const hasLoaMin = !!String(loaMin || "").trim();
+    const hasLoaMax = !!String(loaMax || "").trim();
+    const hasCountry = !!String(country || "").trim();
+    const hasUsRegion = isUSA && !!String(usRegion || "").trim();
+
+    return (
+      hasQuery ||
+      hasType ||
+      hasBuilder ||
+      hasYearMin ||
+      hasYearMax ||
+      hasLoaMin ||
+      hasLoaMax ||
+      hasCountry ||
+      hasUsRegion
+    );
+  }, [q, type, builder, yearMin, yearMax, loaMin, loaMax, country, isUSA, usRegion]);
 
   const shell = "w-full rounded-2xl bg-[#0a2230] p-5 shadow-lg ring-1 ring-white/15";
 
@@ -237,8 +299,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     "!bg-white !text-[#0a2230] " +
     "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
 
+  const selectTextClass = (value) =>
+    String(value || "").trim() ? "!text-[#0a2230]" : "!text-slate-400";
+
   const button =
-    "h-10 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
+    "inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
     "hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]";
 
   const submit = (e) => {
@@ -258,9 +323,12 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     put("yearMin", yearMin);
     put("yearMax", yearMax);
 
-    put("loaUnit", loaUnit);
-    put("loaMin", loaMin);
-    put("loaMax", loaMax);
+    const hasLoaRange = String(loaMin || "").trim() || String(loaMax || "").trim();
+    if (hasLoaRange) {
+      put("loaUnit", loaUnit);
+      put("loaMin", loaMin);
+      put("loaMax", loaMax);
+    }
 
     // ✅ Country is ISO alpha-2 (matches your listing form + DB)
     if (country) params.set("country", String(country).toUpperCase());
@@ -276,14 +344,32 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     router.push(qs ? `${submitPath}?${qs}` : submitPath);
   };
 
+  const clearFilters = () => {
+    setQ("");
+    setType("both");
+    setBuilder("");
+    setYearMin("");
+    setYearMax("");
+    setLoaUnit("ft");
+    setLoaMin("");
+    setLoaMax("");
+    setCountry("");
+    setUsRegion("");
+    router.push(submitPath);
+  };
+
   return (
     <section className="w-full">
       <form onSubmit={submit} className={shell}>
-        <datalist id={`st-loa-${loaUnit}`}>
-          {loaSuggestions.map((v) => (
-            <option key={v} value={v} />
-          ))}
-        </datalist>
+        <div className="mb-2 flex justify-end">
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
+          >
+            Clear filters
+          </button>
+        </div>
 
         {/* ROW 1: Hull type first */}
         <div className="grid grid-cols-12 gap-3 items-end">
@@ -330,7 +416,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <label className={label}>Year</label>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <select
-                className={input}
+                className={`${input} ${selectTextClass(yearMin)}`}
                 value={yearMin}
                 onChange={(e) => setYearMin(e.target.value)}
                 aria-label="Minimum year"
@@ -343,7 +429,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 ))}
               </select>
               <select
-                className={input}
+                className={`${input} ${selectTextClass(yearMax)}`}
                 value={yearMax}
                 onChange={(e) => setYearMax(e.target.value)}
                 aria-label="Maximum year"
@@ -360,7 +446,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
           <div className="col-span-12 sm:col-span-6 lg:col-span-4 min-w-0">
             <label className={label}>Builder</label>
-            <select className={select} value={builder} onChange={(e) => setBuilder(e.target.value)}>
+            <select
+              className={`${select} ${selectTextClass(builder)}`}
+              value={builder}
+              onChange={(e) => setBuilder(e.target.value)}
+            >
               <option value="">All</option>
               {builders.map((b) => (
                 <option key={b} value={b}>
@@ -384,24 +474,32 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2">
-              <input
-                type="text"
-                inputMode="decimal"
-                list={`st-loa-${loaUnit}`}
-                placeholder="Min Length"
-                className={input}
+              <select
+                className={`${select} ${selectTextClass(loaMin)}`}
                 value={loaMin}
                 onChange={(e) => setLoaMin(e.target.value)}
-              />
-              <input
-                type="text"
-                inputMode="decimal"
-                list={`st-loa-${loaUnit}`}
-                placeholder="Max Length"
-                className={input}
+                aria-label={`Minimum LOA (${loaUnit})`}
+              >
+                <option value="">Min Length</option>
+                {loaOptions.map((v) => (
+                  <option key={`loa-min-${loaUnit}-${v}`} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={`${select} ${selectTextClass(loaMax)}`}
                 value={loaMax}
                 onChange={(e) => setLoaMax(e.target.value)}
-              />
+                aria-label={`Maximum LOA (${loaUnit})`}
+              >
+                <option value="">Max Length</option>
+                {loaOptions.map((v) => (
+                  <option key={`loa-max-${loaUnit}-${v}`} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -411,7 +509,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             {!isUSA ? (
               <div className="mt-2 lg:max-w-[360px]">
                 <select
-                  className={select}
+                  className={`${select} ${selectTextClass(country)}`}
                   value={country}
                   onChange={(e) => {
                     const next = String(e.target.value || "").toUpperCase();
@@ -429,7 +527,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             ) : (
               <div className="mt-2 flex gap-2 lg:max-w-[460px]">
                 <select
-                  className={`${select} flex-1 min-w-0`}
+                  className={`${select} flex-1 min-w-0 ${selectTextClass(country)}`}
                   value={country}
                   onChange={(e) => {
                     const next = String(e.target.value || "").toUpperCase();
@@ -445,7 +543,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 </select>
 
                 <select
-                  className={`${select} flex-1 min-w-0`}
+                  className={`${select} flex-1 min-w-0 ${selectTextClass(usRegion)}`}
                   value={usRegion}
                   onChange={(e) => setUsRegion(e.target.value)}
                   aria-label="USA Region"
@@ -463,8 +561,13 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
         {/* ROW 4: Search at bottom */}
         <div className="mt-4 flex justify-end">
-          <button type="submit" className={`${button} w-full sm:w-auto sm:min-w-[180px]`}>
-            Search
+          <button
+            type="submit"
+            className={`${button} w-full sm:w-auto sm:min-w-[220px]`}
+            aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
+          >
+            {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
+            <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
           </button>
         </div>
       </form>

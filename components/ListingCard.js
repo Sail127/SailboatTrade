@@ -95,7 +95,7 @@ function PinIcon() {
   );
 }
 
-export default function ListingCard({ listing, variant = "default" }) {
+export default function ListingCard({ listing, variant = "default", imageFit = "cover" }) {
   const {
     id,
     title,
@@ -139,6 +139,10 @@ export default function ListingCard({ listing, variant = "default" }) {
 
   const hull = hullLabel(type);
   const isFeatured = variant === "featured";
+  const useContain = isFeatured || imageFit === "contain";
+  const imageClass = useContain
+    ? "object-contain object-center p-2 bg-slate-100"
+    : "object-cover object-center transition-transform duration-300 group-hover:scale-105";
 
   return (
     <Link
@@ -155,14 +159,12 @@ export default function ListingCard({ listing, variant = "default" }) {
           src={photo}
           alt={displayTitle}
           fill
-          className={`${
-            isFeatured ? "object-contain object-center p-2 bg-slate-100" : "object-cover object-center"
-          } transition-transform duration-300 group-hover:scale-105`}
+          className={imageClass}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           unoptimized={isUnoptimized}
         />
 
-        {!isFeatured ? (
+        {!useContain ? (
           <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
         ) : null}
 

@@ -6,6 +6,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { notifyAuthChanged, onAuthChanged } from "@/lib/auth-client";
+import BrandWordmark from "@/components/BrandWordmark";
 
 const CONTAINER = "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8";
 
@@ -443,19 +444,10 @@ export default function Header() {
             className="ml-3 leading-tight text-left hidden sm:block"
             onClick={() => setOpen(false)}
           >
-            <div
+            <BrandWordmark
+              tone="dark"
               className="text-xl sm:text-2xl font-bold text-white leading-none whitespace-nowrap"
-              style={{
-                fontFamily: "var(--font-brand, inherit)",
-                letterSpacing: "0.03em",
-                textShadow: "0 1px 0 rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.18)",
-              }}
-            >
-              Sailboat<span className="text-[#f3b23f]">Trade</span>
-              <span className="text-slate-300" style={{ letterSpacing: "0.06em" }}>
-                .com
-              </span>
-            </div>
+            />
             <div className="text-[11px] text-slate-300">Built by Sailors – For Sailors</div>
           </Link>
 

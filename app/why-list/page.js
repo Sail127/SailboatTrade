@@ -1,10 +1,11 @@
 // app/why-list/page.js
 import Link from "next/link";
+import BrandWordmark from "@/components/BrandWordmark";
 
 export const metadata = {
-  title: "Why list with SailboatTrade.com?",
+  title: "Why List with ST.com? | SailboatTrade.com",
   description:
-    "Four clear reasons sellers and advertisers choose SailboatTrade.com: fair by design, sailboat-only focus, coffee-fund fees, and a community-first mission.",
+    "Four clear reasons owners and brokers choose SailboatTrade.com: fair visibility, sailboat-only focus, straightforward pricing, and a community-first mission.",
 };
 
 export default function WhyListPage() {
@@ -12,32 +13,31 @@ export default function WhyListPage() {
     {
       title: "Fair by design",
       body:
-        "We’re neutral—built to serve buyers, private sellers, and brokers equally. Results are relevance-first, not pay-to-win.",
+        "Search visibility is relevance-first, not pay-to-win. Private sellers and brokers start on equal footing.",
     },
     {
-      title: "Sailboat-only. Laser-focused.",
+      title: "Sailboat-only, buyer-intent focused",
       body:
-        "No powerboat noise. We obsess over findability so your listing (or ad) shows up for the right sailors, fast.",
+        "No powerboat clutter. Your listing is shown to people already looking specifically for sailboats.",
     },
     {
-      title: "Coffee-fund fees",
+      title: "Straightforward, low-cost pricing",
       body:
-        "Transparent and low—just enough to keep the lights on. No commissions. No surprises. Advertisers get honest value.",
+        "Transparent fees with no commissions and no surprise add-ons. The model is built to stay affordable.",
     },
     {
-      title: "We do this for the love of sailing",
+      title: "Built by sailors, improving continuously",
       body:
-        "We’re not chasing a quick buck. We’re building the world’s best sailboat marketplace because it should exist—and it should be affordable.",
+        "SailboatTrade is purpose-built for this niche, and we keep refining the experience based on real user feedback.",
     },
   ];
 
-  // Consistent CTA pills (matches listings filter CTA vibe)
+  // Consistent CTA pills (matches site navy/gold system)
   const ctaPrimary =
     "inline-flex items-center justify-center h-10 rounded-full px-5 " +
     "text-sm md:text-base font-semibold " +
-    "bg-[#0a2230] border border-[#0a2230] shadow-sm " +
-    "!text-white hover:!text-white [&_*]:!text-white " +
-    "hover:bg-[#0f2a3b] hover:border-[#0f2a3b] " +
+    "bg-[#c8a44d] border border-[#c8a44d] shadow-sm text-[#0a2230] " +
+    "hover:bg-[#b9933f] hover:border-[#b9933f] " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a44d]/50 transition";
 
   const ctaSecondary =
@@ -48,18 +48,23 @@ export default function WhyListPage() {
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a44d]/40 transition";
 
   return (
-    <main className="bg-white">
-      <section className="mx-auto max-w-4xl px-5 md:px-8 pt-10 md:pt-12 pb-14">
+    <main className="min-h-[70vh] bg-white">
+      <section className="mx-auto max-w-5xl px-4 py-12 sm:py-16">
         {/* Title */}
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#0a2230]">
-          Why list with{" "}
-          <span className="text-[#0a2230]">Sailboat</span>
-          <span className="text-[#c8a44d]">Trade</span>
-          <span className="text-slate-500">.com</span>?
+        <h1
+          className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight text-[#0a2230]"
+          style={{ fontFamily: "var(--font-brand, inherit)", letterSpacing: "0.02em" }}
+        >
+          Why List with{" "}
+          <BrandWordmark
+            tone="light"
+            className="text-[1em] leading-none align-baseline"
+          />
+          <span className="text-[#0a2230]">?</span>
         </h1>
 
-        <p className="mt-3 text-base md:text-lg text-slate-600">
-          Four simple reasons sellers and advertisers choose SailboatTrade.
+        <p className="mt-3 max-w-3xl text-[15px] sm:text-[16px] text-slate-700">
+          Four simple reasons owners and brokers choose SailboatTrade when it is time to list.
         </p>
 
         {/* Reasons */}
@@ -67,7 +72,7 @@ export default function WhyListPage() {
           {reasons.map((r, i) => (
             <li
               key={i}
-              className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+              className="flex items-start gap-4 rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-[0_10px_28px_rgba(2,6,23,0.06)]"
             >
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#c8a44d] text-[#0a2230] font-extrabold leading-none"
@@ -77,10 +82,10 @@ export default function WhyListPage() {
               </span>
 
               <div className="min-w-0">
-                <h2 className="text-lg md:text-xl font-semibold text-[#0a2230] leading-tight">
+                <h2 className="text-lg md:text-xl font-bold text-[#0a2230] leading-tight">
                   {r.title}
                 </h2>
-                <p className="mt-1 text-sm md:text-base leading-relaxed text-slate-600">
+                <p className="mt-1 text-sm md:text-base leading-relaxed text-slate-700">
                   {r.body}
                 </p>
               </div>
@@ -91,10 +96,10 @@ export default function WhyListPage() {
         {/* CTAs */}
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/listings/new" className={ctaPrimary}>
-            List a boat for sale
+            Start Your Listing
           </Link>
-          <Link href="/advertise" className={ctaSecondary}>
-            Advertise
+          <Link href="/contact" className={ctaSecondary}>
+            Talk to Support
           </Link>
         </div>
       </section>

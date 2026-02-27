@@ -245,7 +245,6 @@ export default async function MyListings() {
     const expiresLabel = fmtDateShort(expiresAt);
     const dLeft = daysUntil(expiresAt);
 
-    const addons = Array.isArray(l.billingAddons) ? l.billingAddons : [];
     const isPaid = l.photoPlan === "PHOTO_PLUS_25" || !!l.featuredHome;
     const statusUpper = String(l.status || "").toUpperCase();
     const showRenew =
@@ -259,72 +258,85 @@ export default async function MyListings() {
     return (
       <div
         key={l.id}
-        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)] flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)] flex flex-col gap-3"
       >
-        <div className="min-w-0 flex gap-4">
-          <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-            {thumbSrc ? (
-              <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-contain bg-slate-100" loading="lazy" />
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-slate-500">
-                No photo
-              </div>
-            )}
-          </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 flex gap-4">
+            <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+              {thumbSrc ? (
+                <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-contain bg-slate-100" loading="lazy" />
+              ) : (
+                <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-slate-500">
+                  No photo
+                </div>
+              )}
+            </div>
 
-          <div className="min-w-0">
-            <div className="font-extrabold text-[#0a2230] truncate">{l.title || "(Untitled)"}</div>
+            <div className="min-w-0">
+              <div className="font-extrabold text-[#0a2230] truncate">{l.title || "(Untitled)"}</div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusBadge status={l.status} />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusBadge status={l.status} />
 
-              {l.featuredHome ? (
-                <span className="inline-flex items-center rounded-full border border-[#c8a44d] bg-[#fff7d6] px-3 py-1 text-[12px] font-semibold text-[#0a2230]">
-                  Featured
-                </span>
-              ) : null}
-
-              <span
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
-                  expiresUrgent
-                    ? "border-red-200 bg-red-50 text-red-700"
-                    : "border-slate-200 bg-slate-50 text-slate-700"
-                }`}
-              >
-                Expires: {expiresLabel}
-                {showRenew ? (
-                  <span className={`ml-2 ${expiresUrgent ? "text-red-700" : "text-amber-700"}`}>(soon)</span>
+                {l.featuredHome ? (
+                  <span className="inline-flex items-center rounded-full border border-[#c8a44d] bg-[#fff7d6] px-3 py-1 text-[12px] font-semibold text-[#0a2230]">
+                    Featured
+                  </span>
                 ) : null}
-              </span>
-            </div>
 
-            <div className="text-sm text-slate-600 mt-2">
-              Plan: <span className="font-semibold">{plan}</span>
-              <span className="mx-2 text-slate-300">•</span>
-              Billing: <span className="font-semibold">{billing}</span>
-              {monthly ? (
-                <>
-                  <span className="mx-2 text-slate-300">•</span>
-                  <span className="font-semibold">{monthly}</span>
-                </>
-              ) : null}
-            </div>
+                <span
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
+                    expiresUrgent
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-slate-200 bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  Expires: {expiresLabel}
+                  {showRenew ? (
+                    <span className={`ml-2 ${expiresUrgent ? "text-red-700" : "text-amber-700"}`}>(soon)</span>
+                  ) : null}
+                </span>
+              </div>
 
-            <div className="text-xs text-slate-500 mt-1">
-              Updated: {fmtDate(l.updatedAt)}
+              <div className="text-sm text-slate-600 mt-2">
+                Plan: <span className="font-semibold">{plan}</span>
+                <span className="mx-2 text-slate-300">•</span>
+                Billing: <span className="font-semibold">{billing}</span>
+                {monthly ? (
+                  <>
+                    <span className="mx-2 text-slate-300">•</span>
+                    <span className="font-semibold">{monthly}</span>
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
+
+          <RowActions
+            id={l.id}
+            status={l.status}
+            previewToken={l.previewToken}
+            canEdit={canEdit}
+            showRenew={showRenew}
+            renewMode={isPaid ? "PAID" : "FREE"}
+            showUpgrade={showUpgrade}
+            showDangerAction={false}
+          />
         </div>
 
-        <RowActions
-          id={l.id}
-          status={l.status}
-          previewToken={l.previewToken}
-          canEdit={canEdit}
-          showRenew={showRenew}
-          renewMode={isPaid ? "PAID" : "FREE"}
-          showUpgrade={showUpgrade}
-        />
+        <div className="min-h-5 flex flex-col gap-1 sm:relative sm:flex-row sm:items-center sm:justify-end">
+          <div className="text-xs text-slate-500 sm:absolute sm:left-0">
+            Updated: {fmtDate(l.updatedAt)}
+          </div>
+          <RowActions
+            id={l.id}
+            status={l.status}
+            showPrimaryActions={false}
+            showAdminHint={false}
+            containerClassName="gap-0 items-end"
+            dangerRowClassName="justify-end"
+          />
+        </div>
       </div>
     );
   };

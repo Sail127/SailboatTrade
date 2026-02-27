@@ -2,7 +2,7 @@
 import Link from "next/link";
 import prisma from "../../lib/prisma.js";
 import ListingCard from "../../components/ListingCard.js";
-import AdvancedSearchBar from "../../components/AdvancedSearchBar.js";
+import ListingsFilterSidebar from "../../components/ListingsFilterSidebar.js";
 import SortSelect from "../../components/SortSelect.js";
 import ResultsPerPage from "../../components/ResultsPerPage.js";
 import { getCountryOptions } from "../../lib/countries.js";
@@ -313,45 +313,47 @@ export default async function Browse({ searchParams }) {
         Your adventure awaits.
       </h1>
 
-      <div className="mb-6">
-        <AdvancedSearchBar initialValues={initial} submitPath="/listings" />
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-5 items-start">
+        <div className="lg:sticky lg:top-24 self-start">
+          <ListingsFilterSidebar initialValues={initial} submitPath="/listings" />
+        </div>
 
-      <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col">
-            <p className="text-sm font-semibold text-[#0a2230]">
-              {total.toLocaleString()} results
-            </p>
-            {q && (
-              <p className="text-xs text-slate-600">
-                Search: <span className="font-semibold text-[#0a2230]">{q}</span>
-              </p>
-            )}
+        <section>
+          <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <p className="text-sm font-semibold text-[#0a2230]">
+                  {total.toLocaleString()} results
+                </p>
+                {q && (
+                  <p className="text-xs text-slate-600">
+                    Search: <span className="font-semibold text-[#0a2230]">{q}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-end gap-4">
+              <SortSelect />
+              <ResultsPerPage />
+            </div>
           </div>
-        </div>
 
-        <div className="flex items-end gap-4">
-          <SortSelect />
-          <ResultsPerPage />
-        </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+            {listings.map((l) => (
+              <ListingCard key={l.id} listing={l} imageFit="contain" />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <Pager
+              currentPage={safePage}
+              totalPages={totalPages}
+              searchParams={searchParams}
+            />
+          )}
+        </section>
       </div>
-
-      <section>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map((l) => (
-            <ListingCard key={l.id} listing={l} />
-          ))}
-        </div>
-
-        {totalPages > 1 && (
-          <Pager
-            currentPage={safePage}
-            totalPages={totalPages}
-            searchParams={searchParams}
-          />
-        )}
-      </section>
     </main>
   );
 }

@@ -2328,10 +2328,6 @@ export default function NewListingForm() {
                     <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">Hero</div>
                   )}
 
-                  <div className="absolute left-2 bottom-2 rounded-full bg-black/65 px-2 py-1 text-[10px] font-semibold text-white hidden sm:block">
-                    Drag
-                  </div>
-
                   {p.status === "uploaded" && (
                     <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">✓</div>
                   )}
@@ -2673,10 +2669,10 @@ export default function NewListingForm() {
         >
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
             <div className="px-5 py-3 bg-[#0a2230]">
-              <div className="text-[14px] font-semibold text-white">How ST protects your number</div>
+              <div className="text-[14px] font-semibold text-white">How ST protects your email & phone number</div>
             </div>
             <div className="p-5 text-[13px] text-slate-700">
-              ST.com values your privacy and will only display a phone number if a valid user is logged in.
+              ST.com values your privacy and only displays emails & phone numbers if a valid user is logged in. If a individual does not have a account with us, they can send a message through the website to you, right from the listing detail page!
               <div className="mt-4 flex justify-end">
                 <button type="button" className={btnPrimary} onClick={() => setShowPhonePrivacy(false)}>
                   Got it

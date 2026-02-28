@@ -17,6 +17,12 @@ export async function POST(req, { params }) {
 
   const body = await req.json().catch(() => ({}));
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+  if (!reason) {
+    return NextResponse.json(
+      { ok: false, error: "A comment is required to send this listing back to draft." },
+      { status: 400 }
+    );
+  }
 
   const listing = await prisma.listing.findUnique({
     where: { id },
@@ -42,12 +48,12 @@ export async function POST(req, { params }) {
 
       reviewedAt: now,
       reviewedById: guard.me.id,
-      rejectionReason: reason || "Changes required before publishing.",
+      rejectionReason: reason,
 
       contentReviewStatus: "REJECTED",
       contentReviewedAt: now,
       contentReviewedById: guard.me.id,
-      contentRejectionReason: reason || "Changes required before publishing.",
+      contentRejectionReason: reason,
     },
   });
 
@@ -56,7 +62,7 @@ export async function POST(req, { params }) {
     action: "LISTING_REJECT",
     entityType: "Listing",
     entityId: id,
-    reason: reason || null,
+    reason,
     meta: {
       ownerId: listing.ownerId,
       photoPlan: listing.photoPlan,

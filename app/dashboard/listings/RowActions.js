@@ -31,6 +31,7 @@ export default function RowActions({
 
   const s = upper(status);
   const isArchived = s === "ARCHIVED";
+  const isRejected = s === "REJECTED";
 
   const previewHref =
     s === "PUBLISHED"
@@ -142,9 +143,13 @@ export default function RowActions({
           {showEdit ? (
             <Link
               href={editHref}
-              className="inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+              className={
+                isRejected
+                  ? "inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                  : "inline-flex h-9 items-center justify-center rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+              }
             >
-              Edit
+              {isRejected ? "Edit & resubmit" : "Edit"}
             </Link>
           ) : null}
 

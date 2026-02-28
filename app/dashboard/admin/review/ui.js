@@ -3,8 +3,6 @@
 
 import { useMemo, useState } from "react";
 
-const NAVY = "#0a2230";
-
 function planLabel(p) {
   if (!p) return "Standard Listing";
   if (p === "FEATURED_HOME") return "Featured on Homepage";
@@ -20,10 +18,35 @@ function fmt(iso) {
   }
 }
 
+function imageUrlFromKey(key) {
+  const v = String(key || "").trim();
+  if (!v) return null;
+  if (v.startsWith("http://") || v.startsWith("https://")) return v;
+  if (v.startsWith("/dashboard/admin/drafts/")) {
+    return `/api/uploads?key=${encodeURIComponent(v.replace(/^\/dashboard\/admin\//, ""))}`;
+  }
+  if (v.startsWith("dashboard/admin/drafts/")) {
+    return `/api/uploads?key=${encodeURIComponent(v.replace(/^dashboard\/admin\//, ""))}`;
+  }
+  if (v.startsWith("/drafts/")) {
+    return `/api/uploads?key=${encodeURIComponent(v.slice(1))}`;
+  }
+  if (v.startsWith("/")) return v;
+  const normalized = v.replace(/^public\//, "");
+  if (normalized.startsWith("boats/") || normalized.startsWith("images/")) return `/${normalized}`;
+  return `/api/uploads?key=${encodeURIComponent(v)}`;
+}
+
+function listingThumbSrc(listing) {
+  const candidates = [listing?.heroImageUrl].filter(Boolean);
+  if (Array.isArray(listing?.imageUrls) && listing.imageUrls.length > 0) candidates.push(listing.imageUrls[0]);
+  const src = candidates.find(Boolean);
+  return src ? imageUrlFromKey(src) : null;
+}
+
 export default function AdminReviewClient({ initialItems }) {
   const [items, setItems] = useState(Array.isArray(initialItems) ? initialItems : []);
   const [q, setQ] = useState("");
-  const [busyId, setBusyId] = useState("");
   const [msg, setMsg] = useState("");
 
   const filtered = useMemo(() => {
@@ -49,47 +72,6 @@ export default function AdminReviewClient({ initialItems }) {
     setItems(Array.isArray(data.items) ? data.items : []);
   }
 
-  async function approve(id) {
-    setMsg("");
-    setBusyId(id);
-    try {
-      const res = await fetch(`/api/admin/listings/${encodeURIComponent(id)}/approve`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Approve failed.");
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      setMsg("Approved and published.");
-    } catch (e) {
-      setMsg(e?.message || "Approve failed.");
-    } finally {
-      setBusyId("");
-    }
-  }
-
-  async function reject(id) {
-    setMsg("");
-    const reason = window.prompt("Reason (optional):") || "";
-    setBusyId(id);
-    try {
-      const res = await fetch(`/api/admin/listings/${encodeURIComponent(id)}/reject`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) throw new Error(data?.error || "Reject failed.");
-      setItems((prev) => prev.filter((x) => x.id !== id));
-      setMsg("Sent back to draft.");
-    } catch (e) {
-      setMsg(e?.message || "Reject failed.");
-    } finally {
-      setBusyId("");
-    }
-  }
-
   return (
     <div className="py-10">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
@@ -113,9 +95,11 @@ export default function AdminReviewClient({ initialItems }) {
               <button
                 type="button"
                 onClick={refresh}
-                className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-6 text-[13px] font-semibold text-white hover:opacity-95"
+                aria-label="Refresh review queue"
+                title="Refresh"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
               >
-                Refresh
+                <span aria-hidden="true" className="text-[18px] leading-none">↻</span>
               </button>
             </div>
 
@@ -131,85 +115,63 @@ export default function AdminReviewClient({ initialItems }) {
               <div className="text-[13px] text-slate-600">No listings in the queue.</div>
             ) : (
               <div className="space-y-3">
-                {filtered.map((x) => (
-                  <div
-                    key={x.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="text-[14px] font-extrabold text-[#0a2230] truncate">
-                          {x.title}
+                {filtered.map((x) => {
+                  const thumbSrc = listingThumbSrc(x);
+                  return (
+                    <div
+                      key={x.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex items-start gap-3">
+                          <div className="h-[70px] w-[96px] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                            {thumbSrc ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={thumbSrc}
+                                alt={`${x.title} hero`}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-[11px] font-semibold text-slate-500">
+                                No image
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                          <div className="text-[14px] font-extrabold text-[#0a2230] truncate">
+                            {x.title}
+                          </div>
+                          <div className="mt-1 text-[12px] text-slate-600">
+                            <span className="font-semibold">Plan:</span> {planLabel(x.plan)}{" "}
+                            <span className="text-slate-400">•</span>{" "}
+                            <span className="font-semibold">Submitted:</span> {fmt(x.submittedForReviewAt)}{" "}
+                            {x.ownerEmail ? (
+                              <>
+                                <span className="text-slate-400">•</span>{" "}
+                                <span className="font-semibold">Owner:</span> {x.ownerEmail}
+                              </>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="mt-1 text-[12px] text-slate-600">
-                          <span className="font-semibold">Plan:</span> {planLabel(x.plan)}{" "}
-                          <span className="text-slate-400">•</span>{" "}
-                          <span className="font-semibold">Submitted:</span> {fmt(x.submittedForReviewAt)}{" "}
-                          {x.ownerEmail ? (
-                            <>
-                              <span className="text-slate-400">•</span>{" "}
-                              <span className="font-semibold">Owner:</span> {x.ownerEmail}
-                            </>
-                          ) : null}
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-3 text-[13px]">
+                        <div className="flex gap-2 sm:items-end">
                           <a
                             href={`/dashboard/admin/review/${encodeURIComponent(x.id)}`}
-                            className="font-semibold text-blue-700 underline underline-offset-2"
-                            target="_blank"
-                            rel="noreferrer"
+                            className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-6 text-[13px] font-semibold text-[#e7b34a] hover:bg-[#0f2a3b]"
                           >
-                            Preview + approve
-                          </a>
-                          {x.previewToken ? (
-                            <a
-                              href={`/listings/preview/${encodeURIComponent(x.previewToken)}`}
-                              className="font-semibold text-blue-700 underline underline-offset-2"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Open raw preview
-                            </a>
-                          ) : null}
-                          <a
-                            href={`/listings/${encodeURIComponent(x.id)}`}
-                            className="font-semibold text-blue-700 underline underline-offset-2"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Open listing
+                            Review
                           </a>
                         </div>
                       </div>
-
-                      <div className="flex gap-2 sm:flex-col sm:items-end">
-                        <button
-                          type="button"
-                          onClick={() => approve(x.id)}
-                          disabled={busyId === x.id}
-                          className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-6 text-[13px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-                        >
-                          {busyId === x.id ? "Working…" : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => reject(x.id)}
-                          disabled={busyId === x.id}
-                          className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-6 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 disabled:opacity-60"
-                        >
-                          Send back
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+
               </div>
             )}
-          </div>
-
-          <div className="px-6 pb-6 text-[12px] text-slate-500">
-            Tip: If you don’t see this page, make sure your user role is <span className="font-semibold">ADMIN</span> (or at least meets MODERATOR).
           </div>
         </div>
       </div>

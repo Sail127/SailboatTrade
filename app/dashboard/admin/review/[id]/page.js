@@ -65,14 +65,6 @@ export default async function AdminReviewPreviewPage({ params }) {
             >
               Back to Queue
             </Link>
-            <a
-              href={previewHref}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
-            >
-              Open Preview in New Tab
-            </a>
           </div>
         </div>
 

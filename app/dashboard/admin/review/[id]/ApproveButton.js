@@ -30,17 +30,56 @@ export default function ApproveButton({ listingId, canApprove }) {
     }
   }
 
+  async function onReject() {
+    const reasonRaw = window.prompt("Send back comment (required):");
+    if (reasonRaw == null) return;
+    const reason = reasonRaw.trim();
+    if (!reason) {
+      setMsg("");
+      setErr("A comment is required to send a listing back to draft.");
+      return;
+    }
+    setBusy(true);
+    setMsg("");
+    setErr("");
+    try {
+      const res = await fetch(`/api/admin/listings/${encodeURIComponent(String(listingId || ""))}/reject`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Send back failed.");
+      setMsg("Listing sent back to draft.");
+      router.refresh();
+    } catch (e) {
+      setErr(e?.message || "Send back failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-3">
       {canApprove ? (
-        <button
-          type="button"
-          onClick={onApprove}
-          disabled={busy}
-          className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-6 text-[13px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
-        >
-          {busy ? "Approving." : "Approve & publish"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={busy}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-6 text-[13px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {busy ? "Working..." : "Approve & publish"}
+          </button>
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={busy}
+            className="inline-flex h-10 items-center justify-center rounded-full bg-red-600 px-6 text-[13px] font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+          >
+            Send back with comment
+          </button>
+        </>
       ) : (
         <div className="text-[13px] font-semibold text-slate-700">
           This listing is not currently pending review.

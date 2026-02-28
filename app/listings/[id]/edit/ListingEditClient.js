@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCountryOptions } from "@/lib/countries";
+import { getUsStateOptions } from "@/lib/us-states";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
@@ -11,6 +13,53 @@ const CONTAINER = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-8";
 
 const FREE_PHOTO_LIMIT = 3;
 const MAX_PHOTOS = 25;
+const US_REGION_OPTIONS = [
+  { label: "Select…", value: "" },
+  { label: "West Coast", value: "WEST_COAST" },
+  { label: "East Coast", value: "EAST_COAST" },
+  { label: "Gulf Coast", value: "GULF_COAST" },
+  { label: "Great Lakes", value: "GREAT_LAKES" },
+  { label: "Hawaii", value: "HAWAII" },
+  { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
+  { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
+];
+
+function normalizeCountryCode(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const up = s.toUpperCase();
+  if (up === "USA" || up === "US" || up === "U.S." || up === "U.S.A.") return "US";
+  if (s.toLowerCase().includes("united states")) return "US";
+  if (/^[A-Z]{2}$/.test(up)) return up;
+  return s;
+}
+
+function normalizePhotoOrder(imageUrls = [], heroImageUrl = "") {
+  const raw = Array.isArray(imageUrls) ? imageUrls : [];
+  const clean = [];
+  const seen = new Set();
+
+  for (const x of raw) {
+    const v = String(x || "").trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    clean.push(v);
+  }
+
+  const hero = String(heroImageUrl || "").trim();
+  if (hero) {
+    const idx = clean.indexOf(hero);
+    if (idx > 0) {
+      clean.splice(idx, 1);
+      clean.unshift(hero);
+    } else if (idx < 0) {
+      clean.unshift(hero);
+    }
+  }
+
+  return clean.slice(0, MAX_PHOTOS);
+}
 
 function SectionCard({ title, subtitle, children }) {
   return (
@@ -187,9 +236,16 @@ async function uploadOneFile(file) {
 
 export default function ListingEditClient({ initialListing, previewToken = "" }) {
   const router = useRouter();
+  const status = String(initialListing?.status || "").toUpperCase();
+  const billingStatus = String(initialListing?.billingStatus || "FREE").toUpperCase();
+  const isRejected = status === "REJECTED";
+  const canSubmitForReview = isRejected && billingStatus === "ACTIVE";
+  const countryOptions = useMemo(() => getCountryOptions("en"), []);
+  const usStateOptions = useMemo(() => getUsStateOptions(), []);
 
   const [form, setForm] = useState(() => {
     const l = initialListing || {};
+    const orderedPhotos = normalizePhotoOrder(l.imageUrls, l.heroImageUrl);
     return {
       id: l.id,
 
@@ -215,8 +271,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       contactEmail: l.contactEmail ?? "",
       brokerHeroImageUrl: l.brokerHeroImageUrl ?? "",
 
-      imageUrls: Array.isArray(l.imageUrls) ? l.imageUrls.filter(Boolean) : [],
-      heroImageUrl: l.heroImageUrl ?? "",
+      imageUrls: orderedPhotos,
+      heroImageUrl: orderedPhotos[0] || "",
 
       description: l.description ?? "",
       riggingRemarks: l.riggingRemarks ?? "",
@@ -279,15 +335,23 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const overMax = photoCount > MAX_PHOTOS;
 
   const fileRef = useRef(null);
-  const [photoUrlInput, setPhotoUrlInput] = useState("");
+  const draggingPhotoIdxRef = useRef(-1);
+  const [pendingPhotoFiles, setPendingPhotoFiles] = useState([]);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  const [reviewMsg, setReviewMsg] = useState("");
 
   const [equipInput, setEquipInput] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const [saveOk, setSaveOk] = useState("");
+
+  const normalizedCountry = normalizeCountryCode(form.locationCountry);
+  const knownCountry = countryOptions.some((c) => c.value === normalizedCountry);
+  const countrySelectValue = knownCountry ? normalizedCountry : String(form.locationCountry || "").trim() ? "Other" : "";
+  const isUSA = normalizedCountry === "US";
 
   function setField(k, v) {
     setForm((p) => ({ ...p, [k]: v }));
@@ -299,27 +363,81 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return p;
       const [item] = arr.splice(from, 1);
       arr.splice(to, 0, item);
-      return { ...p, imageUrls: arr };
+      const ordered = normalizePhotoOrder(arr, arr[0]);
+      return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
     });
   }
   function removePhoto(i) {
-    setForm((p) => ({ ...p, imageUrls: p.imageUrls.filter((_, idx) => idx !== i) }));
-  }
-  function makeCover(i) {
-    if (i <= 0) return;
-    movePhoto(i, 0);
+    setForm((p) => {
+      const next = p.imageUrls.filter((_, idx) => idx !== i);
+      const ordered = normalizePhotoOrder(next, next[0]);
+      return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
+    });
   }
 
-  async function addPhotosFromFiles(files) {
+  function movePhotoByIndex(i, direction) {
+    const to = direction === "up" ? i - 1 : i + 1;
+    movePhoto(i, to);
+  }
+
+  function onPhotoDragStart(e, idx) {
+    draggingPhotoIdxRef.current = idx;
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(idx));
+    } catch {}
+  }
+
+  function onPhotoDragOver(e) {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {}
+  }
+
+  function onPhotoDrop(e, toIdx) {
+    e.preventDefault();
+    const fromIdx = Number.isInteger(draggingPhotoIdxRef.current) ? draggingPhotoIdxRef.current : -1;
+    draggingPhotoIdxRef.current = -1;
+    if (fromIdx < 0 || fromIdx === toIdx) return;
+    movePhoto(fromIdx, toIdx);
+  }
+
+  function onPhotoDragEnd() {
+    draggingPhotoIdxRef.current = -1;
+  }
+
+  function addPhotosFromFiles(files) {
     setPhotoErr("");
     if (!files?.length) return;
 
-    if (form.imageUrls.length >= MAX_PHOTOS) {
+    const currentlyQueued = pendingPhotoFiles.length;
+    const remaining = MAX_PHOTOS - form.imageUrls.length - currentlyQueued;
+    if (remaining <= 0) {
       setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
       return;
     }
 
-    const slice = Array.from(files).slice(0, Math.max(0, MAX_PHOTOS - form.imageUrls.length));
+    const incoming = Array.from(files);
+    const accepted = incoming.slice(0, remaining);
+    const rejected = incoming.length - accepted.length;
+    if (accepted.length) {
+      setPendingPhotoFiles((prev) => [...prev, ...accepted]);
+    }
+    if (rejected > 0) {
+      setPhotoErr(`Only ${remaining} more ${remaining === 1 ? "photo" : "photos"} can be added.`);
+    }
+  }
+
+  async function uploadQueuedPhotos() {
+    setPhotoErr("");
+    if (!pendingPhotoFiles.length) return;
+    const remaining = MAX_PHOTOS - form.imageUrls.length;
+    if (remaining <= 0) {
+      setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
+      return;
+    }
+    const slice = pendingPhotoFiles.slice(0, remaining);
 
     setPhotoBusy(true);
     try {
@@ -329,26 +447,20 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         const k = await uploadOneFile(f);
         if (k) keys.push(k);
       }
-      if (keys.length) setForm((p) => ({ ...p, imageUrls: [...p.imageUrls, ...keys].slice(0, MAX_PHOTOS) }));
+      if (keys.length) {
+        setForm((p) => {
+          const merged = [...p.imageUrls, ...keys].slice(0, MAX_PHOTOS);
+          const ordered = normalizePhotoOrder(merged, merged[0]);
+          return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
+        });
+      }
+      setPendingPhotoFiles((prev) => prev.slice(slice.length));
     } catch (e) {
       setPhotoErr(e?.message || "Upload failed.");
     } finally {
       setPhotoBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }
-
-  function addPhotoByUrl() {
-    setPhotoErr("");
-    const u = String(photoUrlInput || "").trim();
-    if (!u) return;
-
-    if (form.imageUrls.length >= MAX_PHOTOS) {
-      setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
-      return;
-    }
-    setForm((p) => ({ ...p, imageUrls: [...p.imageUrls, u].slice(0, MAX_PHOTOS) }));
-    setPhotoUrlInput("");
   }
 
   function addEquipment() {
@@ -371,15 +483,16 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
     if (!id) {
       setSaveErr("Missing listing id.");
-      return;
+      return false;
     }
     if (overMax) {
       setSaveErr(`You have ${photoCount} photos. Max is ${MAX_PHOTOS}. Remove photos first.`);
-      return;
+      return false;
     }
 
     setSaving(true);
     try {
+      const orderedPhotos = normalizePhotoOrder(form.imageUrls, form.heroImageUrl);
       const payload = {
         title: strOrNull(form.title),
         year: intOrNull(form.year),
@@ -404,8 +517,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         contactEmail: strOrNull(form.contactEmail),
         brokerHeroImageUrl: strOrNull(form.brokerHeroImageUrl),
 
-        heroImageUrl: strOrNull(form.heroImageUrl),
-        imageUrls: (form.imageUrls || []).filter(Boolean).slice(0, MAX_PHOTOS),
+        heroImageUrl: orderedPhotos[0] || null,
+        imageUrls: orderedPhotos,
 
         description: strOrNull(form.description),
         riggingRemarks: strOrNull(form.riggingRemarks),
@@ -458,16 +571,48 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Save failed.");
 
       setSaveOk("Saved.");
+      setReviewMsg("");
       if (returnToPreview) {
         router.push(previewHref);
-        return;
+        return true;
       }
       setTimeout(() => setSaveOk(""), 2000);
+      return true;
     } catch (e) {
       setSaveErr(e?.message || "Save failed.");
+      return false;
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submitForReview() {
+    if (!id) return false;
+    setReviewBusy(true);
+    setReviewMsg("");
+    setSaveErr("");
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/submit-for-review`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Resubmit failed.");
+      setReviewMsg("Resubmitted for admin review.");
+      router.refresh();
+      return true;
+    } catch (e) {
+      setSaveErr(e?.message || "Resubmit failed.");
+      return false;
+    } finally {
+      setReviewBusy(false);
+    }
+  }
+
+  async function saveAndResubmit() {
+    if (!canSubmitForReview) return;
+    const saved = await save(false);
+    if (!saved) return;
+    await submitForReview();
   }
 
   return (
@@ -488,25 +633,27 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
             <button
               type="button"
-              onClick={() => save(false)}
+              onClick={() => save(true)}
               disabled={saving}
               className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
                 saving ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
               }`}
             >
-              {saving ? "Saving…" : "Save"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => save(true)}
-              disabled={saving}
-              className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-[#c8a44d] bg-[#c8a44d] text-[#0a2230] hover:brightness-95 ${
-                saving ? "opacity-70 cursor-not-allowed" : ""
-              }`}
-            >
               Save &amp; Return
             </button>
+
+            {canSubmitForReview ? (
+              <button
+                type="button"
+                onClick={saveAndResubmit}
+                disabled={saving || reviewBusy || overMax}
+                className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
+                  saving || reviewBusy || overMax ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
+              >
+                {reviewBusy ? "Submitting…" : saving ? "Saving…" : "Save & Resubmit"}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -515,9 +662,28 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             {saveOk}
           </div>
         ) : null}
+        {reviewMsg ? (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-800">
+            {reviewMsg}
+          </div>
+        ) : null}
         {saveErr ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
             {saveErr}
+          </div>
+        ) : null}
+
+        {isRejected ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">
+            <div className="font-semibold">Admin comment</div>
+            <div className="mt-1">{initialListing?.rejectionReason || "Changes required before publishing."}</div>
+            {canSubmitForReview ? (
+              <div className="mt-2 text-[11px]">Use the green Save &amp; Resubmit button above after making your edits.</div>
+            ) : (
+              <div className="mt-2 text-[11px]">
+                Complete checkout first to resubmit for admin review.
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -531,8 +697,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[13px] font-extrabold text-[#0a2230]">Edit photos</div>
-                <div className="text-[11px] text-slate-600">Max {MAX_PHOTOS}. Free limit is {FREE_PHOTO_LIMIT}.</div>
+                <div className="text-[13px] font-extrabold text-[#0a2230]">Photos</div>
+                <div className="text-[11px] text-slate-600">Max {MAX_PHOTOS}. First photo is the hero image.</div>
               </div>
 
               {photoErr ? (
@@ -541,59 +707,99 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 </div>
               ) : null}
 
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
                 <button
                   type="button"
                   disabled={photoBusy || form.imageUrls.length >= MAX_PHOTOS}
                   onClick={() => fileRef.current?.click()}
-                  className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                    photoBusy || form.imageUrls.length >= MAX_PHOTOS ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                  className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] ${
+                    photoBusy || form.imageUrls.length >= MAX_PHOTOS ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
                   }`}
                 >
-                  {photoBusy ? "Uploading…" : "Upload photos"}
+                  Add photos
                 </button>
 
-                <div className="flex-1 min-w-[220px] flex items-center gap-2">
-                  <input className={inputBase()} placeholder="Paste image URL or existing key…" value={photoUrlInput} onChange={(e) => setPhotoUrlInput(e.target.value)} />
-                  <button type="button" onClick={addPhotoByUrl} disabled={!photoUrlInput.trim() || form.imageUrls.length >= MAX_PHOTOS}
-                    className="inline-flex h-10 items-center justify-center rounded-full px-4 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-60">
-                    Add
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  disabled={photoBusy || pendingPhotoFiles.length === 0}
+                  onClick={uploadQueuedPhotos}
+                  className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
+                    photoBusy || pendingPhotoFiles.length === 0 ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                  }`}
+                >
+                  {photoBusy ? "Uploading…" : "Upload"}
+                </button>
               </div>
 
+              {pendingPhotoFiles.length ? (
+                <div className="mt-2 text-[12px] text-slate-600">
+                  {pendingPhotoFiles.length} selected. Press Upload.
+                </div>
+              ) : null}
+
+              {form.imageUrls.length > 1 ? (
+                <div className="mt-2 text-[12px] text-slate-600">
+                  Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
+                </div>
+              ) : null}
+
               {form.imageUrls.length ? (
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {form.imageUrls.map((k, i) => (
-                    <div key={k + i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                      <div className="rounded-xl overflow-hidden border border-slate-200 bg-white">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={imageUrlFromKey(k, token)} alt={`Photo ${i + 1}`} className="w-full aspect-[4/3] object-contain bg-slate-100" loading="lazy" />
+                    <div
+                      key={k + i}
+                      draggable={!photoBusy}
+                      onDragStart={(e) => onPhotoDragStart(e, i)}
+                      onDragOver={onPhotoDragOver}
+                      onDrop={(e) => onPhotoDrop(e, i)}
+                      onDragEnd={onPhotoDragEnd}
+                      className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imageUrlFromKey(k, token)} alt={`Photo ${i + 1}`} className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
+
+                      {i === 0 ? (
+                        <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
+                          Hero
+                        </div>
+                      ) : null}
+
+                      <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
+                        ✓
                       </div>
 
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button type="button" onClick={() => makeCover(i)} disabled={i === 0}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
-                          Make cover
-                        </button>
-                        <button type="button" onClick={() => movePhoto(i, i - 1)} disabled={i === 0}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
-                          ←
-                        </button>
-                        <button type="button" onClick={() => movePhoto(i, i + 1)} disabled={i === form.imageUrls.length - 1}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 disabled:opacity-50">
-                          →
-                        </button>
-                        <button type="button" onClick={() => removePhoto(i)}
-                          className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100">
-                          Remove
-                        </button>
-                      </div>
-
-                      <div className="mt-2 text-[11px] text-slate-600 break-all">
-                        {i === 0 ? <span className="font-semibold text-[#0a2230]">Cover • </span> : null}
-                        {k}
+                      <div className="p-2 flex items-center justify-between gap-2">
+                        <div className="text-[12px] text-slate-600">{i === 0 ? "Hero" : `Photo ${i + 1}`}</div>
+                        <div className="flex items-center gap-1">
+                          <div className="sm:hidden flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={i === 0}
+                              aria-label="Move photo up"
+                              onClick={() => movePhotoByIndex(i, "up")}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={i === form.imageUrls.length - 1}
+                              aria-label="Move photo down"
+                              onClick={() => movePhotoByIndex(i, "down")}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePhoto(i)}
+                            className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -650,31 +856,82 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   </Field>
                 </div>
 
-                <Field label="Custom title (optional)">
-                  <input className={inputBase()} value={form.title ?? ""} onChange={(e) => setField("title", e.target.value)} />
-                </Field>
               </div>
 
               <div className="p-5 space-y-4">
-                <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Location</div>
-
-                <Field label="Country">
-                  <input className={inputBase()} value={form.locationCountry ?? ""} onChange={(e) => setField("locationCountry", e.target.value)} />
-                </Field>
-                <Field label="US Region (if US)">
-                  <input className={inputBase()} value={form.locationUsRegion ?? ""} onChange={(e) => setField("locationUsRegion", e.target.value)} />
-                </Field>
+                <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Boat Location</div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Country">
+                    <select
+                      className={inputBase()}
+                      value={countrySelectValue}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === "Other") {
+                          setField("locationCountry", "");
+                          setField("locationUsRegion", "");
+                          setField("locationState", "");
+                          return;
+                        }
+                        const normalized = normalizeCountryCode(next);
+                        setField("locationCountry", normalized);
+                        if (normalized !== "US") {
+                          setField("locationUsRegion", "");
+                          setField("locationState", "");
+                        }
+                      }}
+                    >
+                      {countryOptions.map((c) => (
+                        <option key={c.value || "blank"} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                  </Field>
+
                   <Field label="City">
                     <input className={inputBase()} value={form.locationCity ?? ""} onChange={(e) => setField("locationCity", e.target.value)} />
                   </Field>
+                </div>
+
+                {countrySelectValue === "Other" ? (
+                  <Field label="Country (type it)">
+                    <input className={inputBase()} value={form.locationCountry ?? ""} onChange={(e) => setField("locationCountry", e.target.value)} />
+                  </Field>
+                ) : null}
+
+                {isUSA ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="US Region">
+                      <select className={inputBase()} value={form.locationUsRegion ?? ""} onChange={(e) => setField("locationUsRegion", e.target.value)}>
+                        {US_REGION_OPTIONS.map((o) => (
+                          <option key={o.value || "blank"} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="State">
+                      <select className={inputBase()} value={form.locationState ?? ""} onChange={(e) => setField("locationState", e.target.value)}>
+                        {usStateOptions.map((s) => (
+                          <option key={s.value || "blank"} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                ) : (
                   <Field label="State/Province">
                     <input className={inputBase()} value={form.locationState ?? ""} onChange={(e) => setField("locationState", e.target.value)} />
                   </Field>
-                </div>
+                )}
 
-                <div className="text-[14px] font-extrabold tracking-wide text-slate-600 mt-2">Contact</div>
+                <div className="border-t border-slate-200 pt-4">
+                  <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Contact</div>
+                </div>
 
                 <Field label="Seller role">
                   <select className={inputBase()} value={form.sellerRole || "OWNER"} onChange={(e) => setField("sellerRole", e.target.value)}>
@@ -826,7 +1083,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     <Field label="Generator hours"><input className={inputBase()} value={form.generatorHours ?? ""} onChange={(e) => setField("generatorHours", e.target.value)} /></Field>
                   </>
                 ) : null}
+              </div>
 
+              <div className="mt-5 border-t border-slate-200 pt-5" />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Dinghy included?">
                   <select className={inputBase()} value={form.hasDinghy ? "YES" : "NO"} onChange={(e) => setField("hasDinghy", e.target.value === "YES")}>
                     <option value="NO">No</option>
@@ -835,13 +1096,17 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 </Field>
 
                 {form.hasDinghy ? (
-                  <Field label="Dinghy details">
-                    <textarea className={textareaBase()} value={form.dinghyDetails ?? ""} onChange={(e) => setField("dinghyDetails", e.target.value)} />
-                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="Dinghy details">
+                      <textarea className={textareaBase()} value={form.dinghyDetails ?? ""} onChange={(e) => setField("dinghyDetails", e.target.value)} />
+                    </Field>
+                  </div>
                 ) : null}
               </div>
 
-              <div className="mt-5">
+              <div className="mt-5 border-t border-slate-200 pt-5" />
+
+              <div>
                 <Field label="Rigging / sail inventory remarks">
                   <textarea className={textareaBase()} value={form.riggingRemarks ?? ""} onChange={(e) => setField("riggingRemarks", e.target.value)} />
                 </Field>

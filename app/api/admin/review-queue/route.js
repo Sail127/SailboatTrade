@@ -38,7 +38,7 @@ export async function GET() {
 
   const items = await prisma.listing.findMany({
     where: { status: "PENDING_REVIEW" },
-    orderBy: [{ contentSubmittedAt: "desc" }, { updatedAt: "desc" }],
+    orderBy: [{ contentSubmittedAt: "asc" }, { updatedAt: "asc" }],
     take: 50,
     select: {
       id: true,
@@ -60,6 +60,7 @@ export async function GET() {
       locationState: true,
       locationCountry: true,
       heroImageUrl: true,
+      imageUrls: true,
       createdAt: true,
     },
   });
@@ -90,6 +91,7 @@ export async function GET() {
       location:
         [l.locationCity, l.locationState, l.locationCountry].filter(Boolean).join(", ") || null,
       heroImageUrl: l.heroImageUrl || null,
+      imageUrls: Array.isArray(l.imageUrls) ? l.imageUrls : [],
     };
   });
 

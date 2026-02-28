@@ -51,8 +51,8 @@ export default async function AdminReviewPage() {
       // contentSubmittedAt: { not: null },
     },
     orderBy: [
-      { contentSubmittedAt: "desc" },
-      { updatedAt: "desc" },
+      { contentSubmittedAt: "asc" },
+      { updatedAt: "asc" },
     ],
     take: 50,
     select: {
@@ -71,6 +71,8 @@ export default async function AdminReviewPage() {
       billingAddons: true,
 
       previewToken: true,
+      heroImageUrl: true,
+      imageUrls: true,
 
       // ✅ replaces submittedForReviewAt / paidAt
       contentSubmittedAt: true,
@@ -106,6 +108,8 @@ export default async function AdminReviewPage() {
       ownerName: u?.name || null,
 
       previewToken: l.previewToken || null,
+      heroImageUrl: l.heroImageUrl || null,
+      imageUrls: Array.isArray(l.imageUrls) ? l.imageUrls : [],
 
       submittedForReviewAt: l.contentSubmittedAt ? new Date(l.contentSubmittedAt).toISOString() : null,
       paidAt: l.lastPaidAt ? new Date(l.lastPaidAt).toISOString() : null,

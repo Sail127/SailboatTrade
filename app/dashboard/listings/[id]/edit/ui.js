@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCountryOptions } from "@/lib/countries";
+import { getUsStateOptions } from "@/lib/us-states";
 
 function arraysEqual(a = [], b = []) {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
@@ -11,11 +13,30 @@ function arraysEqual(a = [], b = []) {
   return true;
 }
 
-function clampGallery(arr) {
-  const clean = (Array.isArray(arr) ? arr : [])
-    .filter(Boolean)
-    .map((x) => String(x).trim())
-    .filter((x) => x.length > 0);
+function normalizePhotoOrder(imageUrls = [], heroImageUrl = "") {
+  const raw = Array.isArray(imageUrls) ? imageUrls : [];
+  const clean = [];
+  const seen = new Set();
+
+  for (const x of raw) {
+    const v = String(x || "").trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    clean.push(v);
+  }
+
+  const hero = String(heroImageUrl || "").trim();
+  if (hero) {
+    const idx = clean.indexOf(hero);
+    if (idx > 0) {
+      clean.splice(idx, 1);
+      clean.unshift(hero);
+    } else if (idx < 0) {
+      clean.unshift(hero);
+    }
+  }
+
   return clean.slice(0, 30);
 }
 
@@ -24,12 +45,16 @@ function deriveLoadedState(listing) {
   const liveGallery = Array.isArray(listing?.imageUrls) ? listing.imageUrls : [];
 
   const preferPendingGallery = pendingGallery.length > 0 ? pendingGallery : liveGallery;
+  const orderedPhotos = normalizePhotoOrder(
+    preferPendingGallery,
+    listing?.pendingHeroImageUrl ?? listing?.heroImageUrl ?? ""
+  );
 
   return {
     title: listing?.pendingTitle ?? listing?.title ?? "",
     description: listing?.pendingDescription ?? listing?.description ?? "",
-    heroImageUrl: listing?.pendingHeroImageUrl ?? listing?.heroImageUrl ?? "",
-    imageUrls: clampGallery(preferPendingGallery),
+    heroImageUrl: orderedPhotos[0] || "",
+    imageUrls: orderedPhotos,
 
     price: listing?.price != null ? String(listing.price) : "",
     currency: listing?.currency || "USD",
@@ -46,12 +71,34 @@ function deriveLoadedState(listing) {
 }
 
 function deriveLiveState(listing) {
+  const orderedPhotos = normalizePhotoOrder(listing?.imageUrls || [], listing?.heroImageUrl || "");
   return {
     title: listing?.title ?? "",
     description: listing?.description ?? "",
-    heroImageUrl: listing?.heroImageUrl ?? "",
-    imageUrls: clampGallery(listing?.imageUrls || []),
+    heroImageUrl: orderedPhotos[0] || "",
+    imageUrls: orderedPhotos,
   };
+}
+
+const US_REGION_OPTIONS = [
+  { label: "Select…", value: "" },
+  { label: "West Coast", value: "WEST_COAST" },
+  { label: "East Coast", value: "EAST_COAST" },
+  { label: "Gulf Coast", value: "GULF_COAST" },
+  { label: "Great Lakes", value: "GREAT_LAKES" },
+  { label: "Hawaii", value: "HAWAII" },
+  { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
+  { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
+];
+
+function normalizeCountryCode(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const up = s.toUpperCase();
+  if (up === "USA" || up === "US" || up === "U.S." || up === "U.S.A.") return "US";
+  if (s.toLowerCase().includes("united states")) return "US";
+  if (/^[A-Z]{2}$/.test(up)) return up;
+  return s;
 }
 
 export default function EditListingForm({ listing }) {
@@ -75,6 +122,7 @@ export default function EditListingForm({ listing }) {
 
   // Local previews for newly uploaded keys BEFORE saving
   const [localPreviewMap, setLocalPreviewMap] = useState({});
+  const draggingPhotoIdxRef = useRef(-1);
 
   // Loaded baseline (what the server last sent us)
   const [baseline, setBaseline] = useState(() => deriveLoadedState(listing));
@@ -100,13 +148,18 @@ export default function EditListingForm({ listing }) {
 
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [uploadingHero, setUploadingHero] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
 
   const [showCompare, setShowCompare] = useState(false);
 
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  const countryOptions = useMemo(() => getCountryOptions("en"), []);
+  const usStateOptions = useMemo(() => getUsStateOptions(), []);
+  const normalizedCountry = normalizeCountryCode(locationCountry);
+  const knownCountry = countryOptions.some((c) => c.value === normalizedCountry);
+  const countrySelectValue = knownCountry ? normalizedCountry : String(locationCountry || "").trim() ? "Other" : "";
+  const isUSA = normalizedCountry === "US";
 
   // When server data changes (router.refresh after save), sync baseline + state
   useEffect(() => {
@@ -203,25 +256,6 @@ export default function EditListingForm({ listing }) {
     return key;
   }
 
-  async function onHeroFileChange(e) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
-    setErr("");
-    setOk("");
-    setUploadingHero(true);
-    try {
-      const key = await uploadOne(file);
-      setHeroImageUrl(key);
-      setOk("Hero image uploaded (not saved yet).");
-    } catch (e2) {
-      setErr(e2?.message || "Hero upload failed.");
-    } finally {
-      setUploadingHero(false);
-    }
-  }
-
   async function onGalleryFilesChange(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
@@ -242,7 +276,12 @@ export default function EditListingForm({ listing }) {
       const newKeys = [];
       for (const f of toUpload) newKeys.push(await uploadOne(f));
 
-      setImageUrls((prev) => clampGallery([...prev, ...newKeys]));
+      setImageUrls((prev) => {
+        const merged = [...prev, ...newKeys];
+        const ordered = normalizePhotoOrder(merged, merged[0]);
+        setHeroImageUrl(ordered[0] || "");
+        return ordered;
+      });
       setOk(`${newKeys.length} image(s) uploaded (not saved yet).`);
     } catch (e2) {
       setErr(e2?.message || "Gallery upload failed.");
@@ -252,7 +291,12 @@ export default function EditListingForm({ listing }) {
   }
 
   function removeGalleryImage(idx) {
-    setImageUrls((prev) => prev.filter((_, i) => i !== idx));
+    setImageUrls((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      const ordered = normalizePhotoOrder(next, next[0]);
+      setHeroImageUrl(ordered[0] || "");
+      return ordered;
+    });
   }
 
   function moveGalleryImage(idx, dir) {
@@ -263,14 +307,49 @@ export default function EditListingForm({ listing }) {
       const tmp = next[idx];
       next[idx] = next[j];
       next[j] = tmp;
-      return next;
+      const ordered = normalizePhotoOrder(next, next[0]);
+      setHeroImageUrl(ordered[0] || "");
+      return ordered;
     });
   }
 
-  function setAsHero(key) {
-    if (!key) return;
-    setHeroImageUrl(key);
-    setOk("Set as hero image (not saved yet).");
+  function moveGalleryByIndex(idx, direction) {
+    const to = direction === "up" ? idx - 1 : idx + 1;
+    moveGalleryImage(idx, to - idx);
+  }
+
+  function onPhotoDragStart(e, idx) {
+    draggingPhotoIdxRef.current = idx;
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(idx));
+    } catch {}
+  }
+
+  function onPhotoDragOver(e) {
+    e.preventDefault();
+    try {
+      e.dataTransfer.dropEffect = "move";
+    } catch {}
+  }
+
+  function onPhotoDrop(e, toIdx) {
+    e.preventDefault();
+    const fromIdx = Number.isInteger(draggingPhotoIdxRef.current) ? draggingPhotoIdxRef.current : -1;
+    draggingPhotoIdxRef.current = -1;
+    if (fromIdx < 0 || fromIdx === toIdx) return;
+    setImageUrls((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, item);
+      const ordered = normalizePhotoOrder(next, next[0]);
+      setHeroImageUrl(ordered[0] || "");
+      return ordered;
+    });
+  }
+
+  function onPhotoDragEnd() {
+    draggingPhotoIdxRef.current = -1;
   }
 
   function resetToLoaded() {
@@ -313,6 +392,7 @@ export default function EditListingForm({ listing }) {
     setSaving(true);
 
     try {
+      const orderedPhotos = normalizePhotoOrder(imageUrls, heroImageUrl);
       const res = await fetch(`/api/listings/${listing.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -332,8 +412,8 @@ export default function EditListingForm({ listing }) {
           contactEmail,
           contactPhone,
 
-          heroImageUrl: heroImageUrl || null,
-          imageUrls: clampGallery(imageUrls),
+          heroImageUrl: orderedPhotos[0] || null,
+          imageUrls: orderedPhotos,
         }),
       });
 
@@ -520,6 +600,16 @@ export default function EditListingForm({ listing }) {
         <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           <div className="font-semibold">Rejected</div>
           <div className="mt-1">{listing.rejectionReason || "An admin rejected this listing. Please correct issues and resubmit."}</div>
+          {isPaid ? (
+            <button
+              type="button"
+              disabled={submitting}
+              className="mt-3 h-9 rounded-full border border-red-200 bg-red-50 px-4 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+              onClick={submitForApproval}
+            >
+              {submitting ? "Submitting…" : "Resubmit for approval"}
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -553,12 +643,6 @@ export default function EditListingForm({ listing }) {
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-[#0a2230]">Title</label>
-          <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} />
-          {isPublished && <div className="mt-1 text-xs text-slate-500">Title changes require admin approval when live.</div>}
-        </div>
-
-        <div>
           <label className="text-sm font-semibold text-[#0a2230]">Description</label>
           <textarea className="mt-2 w-full min-h-[170px] rounded-xl border px-3 py-2 text-sm" value={description} onChange={(e) => setDescription(e.target.value)} />
           {isPublished && <div className="mt-1 text-xs text-slate-500">Description changes require admin approval when live.</div>}
@@ -577,75 +661,79 @@ export default function EditListingForm({ listing }) {
             <div className="text-xs text-slate-500">Gallery: {imageUrls.length}/30</div>
           </div>
 
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {/* Hero */}
-            <div className="rounded-xl border bg-white p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-[#0a2230]">Hero image</div>
-                <label className="h-9 cursor-pointer rounded-full bg-[#0a2230] px-4 text-xs font-semibold text-white inline-flex items-center justify-center hover:opacity-95">
-                  {uploadingHero ? "Uploading…" : "Upload hero"}
-                  <input type="file" accept="image/*" className="hidden" onChange={onHeroFileChange} />
-                </label>
-              </div>
-
-              <div className="mt-3">
-                {heroImageUrl ? (
-                  <div>
-                    <img src={imgSrcForKey(heroImageUrl)} alt="" className="h-44 w-full rounded-xl border object-cover" />
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        className="h-9 rounded-full border px-4 text-xs font-semibold hover:bg-slate-50"
-                        onClick={() => setHeroImageUrl("")}
-                      >
-                        Remove hero
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-44 w-full rounded-xl border bg-slate-50 flex items-center justify-center text-xs text-slate-500">No hero image yet</div>
-                )}
-              </div>
+          <div className="mt-4 rounded-xl border bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-[#0a2230]">Gallery</div>
+              <label className="h-9 cursor-pointer rounded-full border px-4 text-xs font-semibold inline-flex items-center justify-center hover:bg-slate-50">
+                {uploadingGallery ? "Uploading…" : "Add photos"}
+                <input type="file" accept="image/*" multiple className="hidden" onChange={onGalleryFilesChange} />
+              </label>
             </div>
 
-            {/* Gallery */}
-            <div className="rounded-xl border bg-white p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-[#0a2230]">Gallery</div>
-                <label className="h-9 cursor-pointer rounded-full border px-4 text-xs font-semibold inline-flex items-center justify-center hover:bg-slate-50">
-                  {uploadingGallery ? "Uploading…" : "Upload images"}
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={onGalleryFilesChange} />
-                </label>
+            {imageUrls.length > 1 ? (
+              <div className="mt-2 text-[12px] text-slate-600">
+                Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
               </div>
+            ) : null}
 
-              {imageUrls.length === 0 ? (
-                <div className="mt-3 h-44 w-full rounded-xl border bg-slate-50 flex items-center justify-center text-xs text-slate-500">No gallery images yet</div>
-              ) : (
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  {imageUrls.map((k, idx) => (
-                    <div key={`${k}-${idx}`} className="rounded-xl border p-2 bg-white">
-                      <img src={imgSrcForKey(k)} alt="" className="h-28 w-full rounded-lg object-cover" />
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button type="button" className="h-8 rounded-full border px-3 text-[11px] font-semibold hover:bg-slate-50" onClick={() => setAsHero(k)}>
-                          Set hero
-                        </button>
-                        <button type="button" className="h-8 rounded-full border px-3 text-[11px] font-semibold hover:bg-slate-50" onClick={() => moveGalleryImage(idx, -1)} disabled={idx === 0}>
-                          Up
-                        </button>
-                        <button type="button" className="h-8 rounded-full border px-3 text-[11px] font-semibold hover:bg-slate-50" onClick={() => moveGalleryImage(idx, +1)} disabled={idx === imageUrls.length - 1}>
-                          Down
-                        </button>
-                        <button type="button" className="h-8 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-semibold text-red-700 hover:brightness-95" onClick={() => removeGalleryImage(idx)}>
+            {imageUrls.length === 0 ? (
+              <div className="mt-3 h-44 w-full rounded-xl border bg-slate-50 flex items-center justify-center text-xs text-slate-500">No photos yet</div>
+            ) : (
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {imageUrls.map((k, idx) => (
+                  <div
+                    key={`${k}-${idx}`}
+                    draggable={!uploadingGallery}
+                    onDragStart={(e) => onPhotoDragStart(e, idx)}
+                    onDragOver={onPhotoDragOver}
+                    onDrop={(e) => onPhotoDrop(e, idx)}
+                    onDragEnd={onPhotoDragEnd}
+                    className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
+                  >
+                    <img src={imgSrcForKey(k)} alt="" className="w-full h-36 object-contain bg-slate-100" />
+
+                    {idx === 0 ? (
+                      <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
+                        Hero
+                      </div>
+                    ) : null}
+
+                    <div className="p-2 flex items-center justify-between gap-2">
+                      <div className="text-[12px] text-slate-600">{idx === 0 ? "Hero" : `Photo ${idx + 1}`}</div>
+                      <div className="flex items-center gap-1">
+                        <div className="sm:hidden flex items-center gap-1">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            aria-label="Move photo up"
+                            onClick={() => moveGalleryByIndex(idx, "up")}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === imageUrls.length - 1}
+                            aria-label="Move photo down"
+                            onClick={() => moveGalleryByIndex(idx, "down")}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            ↓
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="h-8 rounded-full border border-red-200 bg-red-50 px-3 text-[11px] font-semibold text-red-700 hover:bg-red-100"
+                          onClick={() => removeGalleryImage(idx)}
+                        >
                           Remove
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="mt-3 text-xs text-slate-500">Tip: reorder with Up/Down. First few images show most prominently.</div>
-            </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -671,20 +759,72 @@ export default function EditListingForm({ listing }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="text-sm font-semibold text-[#0a2230]">Country</label>
-            <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationCountry} onChange={(e) => setLocationCountry(e.target.value)} />
+            <select
+              className="mt-2 w-full rounded-xl border px-3 py-2 text-sm"
+              value={countrySelectValue}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (next === "Other") {
+                  setLocationCountry("");
+                  setLocationUsRegion("");
+                  setLocationState("");
+                  return;
+                }
+                const normalized = normalizeCountryCode(next);
+                setLocationCountry(normalized);
+                if (normalized !== "US") {
+                  setLocationUsRegion("");
+                  setLocationState("");
+                }
+              }}
+            >
+              {countryOptions.map((c) => (
+                <option key={c.value || "blank"} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+              <option value="Other">Other</option>
+            </select>
           </div>
           <div>
             <label className="text-sm font-semibold text-[#0a2230]">City</label>
             <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationCity} onChange={(e) => setLocationCity(e.target.value)} />
           </div>
-          <div>
-            <label className="text-sm font-semibold text-[#0a2230]">State</label>
-            <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationState} onChange={(e) => setLocationState(e.target.value)} />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#0a2230]">US Region</label>
-            <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationUsRegion} onChange={(e) => setLocationUsRegion(e.target.value)} />
-          </div>
+          {countrySelectValue === "Other" && (
+            <div>
+              <label className="text-sm font-semibold text-[#0a2230]">Country (type it)</label>
+              <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationCountry} onChange={(e) => setLocationCountry(e.target.value)} />
+            </div>
+          )}
+          {isUSA ? (
+            <>
+              <div>
+                <label className="text-sm font-semibold text-[#0a2230]">US Region</label>
+                <select className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationUsRegion} onChange={(e) => setLocationUsRegion(e.target.value)}>
+                  {US_REGION_OPTIONS.map((o) => (
+                    <option key={o.value || "blank"} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-[#0a2230]">State</label>
+                <select className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationState} onChange={(e) => setLocationState(e.target.value)}>
+                  {usStateOptions.map((s) => (
+                    <option key={s.value || "blank"} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="text-sm font-semibold text-[#0a2230]">State/Province</label>
+              <input className="mt-2 w-full rounded-xl border px-3 py-2 text-sm" value={locationState} onChange={(e) => setLocationState(e.target.value)} />
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

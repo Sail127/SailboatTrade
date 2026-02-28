@@ -23,9 +23,10 @@ function asBool(v) {
 }
 
 function resolveAppOrigin(req) {
+  const fromReq = String(req?.nextUrl?.origin || "").trim();
+  if (fromReq) return fromReq.replace(/\/+$/, "");
   const fromEnv = String(process.env.APP_URL || "").trim();
-  if (fromEnv) return fromEnv.replace(/\/+$/, "");
-  return String(req?.nextUrl?.origin || "").replace(/\/+$/, "");
+  return fromEnv.replace(/\/+$/, "");
 }
 
 export async function POST(req) {

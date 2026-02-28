@@ -27,7 +27,7 @@ function buildServerError(payload, fallback) {
 function normalizeSdkErrorMessage(err, fallback) {
   const msg = textOrEmpty(err?.message || err);
   const lower = msg.toLowerCase();
-  if (lower.includes("window closed before response")) {
+  if (lower.includes("window closed before response") || lower.includes("postrobot_method before ack")) {
     return "Payment window was closed before PayPal finished. Please allow popups, keep the PayPal window open, and try again.";
   }
   return msg || fallback;

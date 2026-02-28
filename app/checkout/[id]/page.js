@@ -78,6 +78,9 @@ export default async function CheckoutPage({ params, searchParams }) {
 
   const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 700);
   const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 700);
+  const paypalClientId = String(
+    process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENT_ID || ""
+  ).trim();
 
   const success = String(searchParams?.success || "") === "1";
   const canceled = String(searchParams?.canceled || "") === "1";
@@ -166,6 +169,7 @@ export default async function CheckoutPage({ params, searchParams }) {
                 <CheckoutUI
                   listingId={listing.id}
                   titleLine={titleLine}
+                  paypalClientId={paypalClientId}
                   photoCount={photoCount}
                   freePhotoLimit={freePhotoLimit}
                   maxPhotos={maxPhotos}

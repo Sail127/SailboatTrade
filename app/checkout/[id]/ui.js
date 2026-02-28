@@ -97,6 +97,7 @@ function UpgradeCheck({ active, disabled, mandatory, label, priceLabel, onClick 
 export default function CheckoutUI({
   listingId,
   titleLine,
+  paypalClientId,
   photoCount,
   freePhotoLimit,
   maxPhotos,
@@ -284,6 +285,7 @@ export default function CheckoutUI({
             <PayPalExpandedCheckout
               key={`paypal-${listingId}-${photoPlus ? "1" : "0"}-${featuredHome ? "1" : "0"}-${termMonths}`}
               listingId={listingId}
+              clientId={paypalClientId}
               photoPlus={photoPlus}
               featuredHome={featuredHome}
               termMonths={termMonths}

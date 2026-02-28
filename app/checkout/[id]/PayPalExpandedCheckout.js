@@ -67,6 +67,7 @@ function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, set
 
 export default function PayPalExpandedCheckout({
   listingId,
+  clientId,
   photoPlus,
   featuredHome,
   termMonths,
@@ -75,7 +76,7 @@ export default function PayPalExpandedCheckout({
   onError,
   onSuccess,
 }) {
-  const clientId = textOrEmpty(process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID);
+  const resolvedClientId = textOrEmpty(clientId || process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID);
   const [isPaying, setIsPaying] = useState(false);
   const [billingAddress, setBillingAddress] = useState({
     addressLine1: "",
@@ -153,7 +154,7 @@ export default function PayPalExpandedCheckout({
 
   const scriptOptions = useMemo(
     () => ({
-      "client-id": clientId,
+      "client-id": resolvedClientId,
       components: "buttons,card-fields",
       currency: "USD",
       intent: "capture",
@@ -163,13 +164,13 @@ export default function PayPalExpandedCheckout({
       "disable-funding": "paylater",
       "data-sdk-integration-source": "developer-studio",
     }),
-    [clientId]
+    [resolvedClientId]
   );
 
-  if (!clientId) {
+  if (!resolvedClientId) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-        Missing `NEXT_PUBLIC_PAYPAL_CLIENT_ID`.
+        Missing PayPal client ID (`NEXT_PUBLIC_PAYPAL_CLIENT_ID` or `PAYPAL_CLIENT_ID`).
       </div>
     );
   }

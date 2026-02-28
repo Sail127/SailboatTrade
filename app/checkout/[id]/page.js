@@ -153,17 +153,16 @@ export default async function CheckoutPage({ params, searchParams }) {
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
                   <div className="font-extrabold text-[#0a2230]">Listing workflow</div>
-                  <div className="mt-1">
-                    Create or edit your listing in draft, then submit for admin review. Once approved, the listing goes live.
-                  </div>
-                  <div className="mt-1">
-                    Free listings stay active for <span className="font-semibold">30 days</span>. Paid upgrades run for
-                    <span className="font-semibold"> 1, 3, or 6 months</span> depending on your selected term.
-                  </div>
-                  <div className="mt-1">
-                    When a listing expires, it moves to archived (not public). Renew from your dashboard:
-                    free renewals use the Renew action, paid renewals continue through checkout.
-                  </div>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    <li>Create or edit your listing in draft, then submit for admin review. Once approved, the listing goes live.</li>
+                    <li>
+                      Free listings stay active for <span className="font-semibold">30 days</span>. Paid upgrades run for
+                      <span className="font-semibold"> 1, 3, or 6 months</span> depending on your selected term.
+                    </li>
+                    <li>
+                      When a listing expires, it moves to archived (not public). Renew from your dashboard: free renewals use the Renew action, paid renewals continue through checkout.
+                    </li>
+                  </ul>
                 </div>
 
                 <CheckoutUI

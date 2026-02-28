@@ -22,6 +22,12 @@ function asBool(v) {
   return s === "1" || s === "true" || s === "yes";
 }
 
+function resolveAppOrigin(req) {
+  const fromEnv = String(process.env.APP_URL || "").trim();
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
+  return String(req?.nextUrl?.origin || "").replace(/\/+$/, "");
+}
+
 export async function POST(req) {
   try {
     if (!isTrustedOrigin(req)) {
@@ -106,6 +112,11 @@ export async function POST(req) {
       termMonths,
     });
 
+    const appOrigin = resolveAppOrigin(req);
+    const returnPath = `/checkout/${encodeURIComponent(listingId)}`;
+    const returnUrl = `${appOrigin}${returnPath}`;
+    const cancelUrl = `${appOrigin}${returnPath}?canceled=1`;
+
     const payload = {
       intent: "CAPTURE",
       purchase_units: [
@@ -123,6 +134,8 @@ export async function POST(req) {
         landing_page: "BILLING",
         shipping_preference: "NO_SHIPPING",
         user_action: "PAY_NOW",
+        return_url: returnUrl,
+        cancel_url: cancelUrl,
       },
     };
     const order = await createPayPalOrder(payload);

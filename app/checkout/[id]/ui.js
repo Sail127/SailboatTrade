@@ -262,9 +262,8 @@ export default function CheckoutUI({
             <div>
               Term: <span className="font-semibold">{termMonths} month{termMonths === 1 ? "" : "s"}</span>
             </div>
-            <div>
-              Estimated total for term:{" "}
-              <span className="font-semibold">{formatMoneyFromCents(totalCents)}</span>
+            <div className="pt-1 text-[13px] font-extrabold text-[#0a2230]">
+              Total charge today: {formatMoneyFromCents(totalCents)}
             </div>
             <div className="text-slate-600">Billing stops after the selected term.</div>
           </div>
@@ -278,9 +277,6 @@ export default function CheckoutUI({
       {needsPaymentUI ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
           <div className="text-[13px] font-extrabold text-[#0a2230]">Payment</div>
-          <div className="mt-1 text-[12px] text-slate-600">
-            Continue with PayPal checkout. PayPal may allow card payment within its own flow based on account/region eligibility.
-          </div>
           <div className="mt-3">
             <PayPalExpandedCheckout
               key={`paypal-${listingId}-${photoPlus ? "1" : "0"}-${featuredHome ? "1" : "0"}-${termMonths}`}

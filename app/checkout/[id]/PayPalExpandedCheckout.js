@@ -24,6 +24,23 @@ function buildServerError(payload, fallback) {
   return extra ? `${base} (${extra})` : base;
 }
 
+function normalizeSdkErrorMessage(err, fallback) {
+  const msg = textOrEmpty(err?.message || err);
+  const lower = msg.toLowerCase();
+  if (lower.includes("window closed before response")) {
+    return "Payment window was closed before PayPal finished. Please allow popups, keep the PayPal window open, and try again.";
+  }
+  return msg || fallback;
+}
+
+function invalidFieldList(formState) {
+  const fields = formState?.fields;
+  if (!fields || typeof fields !== "object") return [];
+  return Object.entries(fields)
+    .filter(([, meta]) => meta && typeof meta === "object" && meta.isValid === false)
+    .map(([name]) => name);
+}
+
 function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, setBusy, onError }) {
   const { cardFieldsForm } = usePayPalCardFields();
 
@@ -35,7 +52,9 @@ function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, set
 
     const formState = await cardFieldsForm.getState();
     if (!formState?.isFormValid) {
-      onError?.("Please complete valid card details before submitting.");
+      const invalid = invalidFieldList(formState);
+      const detail = invalid.length ? ` Invalid: ${invalid.join(", ")}.` : "";
+      onError?.(`Please complete valid card details before submitting.${detail}`);
       return;
     }
 
@@ -44,7 +63,7 @@ function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, set
     try {
       await cardFieldsForm.submit({ billingAddress });
     } catch (e) {
-      onError?.(textOrEmpty(e?.message) || "Card payment could not be submitted.");
+      onError?.(normalizeSdkErrorMessage(e, "Card payment could not be submitted."));
     } finally {
       setBusy(false);
       setIsPaying(false);
@@ -57,7 +76,7 @@ function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, set
         type="button"
         disabled={disabled || isPaying}
         onClick={handleClick}
-        className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-6 text-[13px] font-semibold text-white hover:bg-[#0f2a3b] disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-8 items-center justify-center rounded-full bg-[#0a2230] px-4 text-[11px] font-semibold text-white hover:bg-[#0f2a3b] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isPaying ? "Processing…" : "Pay"}
       </button>
@@ -185,25 +204,35 @@ export default function PayPalExpandedCheckout({
 
   return (
     <PayPalScriptProvider options={scriptOptions}>
-      <div className="space-y-4">
-        <PayPalButtons
-          style={{ shape: "pill", layout: "horizontal", color: "gold", label: "checkout" }}
-          createOrder={createOrderCallback}
-          onApprove={async (data, actions) => {
-            setBusy(true);
-            setError("");
+      <div className="space-y-3">
+        <div className="mx-auto w-full sm:max-w-[64%]">
+          <PayPalButtons
+            style={{
+              shape: "pill",
+              layout: "horizontal",
+              color: "gold",
+              label: "checkout",
+              height: 32,
+              tagline: false,
+            }}
+            createOrder={createOrderCallback}
+            onApprove={async (data, actions) => {
+              setBusy(true);
+              setError("");
             try {
               await onApproveCallback(data, actions);
             } catch (e) {
-              setError(textOrEmpty(e?.message) || "PayPal checkout failed.");
+              setError(normalizeSdkErrorMessage(e, "PayPal checkout failed."));
             } finally {
               setBusy(false);
             }
           }}
           onError={(err) => {
-            setError(textOrEmpty(err?.message) || "PayPal checkout failed.");
+            setError(normalizeSdkErrorMessage(err, "PayPal checkout failed."));
           }}
         />
+        </div>
+        <div className="text-center text-[11px] font-extrabold tracking-wide text-slate-600">OR</div>
 
         <PayPalCardFieldsProvider
           createOrder={createOrderCallback}
@@ -213,95 +242,99 @@ export default function PayPalExpandedCheckout({
             try {
               await onApproveCallback(data, actions);
             } catch (e) {
-              setError(textOrEmpty(e?.message) || "Card payment failed.");
+              setError(normalizeSdkErrorMessage(e, "Card payment failed."));
             } finally {
               setBusy(false);
             }
           }}
           onError={(err) => {
-            setError(textOrEmpty(err?.message) || "Card payment failed.");
+            setError(normalizeSdkErrorMessage(err, "Card payment failed."));
           }}
           style={{
             input: {
-              "font-size": "16px",
+              "font-size": "13px",
               "font-family": "ui-sans-serif, system-ui, sans-serif",
+              "line-height": "18px",
+              padding: "7px 10px",
               color: "#0f172a",
             },
             ".invalid": { color: "#7f1d1d" },
           }}
         >
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="mb-2 text-[12px] font-semibold text-slate-700">Card checkout</div>
+          <div className="mx-auto w-full sm:max-w-[80%]">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <div className="mb-2 text-[11px] font-semibold text-slate-700">Card checkout</div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="rounded-lg border border-slate-300 bg-white px-2 py-2 sm:col-span-2">
-                <PayPalNameField />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded-md border border-slate-300 bg-white px-2 py-1 sm:col-span-2">
+                  <PayPalNameField />
+                </div>
+                <div className="rounded-md border border-slate-300 bg-white px-2 py-1 sm:col-span-2">
+                  <PayPalNumberField />
+                </div>
+                <div className="rounded-md border border-slate-300 bg-white px-2 py-1">
+                  <PayPalExpiryField />
+                </div>
+                <div className="rounded-md border border-slate-300 bg-white px-2 py-1">
+                  <PayPalCVVField />
+                </div>
               </div>
-              <div className="rounded-lg border border-slate-300 bg-white px-2 py-2 sm:col-span-2">
-                <PayPalNumberField />
+
+              <div className="mt-2 text-[11px] font-semibold text-slate-700">Billing Address</div>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="text"
+                  placeholder="Address line 1"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800 sm:col-span-2"
+                  value={billingAddress.addressLine1}
+                  onChange={(e) => handleBillingAddressChange("addressLine1", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Address line 2"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800 sm:col-span-2"
+                  value={billingAddress.addressLine2}
+                  onChange={(e) => handleBillingAddressChange("addressLine2", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="City"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
+                  value={billingAddress.adminArea2}
+                  onChange={(e) => handleBillingAddressChange("adminArea2", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="State"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
+                  value={billingAddress.adminArea1}
+                  onChange={(e) => handleBillingAddressChange("adminArea1", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Postal/zip code"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
+                  value={billingAddress.postalCode}
+                  onChange={(e) => handleBillingAddressChange("postalCode", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Country code (US)"
+                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
+                  value={billingAddress.countryCode}
+                  onChange={(e) => handleBillingAddressChange("countryCode", e.target.value.toUpperCase())}
+                />
               </div>
-              <div className="rounded-lg border border-slate-300 bg-white px-2 py-2">
-                <PayPalExpiryField />
-              </div>
-              <div className="rounded-lg border border-slate-300 bg-white px-2 py-2">
-                <PayPalCVVField />
-              </div>
+
+              <SubmitCardButton
+                disabled={disabled}
+                isPaying={isPaying}
+                setIsPaying={setIsPaying}
+                billingAddress={billingAddress}
+                setBusy={setBusy}
+                onError={setError}
+              />
             </div>
-
-            <div className="mt-3 text-[12px] font-semibold text-slate-700">Billing Address</div>
-            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
-                type="text"
-                placeholder="Address line 1"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800 sm:col-span-2"
-                value={billingAddress.addressLine1}
-                onChange={(e) => handleBillingAddressChange("addressLine1", e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Address line 2"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800 sm:col-span-2"
-                value={billingAddress.addressLine2}
-                onChange={(e) => handleBillingAddressChange("addressLine2", e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="City"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800"
-                value={billingAddress.adminArea2}
-                onChange={(e) => handleBillingAddressChange("adminArea2", e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="State"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800"
-                value={billingAddress.adminArea1}
-                onChange={(e) => handleBillingAddressChange("adminArea1", e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Country code (US)"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800"
-                value={billingAddress.countryCode}
-                onChange={(e) => handleBillingAddressChange("countryCode", e.target.value.toUpperCase())}
-              />
-              <input
-                type="text"
-                placeholder="Postal/zip code"
-                className="h-10 rounded-lg border border-slate-300 px-3 text-[13px] text-slate-800"
-                value={billingAddress.postalCode}
-                onChange={(e) => handleBillingAddressChange("postalCode", e.target.value)}
-              />
-            </div>
-
-            <SubmitCardButton
-              disabled={disabled}
-              isPaying={isPaying}
-              setIsPaying={setIsPaying}
-              billingAddress={billingAddress}
-              setBusy={setBusy}
-              onError={setError}
-            />
           </div>
         </PayPalCardFieldsProvider>
       </div>

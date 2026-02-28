@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+import {
+  notifyAdminListingPendingReview,
+  notifyOwnerListingPendingReviewAfterPurchase,
+} from "@/lib/adminReviewNotifications";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 import { isTrustedOrigin } from "@/lib/requestSecurity";
 import { capturePayPalOrder, getPayPalOrder } from "@/lib/paypal";
@@ -182,11 +185,31 @@ export async function POST(req) {
     });
 
     if (isPending) {
-      await notifyAdminListingPendingReview({
+      const adminNotice = await notifyAdminListingPendingReview({
         req,
         listingId: listing.id,
         source: "api/paypal/orders/capture",
       });
+      if (!adminNotice?.ok) {
+        console.warn("[paypal capture] admin review email not sent", {
+          listingId: listing.id,
+          orderId,
+          reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+        });
+      }
+
+      const ownerNotice = await notifyOwnerListingPendingReviewAfterPurchase({
+        req,
+        listingId: listing.id,
+        source: "api/paypal/orders/capture",
+      });
+      if (!ownerNotice?.ok) {
+        console.warn("[paypal capture] owner confirmation email not sent", {
+          listingId: listing.id,
+          orderId,
+          reason: ownerNotice?.skipped || ownerNotice?.error || "unknown",
+        });
+      }
     }
 
     return NextResponse.json({

@@ -66,20 +66,34 @@ export default async function CheckoutPage({ params, searchParams }) {
 
   const titleLine = titleFromListing(listing);
 
-  const photoCount = Array.isArray(listing.imageUrls) ? listing.imageUrls.length : 0;
+  const photoCount = Array.isArray(listing.imageUrls)
+    ? listing.imageUrls.length
+    : 0;
 
   // ✅ constants (keep in sync with schema rules)
   const freePhotoLimit = 3;
   const maxPhotos = 25;
 
   // ✅ prices from env (Featured defaults to $7/month)
-  const photoPlusCents = Number.parseInt(process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "700", 10);
-  const featuredCents = Number.parseInt(process.env.FEATURED_HOME_PRICE_USD_CENTS || "700", 10);
+  const photoPlusCents = Number.parseInt(
+    process.env.PHOTO_PLUS_25_PRICE_USD_CENTS || "700",
+    10,
+  );
+  const featuredCents = Number.parseInt(
+    process.env.FEATURED_HOME_PRICE_USD_CENTS || "700",
+    10,
+  );
 
-  const photoPlusPrice = moneyFromCents(Number.isFinite(photoPlusCents) ? photoPlusCents : 700);
-  const featuredPrice = moneyFromCents(Number.isFinite(featuredCents) ? featuredCents : 700);
+  const photoPlusPrice = moneyFromCents(
+    Number.isFinite(photoPlusCents) ? photoPlusCents : 700,
+  );
+  const featuredPrice = moneyFromCents(
+    Number.isFinite(featuredCents) ? featuredCents : 700,
+  );
   const paypalClientId = String(
-    process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || process.env.PAYPAL_CLIENT_ID || ""
+    process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ||
+      process.env.PAYPAL_CLIENT_ID ||
+      "",
   ).trim();
 
   const success = String(searchParams?.success || "") === "1";
@@ -90,14 +104,19 @@ export default async function CheckoutPage({ params, searchParams }) {
     <div className="py-10">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <Link href={`/listings/${listing.id}`} className="text-sm font-semibold text-slate-600 hover:text-slate-800">
+          <Link
+            href={`/listings/${listing.id}`}
+            className="text-sm font-semibold text-slate-600 hover:text-slate-800"
+          >
             ← Back to listing
           </Link>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,6,23,0.08)] overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-200">
-            <div className="text-[12px] font-extrabold tracking-wide text-slate-600">Checkout</div>
+            <div className="text-[12px] font-extrabold tracking-wide text-slate-600">
+              Checkout
+            </div>
             <div className="mt-2 text-[20px] sm:text-[24px] font-extrabold text-[#0a2230] leading-tight">
               {titleLine}
             </div>
@@ -121,10 +140,14 @@ export default async function CheckoutPage({ params, searchParams }) {
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[14px] text-slate-700 space-y-2">
                   <div>Your payment information has been received.</div>
                   <div>
-                    Your listing is pending review and will be published within 48 hours if it meets community guidelines.
+                    Your listing is pending admin review for compliance with
+                    website rules and media policy. This process should take no
+                    more than 24 hours.
                   </div>
                   <div>
-                    If it does not meet community guidelines, the listing will be returned to draft so it can be edited and resubmitted.
+                    If for some reason your listing is rejected, you will be
+                    given a reason and the listing will be returned to draft so
+                    it can be edited and resubmitted.
                   </div>
                 </div>
 
@@ -152,15 +175,28 @@ export default async function CheckoutPage({ params, searchParams }) {
                 ) : null}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-700">
-                  <div className="font-extrabold text-[#0a2230]">Listing workflow</div>
+                  <div className="font-extrabold text-[#0a2230]">
+                    Listing workflow
+                  </div>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    <li>Create or edit your listing in draft, then submit for admin review. Once approved, the listing goes live.</li>
                     <li>
-                      Free listings stay active for <span className="font-semibold">30 days</span>. Paid upgrades run for
-                      <span className="font-semibold"> 1, 3, or 6 months</span> depending on your selected term.
+                      Create or edit your listing in draft, then submit for
+                      admin review. Once approved, the listing goes live.
                     </li>
                     <li>
-                      When a listing expires, it moves to archived (not public). Renew from your dashboard: free renewals use the Renew action, paid renewals continue through checkout.
+                      Free listings stay active for{" "}
+                      <span className="font-semibold">30 days</span>. Paid
+                      upgrades run for
+                      <span className="font-semibold">
+                        {" "}
+                        1, 3, or 6 months
+                      </span>{" "}
+                      depending on your selected term.
+                    </li>
+                    <li>
+                      When a listing expires, it moves to archived (not public).
+                      Renew from your dashboard: free renewals use the Renew
+                      action, paid renewals continue through checkout.
                     </li>
                   </ul>
                 </div>
@@ -174,13 +210,21 @@ export default async function CheckoutPage({ params, searchParams }) {
                   maxPhotos={maxPhotos}
                   photoPlusPrice={photoPlusPrice}
                   featuredPrice={featuredPrice}
-                  photoPlusCents={Number.isFinite(photoPlusCents) ? photoPlusCents : 700}
-                  featuredCents={Number.isFinite(featuredCents) ? featuredCents : 700}
+                  photoPlusCents={
+                    Number.isFinite(photoPlusCents) ? photoPlusCents : 700
+                  }
+                  featuredCents={
+                    Number.isFinite(featuredCents) ? featuredCents : 700
+                  }
                   initialPhotoPlan={listing.photoPlan}
                   initialFeaturedHome={Boolean(listing.featuredHome)}
                   billingStatus={String(listing.billingStatus || "")}
                   billingProvider={String(listing.billingProvider || "")}
-                  currentPeriodEnd={listing.billingCurrentPeriodEnd ? listing.billingCurrentPeriodEnd.toISOString() : ""}
+                  currentPeriodEnd={
+                    listing.billingCurrentPeriodEnd
+                      ? listing.billingCurrentPeriodEnd.toISOString()
+                      : ""
+                  }
                   initialTermMonths={listing.billingTermMonths || 1}
                 />
               </>

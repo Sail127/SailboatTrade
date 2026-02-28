@@ -285,7 +285,7 @@ export default function CheckoutUI({
               photoPlus={photoPlus}
               featuredHome={featuredHome}
               termMonths={termMonths}
-              disabled={busy || overMax || hasActiveBilling}
+              disabled={overMax || hasActiveBilling}
               onBusyChange={setBusy}
               onError={setErr}
               onSuccess={(data) => {

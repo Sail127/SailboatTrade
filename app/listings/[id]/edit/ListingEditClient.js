@@ -61,6 +61,39 @@ function normalizePhotoOrder(imageUrls = [], heroImageUrl = "") {
   return clean.slice(0, MAX_PHOTOS);
 }
 
+function arraysEqual(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (String(a[i] || "") !== String(b[i] || "")) return false;
+  }
+  return true;
+}
+
+function makePhotoId(prefix = "photo") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function revokeBlobUrl(url) {
+  const v = String(url || "");
+  if (!v.startsWith("blob:")) return;
+  try {
+    URL.revokeObjectURL(v);
+  } catch {}
+}
+
+function toUploadedPhotoItems(imageUrls = []) {
+  return (Array.isArray(imageUrls) ? imageUrls : [])
+    .filter(Boolean)
+    .map((key, idx) => ({
+      id: makePhotoId(`uploaded-${idx}`),
+      status: "uploaded",
+      uploadedKey: String(key),
+      previewUrl: String(key),
+      file: null,
+    }));
+}
+
 function SectionCard({ title, subtitle, children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-hidden">
@@ -135,6 +168,7 @@ function imageUrlFromKey(key, token) {
   if (!k) return "";
 
   if (k.startsWith("data:")) return k;
+  if (k.startsWith("blob:")) return k;
   if (/^https?:\/\//i.test(k)) return k;
   if (k.startsWith("/")) return k;
 
@@ -215,9 +249,11 @@ async function uploadOneFile(file) {
   }
 
   if (res.ok) {
-    if (data?.key) return data.key;
-    if (Array.isArray(data?.keys) && data.keys[0]) return data.keys[0];
-    if (data?.url) return data.url;
+    if (data?.key) return { key: String(data.key), previewUrl: String(data.previewUrl || "") };
+    if (Array.isArray(data?.keys) && data.keys[0]) {
+      return { key: String(data.keys[0]), previewUrl: String(data.previewUrl || "") };
+    }
+    if (data?.url) return { key: String(data.url), previewUrl: String(data.previewUrl || "") };
 
     // Presign pattern
     if (data?.uploadUrl && data?.key) {
@@ -227,7 +263,7 @@ async function uploadOneFile(file) {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       });
       if (!put.ok) throw new Error("Upload PUT failed.");
-      return data.key;
+      return { key: String(data.key), previewUrl: String(data.previewUrl || "") };
     }
   }
 
@@ -331,12 +367,34 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     return [year, builder, model].filter(Boolean).join(" ") || String(form.title || "Listing");
   }, [form.year, form.builder, form.model, form.title]);
 
-  const photoCount = form.imageUrls.length;
-  const overMax = photoCount > MAX_PHOTOS;
-
   const fileRef = useRef(null);
   const draggingPhotoIdxRef = useRef(-1);
-  const [pendingPhotoFiles, setPendingPhotoFiles] = useState([]);
+  const [photoItems, setPhotoItems] = useState(() => toUploadedPhotoItems(form.imageUrls));
+  const photoItemsRef = useRef(photoItems);
+  const pendingPhotoCount = useMemo(
+    () => photoItems.reduce((acc, p) => (p?.status === "local" ? acc + 1 : acc), 0),
+    [photoItems]
+  );
+  const photoCount = photoItems.length;
+  const overMax = photoCount > MAX_PHOTOS;
+  const hasPendingLocalPhotos = pendingPhotoCount > 0;
+  const uploadedPhotoKeys = useMemo(
+    () =>
+      normalizePhotoOrder(
+        photoItems
+          .filter((p) => p?.status === "uploaded" && p?.uploadedKey)
+          .map((p) => String(p.uploadedKey)),
+        ""
+      ),
+    [photoItems]
+  );
+  const gallerySources = useMemo(
+    () =>
+      photoItems
+        .map((p) => (p?.status === "local" ? p?.previewUrl : p?.previewUrl || p?.uploadedKey))
+        .filter(Boolean),
+    [photoItems]
+  );
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -353,25 +411,44 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const countrySelectValue = knownCountry ? normalizedCountry : String(form.locationCountry || "").trim() ? "Other" : "";
   const isUSA = normalizedCountry === "US";
 
+  useEffect(() => {
+    photoItemsRef.current = photoItems;
+  }, [photoItems]);
+
+  useEffect(() => {
+    setForm((p) => {
+      const nextHero = uploadedPhotoKeys[0] || "";
+      if (arraysEqual(p.imageUrls, uploadedPhotoKeys) && String(p.heroImageUrl || "") === nextHero) return p;
+      return { ...p, imageUrls: uploadedPhotoKeys, heroImageUrl: nextHero };
+    });
+  }, [uploadedPhotoKeys]);
+
+  useEffect(() => {
+    return () => {
+      for (const item of photoItemsRef.current || []) revokeBlobUrl(item?.previewUrl);
+    };
+  }, []);
+
   function setField(k, v) {
     setForm((p) => ({ ...p, [k]: v }));
   }
 
   function movePhoto(from, to) {
-    setForm((p) => {
-      const arr = p.imageUrls.slice();
-      if (from < 0 || to < 0 || from >= arr.length || to >= arr.length) return p;
-      const [item] = arr.splice(from, 1);
-      arr.splice(to, 0, item);
-      const ordered = normalizePhotoOrder(arr, arr[0]);
-      return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
+    setPhotoItems((prev) => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const next = prev.slice();
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
     });
   }
+
   function removePhoto(i) {
-    setForm((p) => {
-      const next = p.imageUrls.filter((_, idx) => idx !== i);
-      const ordered = normalizePhotoOrder(next, next[0]);
-      return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
+    setPhotoItems((prev) => {
+      if (i < 0 || i >= prev.length) return prev;
+      const target = prev[i];
+      revokeBlobUrl(target?.previewUrl);
+      return prev.filter((_, idx) => idx !== i);
     });
   }
 
@@ -411,18 +488,26 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setPhotoErr("");
     if (!files?.length) return;
 
-    const currentlyQueued = pendingPhotoFiles.length;
-    const remaining = MAX_PHOTOS - form.imageUrls.length - currentlyQueued;
+    const incoming = Array.from(files).filter((f) => /^image\//i.test(String(f?.type || "")));
+    if (!incoming.length) return;
+
+    const remaining = MAX_PHOTOS - photoItems.length;
     if (remaining <= 0) {
       setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
       return;
     }
 
-    const incoming = Array.from(files);
     const accepted = incoming.slice(0, remaining);
     const rejected = incoming.length - accepted.length;
     if (accepted.length) {
-      setPendingPhotoFiles((prev) => [...prev, ...accepted]);
+      const localItems = accepted.map((file) => ({
+        id: makePhotoId("local"),
+        status: "local",
+        uploadedKey: "",
+        previewUrl: URL.createObjectURL(file),
+        file,
+      }));
+      setPhotoItems((prev) => [...prev, ...localItems]);
     }
     if (rejected > 0) {
       setPhotoErr(`Only ${remaining} more ${remaining === 1 ? "photo" : "photos"} can be added.`);
@@ -431,36 +516,69 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
   async function uploadQueuedPhotos() {
     setPhotoErr("");
-    if (!pendingPhotoFiles.length) return;
-    const remaining = MAX_PHOTOS - form.imageUrls.length;
-    if (remaining <= 0) {
+    const localItems = (photoItemsRef.current || []).filter((p) => p?.status === "local" && p?.file);
+    if (!localItems.length) return;
+    if (photoItemsRef.current.length > MAX_PHOTOS) {
       setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
       return;
     }
-    const slice = pendingPhotoFiles.slice(0, remaining);
 
     setPhotoBusy(true);
     try {
-      const keys = [];
-      for (const f of slice) {
+      const uploadedById = {};
+      const previewById = {};
+      let uploadErr = "";
+
+      for (const item of localItems) {
         // eslint-disable-next-line no-await-in-loop
-        const k = await uploadOneFile(f);
-        if (k) keys.push(k);
+        try {
+          const uploaded = await uploadOneFile(item.file);
+          const key = String(uploaded?.key || "").trim();
+          if (!key) throw new Error("Upload failed.");
+          uploadedById[item.id] = key;
+          previewById[item.id] = String(uploaded?.previewUrl || key);
+        } catch (e) {
+          uploadErr = e?.message || "Upload failed.";
+          break;
+        }
       }
-      if (keys.length) {
-        setForm((p) => {
-          const merged = [...p.imageUrls, ...keys].slice(0, MAX_PHOTOS);
-          const ordered = normalizePhotoOrder(merged, merged[0]);
-          return { ...p, imageUrls: ordered, heroImageUrl: ordered[0] || "" };
-        });
+
+      if (Object.keys(uploadedById).length) {
+        setPhotoItems((prev) =>
+          prev.map((p) => {
+            const key = uploadedById[p.id];
+            if (!key) return p;
+            revokeBlobUrl(p.previewUrl);
+            return {
+              ...p,
+              status: "uploaded",
+              uploadedKey: key,
+              previewUrl: previewById[p.id] || key,
+              file: null,
+            };
+          })
+        );
       }
-      setPendingPhotoFiles((prev) => prev.slice(slice.length));
+
+      if (uploadErr) {
+        throw new Error(uploadErr);
+      }
     } catch (e) {
       setPhotoErr(e?.message || "Upload failed.");
     } finally {
       setPhotoBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  function photoSrc(item) {
+    if (!item) return "";
+    const source = item.status === "local" ? item.previewUrl : item.previewUrl || item.uploadedKey;
+    return imageUrlFromKey(source, token);
+  }
+
+  function photoLabel(i) {
+    return i === 0 ? "Hero" : `Photo ${i + 1}`;
   }
 
   function addEquipment() {
@@ -489,10 +607,14 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       setSaveErr(`You have ${photoCount} photos. Max is ${MAX_PHOTOS}. Remove photos first.`);
       return false;
     }
+    if (hasPendingLocalPhotos) {
+      setSaveErr("You selected photos. Please press Upload in the Photos section before saving.");
+      return false;
+    }
 
     setSaving(true);
     try {
-      const orderedPhotos = normalizePhotoOrder(form.imageUrls, form.heroImageUrl);
+      const orderedPhotos = normalizePhotoOrder(uploadedPhotoKeys, uploadedPhotoKeys[0] || "");
       const payload = {
         title: strOrNull(form.title),
         year: intOrNull(form.year),
@@ -693,7 +815,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
               {titleLine}
             </div>
 
-            <Gallery keys={form.imageUrls.length ? form.imageUrls : form.heroImageUrl ? [form.heroImageUrl] : []} token={token} title={titleLine} />
+            <Gallery keys={gallerySources.length ? gallerySources : form.heroImageUrl ? [form.heroImageUrl] : []} token={token} title={titleLine} />
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -711,10 +833,10 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
                 <button
                   type="button"
-                  disabled={photoBusy || form.imageUrls.length >= MAX_PHOTOS}
+                  disabled={photoBusy || photoCount >= MAX_PHOTOS}
                   onClick={() => fileRef.current?.click()}
                   className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] ${
-                    photoBusy || form.imageUrls.length >= MAX_PHOTOS ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
+                    photoBusy || photoCount >= MAX_PHOTOS ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
                   }`}
                 >
                   Add photos
@@ -722,33 +844,33 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
                 <button
                   type="button"
-                  disabled={photoBusy || pendingPhotoFiles.length === 0}
+                  disabled={photoBusy || pendingPhotoCount === 0}
                   onClick={uploadQueuedPhotos}
                   className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                    photoBusy || pendingPhotoFiles.length === 0 ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+                    photoBusy || pendingPhotoCount === 0 ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
                   }`}
                 >
                   {photoBusy ? "Uploading…" : "Upload"}
                 </button>
               </div>
 
-              {pendingPhotoFiles.length ? (
+              {pendingPhotoCount ? (
                 <div className="mt-2 text-[12px] text-slate-600">
-                  {pendingPhotoFiles.length} selected. Press Upload.
+                  {pendingPhotoCount} selected. Press Upload.
                 </div>
               ) : null}
 
-              {form.imageUrls.length > 1 ? (
+              {photoItems.length > 1 ? (
                 <div className="mt-2 text-[12px] text-slate-600">
                   Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
                 </div>
               ) : null}
 
-              {form.imageUrls.length ? (
+              {photoItems.length ? (
                 <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {form.imageUrls.map((k, i) => (
+                  {photoItems.map((item, i) => (
                     <div
-                      key={k + i}
+                      key={item.id}
                       draggable={!photoBusy}
                       onDragStart={(e) => onPhotoDragStart(e, i)}
                       onDragOver={onPhotoDragOver}
@@ -757,7 +879,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                       className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={imageUrlFromKey(k, token)} alt={`Photo ${i + 1}`} className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
+                      <img src={photoSrc(item)} alt={photoLabel(i)} className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
 
                       {i === 0 ? (
                         <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
@@ -765,12 +887,17 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                         </div>
                       ) : null}
 
-                      <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
-                        ✓
-                      </div>
+                      {item.status === "uploaded" ? (
+                        <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
+                          ✓
+                        </div>
+                      ) : null}
 
                       <div className="p-2 flex items-center justify-between gap-2">
-                        <div className="text-[12px] text-slate-600">{i === 0 ? "Hero" : `Photo ${i + 1}`}</div>
+                        <div className="text-[12px] text-slate-600">
+                          {photoLabel(i)}
+                          {item.status !== "uploaded" ? " (Local)" : ""}
+                        </div>
                         <div className="flex items-center gap-1">
                           <div className="sm:hidden flex items-center gap-1">
                             <button
@@ -784,7 +911,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                             </button>
                             <button
                               type="button"
-                              disabled={i === form.imageUrls.length - 1}
+                              disabled={i === photoItems.length - 1}
                               aria-label="Move photo down"
                               onClick={() => movePhotoByIndex(i, "down")}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"

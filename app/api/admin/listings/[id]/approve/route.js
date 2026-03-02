@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdminApi, audit } from "@/lib/admin";
+import { notifyOwnerListingPublished } from "@/lib/adminReviewNotifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,6 +104,18 @@ export async function POST(req, { params }) {
       billingAddons: listing.billingAddons,
     },
   });
+
+  const ownerNotice = await notifyOwnerListingPublished({
+    req,
+    listingId: id,
+    source: "api/admin/listings/[id]/approve",
+  });
+  if (!ownerNotice?.ok) {
+    console.warn("[admin approve] owner publish email not sent", {
+      listingId: id,
+      reason: ownerNotice?.skipped || ownerNotice?.error || "unknown",
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

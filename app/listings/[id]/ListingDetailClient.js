@@ -641,9 +641,12 @@ export default function ListingDetailClient({
   canEdit,
   locationCountryLabel,
   usRegionLabel,
+  forcedPreviewToken = "",
 }) {
   const sp = useSearchParams();
-  const previewToken = (sp?.get("token") || "").trim();
+  const previewToken = String(
+    forcedPreviewToken || (sp?.get("token") || "")
+  ).trim();
 
   const isBroker = String(listing?.sellerRole || "").toUpperCase() === "BROKER";
   const meta = statusMeta(listing?.status);

@@ -1,6 +1,7 @@
 // app/listings/page.js
 import Link from "next/link";
 import prisma from "../../lib/prisma.js";
+import { readSession } from "../../lib/auth.js";
 import ListingCard from "../../components/ListingCard.js";
 import ListingsFilterSidebar from "../../components/ListingsFilterSidebar.js";
 import SortSelect from "../../components/SortSelect.js";
@@ -164,6 +165,9 @@ function buildHref(searchParams, pageNum) {
 }
 
 export default async function Browse({ searchParams }) {
+  const session = await readSession().catch(() => null);
+  const viewerId = session?.uid ? String(session.uid) : "";
+
   const now = new Date();
   const publishedFilter = { status: "PUBLISHED", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
   const q = (searchParams?.q ?? "").toString().trim();
@@ -179,6 +183,8 @@ export default async function Browse({ searchParams }) {
 
   const yearMin = toInt(searchParams?.yearMin);
   const yearMax = toInt(searchParams?.yearMax);
+  const priceMin = toInt(searchParams?.priceMin);
+  const priceMax = toInt(searchParams?.priceMax);
 
   const loaUnit = (searchParams?.loaUnit || "ft").toString().toLowerCase();
   const loaMinRaw = toFloat(searchParams?.loaMin);
@@ -236,6 +242,12 @@ export default async function Browse({ searchParams }) {
     if (yearMax != null) where.year.lte = yearMax;
   }
 
+  if (priceMin != null || priceMax != null) {
+    where.price = {};
+    if (priceMin != null) where.price.gte = priceMin;
+    if (priceMax != null) where.price.lte = priceMax;
+  }
+
   if (loaMin != null || loaMax != null) {
     where.loa = {};
     if (loaMin != null) where.loa.gte = loaMin;
@@ -284,6 +296,17 @@ export default async function Browse({ searchParams }) {
     },
   });
 
+  const rowIds = rows.map((r) => String(r.id || "")).filter(Boolean);
+  let favoritedIds = new Set();
+
+  if (viewerId && rowIds.length > 0) {
+    const favs = await prisma.favorite.findMany({
+      where: { userId: viewerId, listingId: { in: rowIds } },
+      select: { listingId: true },
+    });
+    favoritedIds = new Set(favs.map((f) => String(f.listingId || "")));
+  }
+
   // ✅ Compatibility mapping so older components expecting make/length don't crash
   const listings = rows.map((l) => ({
     ...l,
@@ -291,6 +314,8 @@ export default async function Browse({ searchParams }) {
     make: l.builder ?? null, // legacy (ListingCard or others might still use)
     length: l.loa ?? null, // legacy
     lengthUnit: l.loaUnit ?? null, // legacy
+    viewerFavorited: favoritedIds.has(String(l.id || "")),
+    viewerLoggedIn: Boolean(viewerId),
   }));
 
   const initial = {
@@ -301,6 +326,8 @@ export default async function Browse({ searchParams }) {
     usRegion,
     yearMin: searchParams?.yearMin || "",
     yearMax: searchParams?.yearMax || "",
+    priceMin: searchParams?.priceMin || "",
+    priceMax: searchParams?.priceMax || "",
     loaMin: searchParams?.loaMin || "",
     loaMax: searchParams?.loaMax || "",
     loaUnit,
@@ -308,12 +335,12 @@ export default async function Browse({ searchParams }) {
   };
 
   return (
-    <main className="mx-auto max-w-7xl px-5 md:px-8 py-8">
+    <main className="mx-auto max-w-[82rem] px-5 md:px-8 py-8">
       <h1 className="text-center text-3xl md:text-4xl font-semibold text-[#0a2230] mb-6">
         Your adventure awaits.
       </h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-5 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[221px_minmax(0,1fr)] gap-4 items-start">
         <div className="lg:sticky lg:top-24 self-start">
           <ListingsFilterSidebar initialValues={initial} submitPath="/listings" />
         </div>
@@ -339,9 +366,9 @@ export default async function Browse({ searchParams }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {listings.map((l) => (
-              <ListingCard key={l.id} listing={l} imageFit="contain" />
+              <ListingCard key={l.id} listing={l} imageFit="contain" showFavorite />
             ))}
           </div>
 

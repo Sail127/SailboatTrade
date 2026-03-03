@@ -303,6 +303,7 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
 
 export default function Header() {
   const pathname = usePathname();
+  const isListingsBrowse = pathname === "/listings";
 
   const [open, setOpen] = useState(false); // hamburger
   const [scrolled, setScrolled] = useState(false);
@@ -458,8 +459,7 @@ export default function Header() {
               className={[
                 "h-9 rounded-lg border border-white/15 bg-white text-[#0a2230]",
                 "px-3 text-sm outline-none focus:ring-2 focus:ring-[#f3b23f]/40",
-                "flex-1 min-w-0",
-                "w-[140px] sm:w-56",
+                isListingsBrowse ? "min-w-0 w-[120px] sm:w-44 md:w-48" : "flex-1 min-w-0 w-[140px] sm:w-56",
               ].join(" ")}
             />
 

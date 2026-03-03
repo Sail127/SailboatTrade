@@ -74,6 +74,16 @@ function buildLoaOptions(unit) {
   return out;
 }
 
+function digitsOnly(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function formatPriceInput(value) {
+  const digits = digitsOnly(value);
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function normalizeInitialValues(initialValues = {}) {
   const nextType = String(initialValues?.type || "both").toLowerCase();
   const safeType = ["both", "monohull", "catamaran", "trimaran"].includes(nextType) ? nextType : "both";
@@ -87,6 +97,8 @@ function normalizeInitialValues(initialValues = {}) {
     builder: String(initialValues?.builder || ""),
     yearMin: String(initialValues?.yearMin || ""),
     yearMax: String(initialValues?.yearMax || ""),
+    priceMin: digitsOnly(initialValues?.priceMin),
+    priceMax: digitsOnly(initialValues?.priceMax),
     loaUnit: safeLoaUnit,
     loaMin: String(initialValues?.loaMin || ""),
     loaMax: String(initialValues?.loaMax || ""),
@@ -193,6 +205,8 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
   const [builder, setBuilder] = useState(initial.builder);
   const [yearMin, setYearMin] = useState(initial.yearMin);
   const [yearMax, setYearMax] = useState(initial.yearMax);
+  const [priceMin, setPriceMin] = useState(initial.priceMin);
+  const [priceMax, setPriceMax] = useState(initial.priceMax);
   const [loaUnit, setLoaUnit] = useState(initial.loaUnit);
   const [loaMin, setLoaMin] = useState(initial.loaMin);
   const [loaMax, setLoaMax] = useState(initial.loaMax);
@@ -212,6 +226,8 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     setBuilder(initial.builder);
     setYearMin(initial.yearMin);
     setYearMax(initial.yearMax);
+    setPriceMin(initial.priceMin);
+    setPriceMax(initial.priceMax);
     setLoaUnit(initial.loaUnit);
     setLoaMin(initial.loaMin);
     setLoaMax(initial.loaMax);
@@ -230,6 +246,8 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     initial.builder,
     initial.yearMin,
     initial.yearMax,
+    initial.priceMin,
+    initial.priceMax,
     initial.loaUnit,
     initial.loaMin,
     initial.loaMax,
@@ -269,6 +287,16 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
         },
       });
     }
+    if (priceMin || priceMax) {
+      items.push({
+        id: "price",
+        label: `Price ${formatPriceInput(priceMin) || "Any"}-${formatPriceInput(priceMax) || "Any"}`,
+        onRemove: () => {
+          setPriceMin("");
+          setPriceMax("");
+        },
+      });
+    }
     if (loaMin || loaMax) {
       items.push({
         id: "loa",
@@ -304,7 +332,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
       });
     }
     return items;
-  }, [type, builder, yearMin, yearMax, loaMin, loaMax, loaUnit, country, isUSA, usRegion, q]);
+  }, [type, builder, yearMin, yearMax, priceMin, priceMax, loaMin, loaMax, loaUnit, country, isUSA, usRegion, q]);
 
   const input =
     "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
@@ -339,6 +367,8 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     put("builder", builder);
     put("yearMin", yearMin);
     put("yearMax", yearMax);
+    put("priceMin", priceMin);
+    put("priceMax", priceMax);
 
     const hasLoaRange = String(loaMin || "").trim() || String(loaMax || "").trim();
     if (hasLoaRange) {
@@ -359,6 +389,8 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     setBuilder("");
     setYearMin("");
     setYearMax("");
+    setPriceMin("");
+    setPriceMax("");
     setLoaUnit("ft");
     setLoaMin("");
     setLoaMax("");
@@ -400,7 +432,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
       if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, type, builder, yearMin, yearMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath, router]);
+  }, [q, type, builder, yearMin, yearMax, priceMin, priceMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath, router]);
 
   useEffect(() => {
     if (!mobileDrawerOpen || typeof document === "undefined") return;
@@ -445,7 +477,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     const body = `Please create an email alert for this search:\n\n${absolute}`;
     return `mailto:support@sailboattrade.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, type, builder, yearMin, yearMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath]);
+  }, [q, type, builder, yearMin, yearMax, priceMin, priceMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath]);
 
   const selectedHull = useMemo(() => {
     if (type === "monohull") return { label: "Monohull", imgSrc: "/images/hulls/monohull.png", isAll: false };
@@ -602,6 +634,32 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
               </div>
 
               <div className={drawerSection}>
+                <label className={drawerLabel}>PRICE</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Min"
+                    className={drawerInput}
+                    value={formatPriceInput(priceMin)}
+                    onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
+                    aria-label="Minimum price"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Max"
+                    className={drawerInput}
+                    value={formatPriceInput(priceMax)}
+                    onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
+                    aria-label="Maximum price"
+                  />
+                </div>
+              </div>
+
+              <div className={drawerSection}>
                 <label className={drawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
 
                 {!isUSA ? (
@@ -707,17 +765,17 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
         </div>
 
         <div className="mt-3 space-y-1.5">
-          <Link href="/dashboard/favorites" className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+          <Link href="/dashboard/favorites" className="block rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
             MY FAVORITES
           </Link>
           <button
             type="button"
             onClick={saveSearch}
-            className="w-full rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+            className="w-full rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
           >
             SAVE SEARCH
           </button>
-          <a href={emailHref} className="block rounded-md bg-[#f3b23f] px-4 py-2 text-center text-[13px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+          <a href={emailHref} className="block rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
             EMAIL ALERT
           </a>
           {saveMsg ? <div className="text-[12px] font-semibold text-slate-600">{saveMsg}</div> : null}
@@ -834,6 +892,32 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">PRICE</label>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Min"
+                className={input}
+                value={formatPriceInput(priceMin)}
+                onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
+                aria-label="Minimum price"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Max"
+                className={input}
+                value={formatPriceInput(priceMax)}
+                onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
+                aria-label="Maximum price"
+              />
             </div>
           </div>
 

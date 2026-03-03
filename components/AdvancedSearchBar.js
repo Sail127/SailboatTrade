@@ -75,6 +75,16 @@ function buildLoaOptions(unit) {
   return out;
 }
 
+function digitsOnly(value) {
+  return String(value || "").replace(/[^\d]/g, "");
+}
+
+function formatPriceInput(value) {
+  const digits = digitsOnly(value);
+  if (!digits) return "";
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function CompassIcon({ className = "h-4 w-4" }) {
   return (
     <svg
@@ -123,6 +133,8 @@ function normalizeInitialValues(initialValues = {}) {
     builder: String(initialValues?.builder || ""),
     yearMin: String(initialValues?.yearMin || ""),
     yearMax: String(initialValues?.yearMax || ""),
+    priceMin: digitsOnly(initialValues?.priceMin),
+    priceMax: digitsOnly(initialValues?.priceMax),
     loaUnit: safeLoaUnit,
     loaMin: String(initialValues?.loaMin || ""),
     loaMax: String(initialValues?.loaMax || ""),
@@ -207,6 +219,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const [builder, setBuilder] = useState(initial.builder);
   const [yearMin, setYearMin] = useState(initial.yearMin);
   const [yearMax, setYearMax] = useState(initial.yearMax);
+  const [priceMin, setPriceMin] = useState(initial.priceMin);
+  const [priceMax, setPriceMax] = useState(initial.priceMax);
   const [loaUnit, setLoaUnit] = useState(initial.loaUnit);
   const [loaMin, setLoaMin] = useState(initial.loaMin);
   const [loaMax, setLoaMax] = useState(initial.loaMax);
@@ -219,6 +233,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     setBuilder(initial.builder);
     setYearMin(initial.yearMin);
     setYearMax(initial.yearMax);
+    setPriceMin(initial.priceMin);
+    setPriceMax(initial.priceMax);
     setLoaUnit(initial.loaUnit);
     setLoaMin(initial.loaMin);
     setLoaMax(initial.loaMax);
@@ -230,6 +246,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     initial.builder,
     initial.yearMin,
     initial.yearMax,
+    initial.priceMin,
+    initial.priceMax,
     initial.loaUnit,
     initial.loaMin,
     initial.loaMax,
@@ -245,6 +263,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     const hasBuilder = !!String(builder || "").trim();
     const hasYearMin = !!String(yearMin || "").trim();
     const hasYearMax = !!String(yearMax || "").trim();
+    const hasPriceMin = !!String(priceMin || "").trim();
+    const hasPriceMax = !!String(priceMax || "").trim();
     const hasLoaMin = !!String(loaMin || "").trim();
     const hasLoaMax = !!String(loaMax || "").trim();
     const hasCountry = !!String(country || "").trim();
@@ -256,12 +276,14 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       hasBuilder ||
       hasYearMin ||
       hasYearMax ||
+      hasPriceMin ||
+      hasPriceMax ||
       hasLoaMin ||
       hasLoaMax ||
       hasCountry ||
       hasUsRegion
     );
-  }, [q, type, builder, yearMin, yearMax, loaMin, loaMax, country, isUSA, usRegion]);
+  }, [q, type, builder, yearMin, yearMax, priceMin, priceMax, loaMin, loaMax, country, isUSA, usRegion]);
 
   const shell = "w-full rounded-2xl bg-[#0a2230] p-4 shadow-lg ring-1 ring-white/15";
 
@@ -301,6 +323,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
     put("yearMin", yearMin);
     put("yearMax", yearMax);
+    put("priceMin", priceMin);
+    put("priceMax", priceMax);
 
     const hasLoaRange = String(loaMin || "").trim() || String(loaMax || "").trim();
     if (hasLoaRange) {
@@ -329,6 +353,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     setBuilder("");
     setYearMin("");
     setYearMax("");
+    setPriceMin("");
+    setPriceMax("");
     setLoaUnit("ft");
     setLoaMin("");
     setLoaMax("");
@@ -402,8 +428,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
           </div>
         </div>
 
-        {/* ROW 2: Year + Builder + LOA */}
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[252px_360px_252px] lg:items-start">
+        {/* ROW 2: Year + Builder + LOA + Price */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[252px_360px_252px_252px] lg:items-start">
           <div className="min-w-0">
             <label className={label}>Year</label>
             <div className="mt-2 flex gap-2">
@@ -486,6 +512,32 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <label className={label}>Price</label>
+            <div className="mt-2 lg:mt-1 flex gap-2">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Min"
+                className={`${input} !w-[120px]`}
+                value={formatPriceInput(priceMin)}
+                onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
+                aria-label="Minimum price"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="Max"
+                className={`${input} !w-[120px]`}
+                value={formatPriceInput(priceMax)}
+                onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
+                aria-label="Maximum price"
+              />
             </div>
           </div>
         </div>

@@ -97,7 +97,12 @@
   }
 
   button {
+    cursor: pointer;
     transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
   }
 
   button:active {

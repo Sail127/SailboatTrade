@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
@@ -13,6 +14,27 @@ const CONTAINER = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-8";
 // ✅ Free + paid plan constants (schema-aligned)
 const FREE_PHOTO_LIMIT = 3;
 const MAX_PHOTOS = 25;
+const SWIPE_OFFSET_THRESHOLD = 50;
+const SWIPE_VELOCITY_THRESHOLD = 360;
+
+const gallerySlideVariants = {
+  enter: (dir) => ({
+    x: dir > 0 ? 120 : -120,
+  }),
+  center: {
+    x: 0,
+  },
+  exit: (dir) => ({
+    x: dir > 0 ? -120 : 120,
+  }),
+};
+
+function shouldSwipe(offsetX, velocityX) {
+  return (
+    Math.abs(offsetX) > SWIPE_OFFSET_THRESHOLD ||
+    Math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD
+  );
+}
 
 /* -----------------------------
    UI primitives
@@ -368,6 +390,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   }, [keys, token]);
 
   const [idx, setIdx] = useState(0);
+  const [slideDirection, setSlideDirection] = useState(1);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
@@ -375,6 +398,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   const [lightboxViewportWidth, setLightboxViewportWidth] = useState(null);
   const [touchLandscapeFit, setTouchLandscapeFit] = useState(null);
   const mobileTrackRef = useRef(null);
+  const galleryDragRef = useRef(false);
   const pinchAreaRef = useRef(null);
   const lightboxImageRef = useRef(null);
   const pointersRef = useRef(new Map());
@@ -555,10 +579,12 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
 
   function prev() {
     if (!images.length) return;
+    setSlideDirection(-1);
     setIdx((v) => (v - 1 + images.length) % images.length);
   }
   function next() {
     if (!images.length) return;
+    setSlideDirection(1);
     setIdx((v) => (v + 1) % images.length);
   }
 
@@ -743,14 +769,49 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
     <div className="space-y-3">
       <div className="hidden sm:block">
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={images[idx]}
-            alt={`${title} ${idx + 1}`}
-            className="w-full aspect-[16/10] object-contain bg-slate-100 cursor-zoom-in"
-            onClick={() => setLightboxOpen(true)}
-            loading="eager"
-          />
+          <AnimatePresence initial={false} custom={slideDirection} mode="sync">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <motion.img
+              key={`gallery-main-${idx}`}
+              src={images[idx]}
+              alt={`${title} ${idx + 1}`}
+              className="w-full aspect-[16/10] object-contain bg-slate-100 cursor-zoom-in"
+              loading="eager"
+              custom={slideDirection}
+              variants={gallerySlideVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                type: "spring",
+                stiffness: 680,
+                damping: 46,
+                mass: 0.62,
+              }}
+              drag={images.length > 1 ? "x" : false}
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.28}
+              dragMomentum={false}
+              onDrag={(_, info) => {
+                if (Math.abs(info.offset.x) > 6) galleryDragRef.current = true;
+              }}
+              onDragEnd={(_, info) => {
+                const offsetX = info.offset.x || 0;
+                const velocityX = info.velocity.x || 0;
+                if (shouldSwipe(offsetX, velocityX)) {
+                  if (offsetX < 0 || velocityX < 0) next();
+                  else prev();
+                }
+                requestAnimationFrame(() => {
+                  galleryDragRef.current = false;
+                });
+              }}
+              onClick={() => {
+                if (galleryDragRef.current) return;
+                setLightboxOpen(true);
+              }}
+            />
+          </AnimatePresence>
 
           {images.length > 1 ? (
             <>
@@ -791,7 +852,11 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
             <button
               key={src + i}
               type="button"
-              onClick={() => setIdx(i)}
+              onClick={() => {
+                if (i === idx) return;
+                setSlideDirection(i > idx ? 1 : -1);
+                setIdx(i);
+              }}
               className={`relative h-16 w-24 flex-none overflow-hidden rounded-xl border ${
                 i === idx ? "border-[#c8a44d]" : "border-slate-200"
               } bg-white`}
@@ -979,37 +1044,55 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   else setZoom(2);
                 }}
               >
-                <div className="h-full w-full grid place-items-center">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    ref={lightboxImageRef}
-                    src={images[idx]}
-                    alt={`Fullscreen ${idx + 1}`}
-                    className={`${
-                      isTouchLandscape
-                        ? "h-auto w-auto object-contain"
-                        : "max-h-full max-w-full h-auto w-auto object-contain"
-                    } select-none`}
-                    draggable={false}
-                    onLoad={() => {
-                      if (isTouchLandscape) updateTouchLandscapeFit();
-                    }}
-                    style={{
-                      width:
-                        isTouchLandscape && touchLandscapeFit?.w
-                          ? `${touchLandscapeFit.w}px`
-                          : undefined,
-                      height:
-                        isTouchLandscape && touchLandscapeFit?.h
-                          ? `${touchLandscapeFit.h}px`
-                          : undefined,
-                      transform:
-                        zoom > 1.001 || pan.x || pan.y
-                          ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
-                          : "none",
-                      transformOrigin: "center center",
-                    }}
-                  />
+                <div className="relative h-full w-full overflow-hidden">
+                  <AnimatePresence initial={false} custom={slideDirection} mode="sync">
+                    <motion.div
+                      key={`gallery-lightbox-${idx}`}
+                      className="h-full w-full grid place-items-center"
+                      custom={slideDirection}
+                      variants={gallerySlideVariants}
+                      initial="enter"
+                      animate="center"
+                      exit="exit"
+                      transition={{
+                        type: "spring",
+                        stiffness: 680,
+                        damping: 46,
+                        mass: 0.62,
+                      }}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        ref={lightboxImageRef}
+                        src={images[idx]}
+                        alt={`Fullscreen ${idx + 1}`}
+                        className={`${
+                          isTouchLandscape
+                            ? "h-auto w-auto object-contain"
+                            : "max-h-full max-w-full h-auto w-auto object-contain"
+                        } select-none`}
+                        draggable={false}
+                        onLoad={() => {
+                          if (isTouchLandscape) updateTouchLandscapeFit();
+                        }}
+                        style={{
+                          width:
+                            isTouchLandscape && touchLandscapeFit?.w
+                              ? `${touchLandscapeFit.w}px`
+                              : undefined,
+                          height:
+                            isTouchLandscape && touchLandscapeFit?.h
+                              ? `${touchLandscapeFit.h}px`
+                              : undefined,
+                          transform:
+                            zoom > 1.001 || pan.x || pan.y
+                              ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
+                              : "none",
+                          transformOrigin: "center center",
+                        }}
+                      />
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
@@ -1025,7 +1108,11 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                     <button
                       key={src + i}
                       type="button"
-                      onClick={() => setIdx(i)}
+                      onClick={() => {
+                        if (i === idx) return;
+                        setSlideDirection(i > idx ? 1 : -1);
+                        setIdx(i);
+                      }}
                       className={`${
                         isTouchDevice ? "h-9 w-12" : "h-14 w-20"
                       } flex-none overflow-hidden rounded-xl border ${
@@ -1085,21 +1172,23 @@ export default function ListingDetailClient({
     locationCountryLabel || listing?.locationCountry || ""
   ).trim();
 
-  const regionCountryLine = useMemo(() => {
+  const locationRegionText = useMemo(() => {
     const country = rawCountry || "";
     const isUSA2 = isUsCountry(country);
-
     const regionFallback = String(listing?.locationUsRegion || "").trim();
     const region =
       usRegionLabel || (regionFallback ? prettyEnum(regionFallback) : "");
 
     if (!country && region) return region;
-    if (!country && !region) return "";
-
-    if (!isUSA2) return country;
-
-    return [region, prettyUsCountry(country)].filter(Boolean).join(" • ");
+    if (!country || !isUSA2) return "";
+    return region;
   }, [rawCountry, usRegionLabel, listing?.locationUsRegion]);
+
+  const locationCountryText = useMemo(() => {
+    const country = rawCountry || "";
+    if (!country) return "";
+    return isUsCountry(country) ? prettyUsCountry(country) : country;
+  }, [rawCountry]);
 
   const cityStateLine = [listing?.locationCity, listing?.locationState]
     .filter(Boolean)
@@ -1239,6 +1328,10 @@ export default function ListingDetailClient({
     setShareMsg("");
     if (typeof window !== "undefined") setShareUrl(window.location.href);
     setShareOpen(true);
+  }
+
+  function onPrintListing() {
+    if (typeof window !== "undefined") window.print();
   }
 
   async function onToggleSave() {
@@ -1770,8 +1863,16 @@ export default function ListingDetailClient({
     [listing?.additionalInfo]
   );
 
-  const locationClass =
-    "text-[14px] sm:text-[16px] font-semibold text-[#0a2230] font-serif tracking-wide min-w-0 truncate";
+  const currencyCode = String(listing?.currency || "")
+    .trim()
+    .toUpperCase();
+  const priceWithCurrency = price
+    ? `${price}${currencyCode ? ` ${currencyCode}` : ""}`
+    : "";
+
+  const titleClass = "text-[24px] sm:text-[34px] font-bold leading-tight tracking-tight text-[#0a2230]";
+  const priceClass = "text-[18px] sm:text-[22px] font-normal leading-tight text-[#0a2230]";
+  const locationClass = "text-[15px] sm:text-[18px] font-medium text-[#0a2230] min-w-0 truncate";
 
   return (
     <div className="py-8">
@@ -1784,31 +1885,71 @@ export default function ListingDetailClient({
               type="button"
               onClick={onToggleSave}
               disabled={saveBusy}
-              className={`inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[12px] font-semibold ${
-                saved
-                  ? "border-[#c8a44d] bg-[#fff7d6] text-[#0a2230]"
-                  : "border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
-              } ${saveBusy ? "opacity-70 cursor-not-allowed" : ""}`}
+              className={`inline-flex h-9 w-9 items-center justify-center cursor-pointer text-[#0a2230] ${
+                saveBusy ? "opacity-70 cursor-not-allowed" : "hover:text-[#133549]"
+              }`}
               aria-pressed={saved}
+              aria-label={saved ? "Remove from saved" : "Save listing"}
               title="Save"
             >
-              <span
+              <svg
+                viewBox="0 0 24 24"
+                className="h-[26px] w-[26px]"
+                fill={saved ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 aria-hidden="true"
-                className="inline-block"
-                style={{ transform: "scale(1.15)" }}
               >
-                {saved ? "♥" : "♡"}
-              </span>
-              {saved ? "Saved" : "Save"}
+                <path d="M12 20.6C7.5 16.4 4 13.4 4 9.4A4.4 4.4 0 0 1 8.4 5c1.5 0 2.9.7 3.8 1.9A4.7 4.7 0 0 1 16 5a4.4 4.4 0 0 1 4.4 4.4c0 4-3.5 7-8.4 11.2z" />
+              </svg>
             </button>
 
             <button
               type="button"
               onClick={openShareDialog}
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[12px] font-semibold text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-9 w-9 items-center justify-center cursor-pointer text-[#0a2230] hover:text-[#133549]"
+              aria-label="Share listing"
               title="Share"
             >
-              ↗ Share
+              <svg
+                viewBox="0 0 24 24"
+                className="h-[26px] w-[26px]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 3v11" />
+                <path d="M8.5 6.5L12 3l3.5 3.5" />
+                <path d="M5 10.5v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={onPrintListing}
+              className="inline-flex h-9 w-9 items-center justify-center cursor-pointer text-[#0a2230] hover:text-[#133549]"
+              aria-label="Print listing"
+              title="Print"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-[26px] w-[26px]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M7 8V4h10v4" />
+                <rect x="5" y="9" width="14" height="8" rx="2" />
+                <path d="M7 14h10v6H7z" />
+              </svg>
             </button>
           </div>
         </div>
@@ -2005,36 +2146,42 @@ export default function ListingDetailClient({
 
         {/* Top layout */}
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
-          {/* Left: Title + gallery + location */}
+          {/* Left: Title + gallery + location + price */}
           <div className="lg:col-span-8 space-y-3">
-            <div className="text-[22px] sm:text-[30px] font-extrabold tracking-tight leading-tight text-[#0a2230]">
-              {titleLine}
-            </div>
+            <h1 className={titleClass}>{titleLine}</h1>
 
             <Gallery keys={galleryKeys} token={previewToken} title={titleLine} />
 
             <div className="flex items-center justify-between gap-4">
-              <div className={locationClass}>{regionCountryLine || "—"}</div>
+              <div className={locationClass}>
+                {locationRegionText || locationCountryText ? (
+                  <>
+                    {locationRegionText ? <span>{locationRegionText}</span> : null}
+                    {locationRegionText && locationCountryText ? (
+                      <span> • </span>
+                    ) : null}
+                    {locationCountryText ? (
+                      <span className="font-bold">{locationCountryText}</span>
+                    ) : null}
+                  </>
+                ) : (
+                  "—"
+                )}
+              </div>
               <div className={`${locationClass} text-right flex-none`}>
                 {cityStateLine || "—"}
               </div>
             </div>
+
+            {priceWithCurrency ? <div className={priceClass}>{priceWithCurrency}</div> : null}
           </div>
 
           {/* Right: quick contact card */}
-          <div className="lg:col-span-4" id="contact-card">
+          <div className="lg:col-span-4 lg:mt-10" id="contact-card">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200">
-                {price ? (
-                  <div className="text-[22px] sm:text-[24px] font-extrabold text-[#0a2230] leading-none">
-                    {price}
-                  </div>
-                ) : null}
-
                 <div
-                  className={`${
-                    price ? "mt-3" : ""
-                  } text-[12px] font-extrabold tracking-wide text-slate-600`}
+                  className="text-[12px] font-extrabold tracking-wide text-slate-600"
                 >
                   For Sale by {isBroker ? "Broker" : "Owner"}
                 </div>

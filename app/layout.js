@@ -4,6 +4,7 @@ import Footer from "../components/Footer.js";
 import { Inter, Libre_Baskerville } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
+import { Suspense } from "react";
 import "react-international-phone/style.css";
 
 const SITE_URL_RAW =
@@ -69,7 +70,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`h-full ${sans.variable} ${brand.variable}`}>
       <body className="min-h-screen flex flex-col font-sans text-slate-900 bg-[#0a2230]">
-        <Header />
+        <Suspense fallback={<div className="h-[72px] bg-[#0a2230]" />}>
+          <Header />
+        </Suspense>
         <div className="flex-1 bg-[#f8fafc]">{children}</div>
         <Footer />
         <Analytics />

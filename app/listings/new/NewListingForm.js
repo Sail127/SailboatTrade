@@ -1688,24 +1688,15 @@ export default function NewListingForm() {
                 <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list*</span>.
               </div>
               <div className="mt-2 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
-                No credit card required. Post now and upgrade later only if you want more photos or homepage exposure.
+                *Free Basic Listing includeds up to {FREE_PHOTO_LIMIT} high quality photos!
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                  *Free: {FREE_PHOTO_LIMIT} photos
-                </span>
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                  Upgradable: up to {MAX_PHOTO_LIMIT} photos
-                </span>
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                  12MB/photo
-                </span>
               </div>
             </div>
 
             <div className="w-full lg:w-[360px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Available Upgrades:</div>
+              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Please help support or site by upgrading your listing with:</div>
               <div className="mt-2 space-y-1.5 text-[12px] text-slate-700">
                 <div>• Photo Plus (up to {MAX_PHOTO_LIMIT})</div>
                 <div>• Featured Home placement</div>

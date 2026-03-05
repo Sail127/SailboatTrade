@@ -340,12 +340,12 @@ export default async function Browse({ searchParams }) {
         Your adventure awaits.
       </h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[221px_minmax(0,1fr)] gap-4 items-start">
-        <div className="lg:sticky lg:top-24 self-start">
+      <div className="lg:grid lg:grid-cols-[221px_minmax(0,1fr)] lg:gap-4 lg:items-start">
+        <div className="sticky top-16 z-40 lg:sticky lg:top-24 lg:z-auto self-start">
           <ListingsFilterSidebar initialValues={initial} submitPath="/listings" />
         </div>
 
-        <section>
+        <section className="pt-1 lg:pt-0">
           <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="flex flex-col">

@@ -486,28 +486,42 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     return { label: "All", imgSrc: "", isAll: true };
   }, [type]);
 
+  const activeFilterCount = activeFilterPills.length;
+
   return (
     <>
-      <div className="lg:hidden rounded-2xl bg-[#0a2230] p-3 shadow-lg ring-1 ring-white/15">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-extrabold text-white">Search Filters</p>
-            <p className="text-xs text-white/70">
-              {activeFilterPills.length ? `${activeFilterPills.length} active` : "All sailboats"}
-            </p>
+      <div className="lg:hidden pb-2">
+        <div className="rounded-2xl bg-[#0a2230]/95 p-3 shadow-lg ring-1 ring-white/15 backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold text-white">Search Filters</p>
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!activeFilterCount}
+                className="text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white disabled:opacity-40 disabled:no-underline"
+              >
+                Clear all filters
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-4 text-sm font-bold text-[#0a2230] hover:bg-[#f9c860]"
+            >
+              <span>Open Filters</span>
+              {activeFilterCount ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0a2230] px-1.5 text-[11px] font-extrabold text-white">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setMobileDrawerOpen(true)}
-            className="inline-flex h-9 items-center justify-center rounded-full bg-[#f3b23f] px-4 text-sm font-bold text-[#0a2230] hover:bg-[#f9c860]"
-          >
-            Open Filters
-          </button>
         </div>
       </div>
 
       {mobileDrawerOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[60] lg:hidden">
           <button
             type="button"
             aria-label="Close filters panel"
@@ -566,7 +580,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                 <label className={drawerLabel}>KEYWORD SEARCH</label>
                 <input
                   type="text"
-                  placeholder="Builder, model, city, region..."
+                  placeholder="Search..."
                   className={drawerInput}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
@@ -828,7 +842,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
             <input
               type="text"
-              placeholder="Builder, model, city, region..."
+              placeholder="Search..."
               className={input}
               value={q}
               onChange={(e) => setQ(e.target.value)}

@@ -115,7 +115,14 @@ function HeartIcon({ filled }) {
   );
 }
 
-export default function ListingCard({ listing, variant = "default", imageFit = "cover", showFavorite = false }) {
+export default function ListingCard({
+  listing,
+  variant = "default",
+  imageFit = "cover",
+  showFavorite = false,
+  hrefOverride = null,
+  imageTopLabel = "",
+}) {
   const {
     id,
     title,
@@ -220,7 +227,7 @@ export default function ListingCard({ listing, variant = "default", imageFit = "
 
   return (
     <Link
-      href={`/listings/${id}`}
+      href={hrefOverride || (id ? `/listings/${id}` : "/listings/new")}
       className="
         group block overflow-hidden rounded-2xl
         border border-slate-200 bg-white
@@ -249,6 +256,14 @@ export default function ListingCard({ listing, variant = "default", imageFit = "
 
         {!useContain ? (
           <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+        ) : null}
+
+        {imageTopLabel ? (
+          <div className="absolute top-2 inset-x-0 text-center px-3">
+            <span className="text-xs font-extrabold tracking-wide text-white drop-shadow-[0_2px_6px_rgba(2,6,23,0.75)]">
+              {imageTopLabel}
+            </span>
+          </div>
         ) : null}
 
         {canFavorite ? (

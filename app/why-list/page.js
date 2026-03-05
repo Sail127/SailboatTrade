@@ -11,9 +11,9 @@ export const metadata = {
 export default function WhyListPage() {
   const reasons = [
     {
-      title: "Fair by design",
+      title: "It is absolutely free to list!",
       body:
-        "Search visibility is relevance-first, not pay-to-win. Private sellers and brokers start on equal footing.",
+        "Our mission is to make sailing accessible to everyone. Private sellers and brokers start on equal footing wtih maximum transparency for all.",
     },
     {
       title: "Sailboat-only, buyer-intent focused",

@@ -369,7 +369,111 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
 
   const [idx, setIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(false);
+  const [lightboxViewportHeight, setLightboxViewportHeight] = useState(null);
+  const [lightboxViewportWidth, setLightboxViewportWidth] = useState(null);
+  const [touchLandscapeFit, setTouchLandscapeFit] = useState(null);
   const mobileTrackRef = useRef(null);
+  const pinchAreaRef = useRef(null);
+  const lightboxImageRef = useRef(null);
+  const pointersRef = useRef(new Map());
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const pinchStateRef = useRef({
+    startDistance: 0,
+    startZoom: 1,
+    startPanX: 0,
+    startPanY: 0,
+    startX: 0,
+    startY: 0,
+    swipeEligible: false,
+  });
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function distance(a, b) {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.hypot(dx, dy);
+  }
+
+  function clampPan(nextX, nextY, nextZoom = zoomRef.current) {
+    const el = pinchAreaRef.current;
+    if (!el || nextZoom <= 1.001) return { x: 0, y: 0 };
+    const cw = Number(el.clientWidth || 0);
+    const ch = Number(el.clientHeight || 0);
+    const baseW =
+      isTouchLandscape && touchLandscapeFit?.w
+        ? Number(touchLandscapeFit.w)
+        : cw;
+    const baseH =
+      isTouchLandscape && touchLandscapeFit?.h
+        ? Number(touchLandscapeFit.h)
+        : ch;
+    const maxX = Math.max(0, (baseW * nextZoom - cw) / 2);
+    const maxY = Math.max(0, (baseH * nextZoom - ch) / 2);
+    return {
+      x: clamp(nextX, -maxX, maxX),
+      y: clamp(nextY, -maxY, maxY),
+    };
+  }
+
+  function resetZoom() {
+    pointersRef.current.clear();
+    pinchStateRef.current.swipeEligible = false;
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function updateTouchLandscapeFit() {
+    const wrap = pinchAreaRef.current;
+    const img = lightboxImageRef.current;
+    if (!wrap || !img) return;
+
+    const cw = Number(wrap.clientWidth || 0);
+    const ch = Number(wrap.clientHeight || 0);
+    const nw = Number(img.naturalWidth || 0);
+    const nh = Number(img.naturalHeight || 0);
+    if (!cw || !ch || !nw || !nh) return;
+
+    const scale = Math.min(cw / nw, ch / nh);
+    const w = Math.max(1, Math.floor(nw * scale));
+    const h = Math.max(1, Math.floor(nh * scale));
+    setTouchLandscapeFit({ w, h });
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(pointer: coarse)");
+    const updateTouchMode = () => {
+      setIsTouchDevice(Boolean(mq.matches || navigator.maxTouchPoints > 0));
+    };
+    updateTouchMode();
+    if (mq.addEventListener) mq.addEventListener("change", updateTouchMode);
+    else mq.addListener(updateTouchMode);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", updateTouchMode);
+      else mq.removeListener(updateTouchMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(orientation: landscape)");
+    const updateOrientation = () => setIsLandscape(Boolean(mq.matches));
+    updateOrientation();
+    if (mq.addEventListener) mq.addEventListener("change", updateOrientation);
+    else mq.addListener(updateOrientation);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", updateOrientation);
+      else mq.removeListener(updateOrientation);
+    };
+  }, []);
 
   useEffect(() => {
     if (!images.length) return;
@@ -377,10 +481,69 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   }, [images.length]);
 
   useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    resetZoom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxOpen, idx]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+
+    function onViewportChange() {
+      // Rotation/resize can leave stale zoom/pan bounds; recenter to fit.
+      resetZoom();
+      requestAnimationFrame(() => requestAnimationFrame(resetZoom));
+    }
+
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("orientationchange", onViewportChange);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("orientationchange", onViewportChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxOpen]);
+
+  useEffect(() => {
+    if (!lightboxOpen || !isTouchDevice || typeof window === "undefined")
+      return;
+
+    const vv = window.visualViewport;
+    const readHeight = () => {
+      const h = vv?.height || window.innerHeight || 0;
+      const w = vv?.width || window.innerWidth || 0;
+      setLightboxViewportHeight(h > 0 ? Math.round(h) : null);
+      setLightboxViewportWidth(w > 0 ? Math.round(w) : null);
+    };
+
+    readHeight();
+    vv?.addEventListener?.("resize", readHeight);
+    vv?.addEventListener?.("scroll", readHeight);
+    window.addEventListener("resize", readHeight);
+
+    return () => {
+      vv?.removeEventListener?.("resize", readHeight);
+      vv?.removeEventListener?.("scroll", readHeight);
+      window.removeEventListener("resize", readHeight);
+      setLightboxViewportHeight(null);
+      setLightboxViewportWidth(null);
+    };
+  }, [lightboxOpen, isTouchDevice]);
+
+  useEffect(() => {
     const el = mobileTrackRef.current;
     if (!el) return;
 
     function onScroll() {
+      if (lightboxOpen) return;
       const w = el.clientWidth || 1;
       const i = Math.round(el.scrollLeft / w);
       setIdx((prev) => (i !== prev ? i : prev));
@@ -388,7 +551,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
 
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [lightboxOpen]);
 
   function prev() {
     if (!images.length) return;
@@ -400,11 +563,13 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   }
 
   useEffect(() => {
+    if (lightboxOpen) return;
     const el = mobileTrackRef.current;
     if (!el) return;
     const w = el.clientWidth || 0;
+    if (w <= 0) return;
     el.scrollTo({ left: idx * w, behavior: "smooth" });
-  }, [idx]);
+  }, [idx, lightboxOpen]);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -426,6 +591,145 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightboxOpen, images.length]);
+
+  function onZoomPointerDown(e) {
+    if (!lightboxOpen) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    const el = pinchAreaRef.current;
+    if (!el) return;
+    if (el.setPointerCapture) el.setPointerCapture(e.pointerId);
+
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size >= 2) {
+      const [a, b] = Array.from(pointersRef.current.values());
+      pinchStateRef.current.startDistance = Math.max(1, distance(a, b));
+      pinchStateRef.current.startZoom = zoomRef.current;
+      pinchStateRef.current.startPanX = panRef.current.x;
+      pinchStateRef.current.startPanY = panRef.current.y;
+      pinchStateRef.current.swipeEligible = false;
+      return;
+    }
+
+    pinchStateRef.current.startX = e.clientX;
+    pinchStateRef.current.startY = e.clientY;
+    pinchStateRef.current.startPanX = panRef.current.x;
+    pinchStateRef.current.startPanY = panRef.current.y;
+    pinchStateRef.current.swipeEligible =
+      zoomRef.current <= 1.001 && images.length > 1;
+  }
+
+  function onZoomPointerMove(e) {
+    if (!lightboxOpen) return;
+    if (!pointersRef.current.has(e.pointerId)) return;
+
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size >= 2) {
+      const [a, b] = Array.from(pointersRef.current.values());
+      const startDistance = Math.max(1, pinchStateRef.current.startDistance || 1);
+      const nextDistance = Math.max(1, distance(a, b));
+      const nextZoom = clamp(
+        (pinchStateRef.current.startZoom || 1) * (nextDistance / startDistance),
+        1,
+        4
+      );
+      const nextPan = clampPan(
+        pinchStateRef.current.startPanX || 0,
+        pinchStateRef.current.startPanY || 0,
+        nextZoom
+      );
+      setZoom(nextZoom);
+      setPan(nextPan);
+      pinchStateRef.current.swipeEligible = false;
+      e.preventDefault();
+      return;
+    }
+
+    if (zoomRef.current <= 1.001) return;
+
+    const dx = e.clientX - (pinchStateRef.current.startX || e.clientX);
+    const dy = e.clientY - (pinchStateRef.current.startY || e.clientY);
+    const nextPan = clampPan(
+      (pinchStateRef.current.startPanX || 0) + dx,
+      (pinchStateRef.current.startPanY || 0) + dy,
+      zoomRef.current
+    );
+    setPan(nextPan);
+    e.preventDefault();
+  }
+
+  function onZoomPointerUp(e) {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.delete(e.pointerId);
+
+    if (pointersRef.current.size === 1) {
+      const [last] = Array.from(pointersRef.current.values());
+      pinchStateRef.current.startX = last.x;
+      pinchStateRef.current.startY = last.y;
+      pinchStateRef.current.startPanX = panRef.current.x;
+      pinchStateRef.current.startPanY = panRef.current.y;
+      pinchStateRef.current.startZoom = zoomRef.current;
+      pinchStateRef.current.startDistance = 0;
+      return;
+    }
+
+    if (pointersRef.current.size === 0 && zoomRef.current <= 1.001) {
+      setPan({ x: 0, y: 0 });
+      const dx = e.clientX - (pinchStateRef.current.startX || e.clientX);
+      const dy = e.clientY - (pinchStateRef.current.startY || e.clientY);
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      const isSwipe =
+        pinchStateRef.current.swipeEligible && absX > 40 && absX > absY * 1.2;
+      if (isSwipe) {
+        if (dx < 0) next();
+        else prev();
+      }
+      pinchStateRef.current.swipeEligible = false;
+    }
+  }
+
+  const isTouchLandscape =
+    isTouchDevice &&
+    ((lightboxViewportWidth != null &&
+      lightboxViewportHeight != null &&
+      lightboxViewportWidth > lightboxViewportHeight) ||
+      isLandscape);
+  const showTouchThumbs = isTouchDevice ? !isTouchLandscape : true;
+  const showThumbStrip = images.length > 1 && showTouchThumbs;
+  const showTopRow = !isTouchLandscape;
+
+  useEffect(() => {
+    if (!lightboxOpen) {
+      setTouchLandscapeFit(null);
+      return;
+    }
+    if (!isTouchLandscape) {
+      setTouchLandscapeFit(null);
+      return;
+    }
+
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        updateTouchLandscapeFit();
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lightboxOpen,
+    isTouchLandscape,
+    idx,
+    lightboxViewportHeight,
+    lightboxViewportWidth,
+  ]);
 
   if (!images.length) {
     return (
@@ -544,85 +848,202 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
 
       {lightboxOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/90"
+          className="fixed inset-0 z-50 bg-black"
+          style={
+            isTouchDevice && lightboxViewportHeight
+              ? { height: `${lightboxViewportHeight}px` }
+              : undefined
+          }
           role="dialog"
           aria-modal="true"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setLightboxOpen(false);
           }}
         >
-          <div className="absolute inset-x-0 top-0 z-30 flex items-center justify-between px-4 py-3">
-            <div className="text-[12px] font-semibold text-white/90">
-              {idx + 1} / {images.length}
-            </div>
+          {isTouchDevice ? (
             <button
               type="button"
               onClick={() => setLightboxOpen(false)}
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[12px] font-semibold text-white hover:bg-white/20"
+              className="absolute z-40 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-white/10 text-lg leading-none text-white hover:bg-white/20"
+              style={{
+                top: "calc(env(safe-area-inset-top, 0px) + 0.35rem)",
+                right: "calc(env(safe-area-inset-right, 0px) + 0.5rem)",
+              }}
               aria-label="Close"
             >
-              <span className="text-lg leading-none" aria-hidden="true">
-                ×
-              </span>
-              Close
+              ×
             </button>
-          </div>
-
-          {images.length > 1 ? (
-            <>
-              <button
-                type="button"
-                onClick={prev}
-                className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
-                aria-label="Previous photo"
-              >
-                ‹
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
-                aria-label="Next photo"
-              >
-                ›
-              </button>
-            </>
           ) : null}
 
-          <div className="absolute inset-0 z-10 pt-12 pb-16 px-3 sm:px-10">
-            <div className="h-full w-full overflow-auto rounded-2xl bg-black/40 border border-white/10">
-              <div className="min-h-full min-w-full grid place-items-center p-4">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={images[idx]}
-                  alt={`Fullscreen ${idx + 1}`}
-                  className="max-w-none w-auto h-auto"
-                />
-              </div>
+          {isTouchLandscape ? (
+            <div
+              className="absolute z-40 rounded-full bg-black/45 px-3 py-1 text-[12px] font-semibold text-white"
+              style={{
+                top: "calc(env(safe-area-inset-top, 0px) + 0.45rem)",
+                left: "calc(env(safe-area-inset-left, 0px) + 0.5rem)",
+              }}
+            >
+              {idx + 1} / {images.length}
             </div>
-          </div>
+          ) : null}
 
-          <div className="absolute inset-x-0 bottom-0 z-30 px-4 pb-3">
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {images.map((src, i) => (
-                <button
-                  key={src + i}
-                  type="button"
-                  onClick={() => setIdx(i)}
-                  className={`h-14 w-20 flex-none overflow-hidden rounded-xl border ${
-                    i === idx ? "border-[#c8a44d]" : "border-white/20"
-                  } bg-black/30`}
-                  aria-label={`Select photo ${i + 1}`}
-                >
+          <div
+            className="grid h-full w-full"
+            style={
+              isTouchDevice
+                ? {
+                    gridTemplateRows: showTopRow
+                      ? showThumbStrip
+                        ? "auto minmax(0,1fr) auto"
+                        : "auto minmax(0,1fr)"
+                      : "minmax(0,1fr)",
+                    paddingTop: isTouchLandscape
+                      ? "0px"
+                      : "calc(env(safe-area-inset-top, 0px) + 0.25rem)",
+                    paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.5rem)",
+                    paddingBottom: isTouchLandscape
+                      ? "0px"
+                      : "calc(env(safe-area-inset-bottom, 0px) + 0.25rem)",
+                    paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.5rem)",
+                  }
+                : {
+                    gridTemplateRows: showTopRow
+                      ? showThumbStrip
+                        ? "auto minmax(0,1fr) auto"
+                        : "auto minmax(0,1fr)"
+                      : "minmax(0,1fr)",
+                  }
+            }
+          >
+            {showTopRow ? (
+              <div className="z-30 flex items-center justify-between px-2 py-2 sm:px-4">
+                <div className="text-[12px] font-semibold text-white/90">
+                  {idx + 1} / {images.length}
+                </div>
+                {!isTouchDevice ? (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(false)}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[12px] font-semibold text-white hover:bg-white/20"
+                    aria-label="Close"
+                  >
+                    <span className="text-lg leading-none" aria-hidden="true">
+                      ×
+                    </span>
+                    Close
+                  </button>
+                ) : (
+                  <span className="h-9 w-9" aria-hidden="true" />
+                )}
+              </div>
+            ) : null}
+
+            <div
+              className={`relative z-10 min-h-0 ${
+                isTouchLandscape ? "px-0" : "px-0 sm:px-10"
+              }`}
+            >
+              {images.length > 1 && !isTouchDevice ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={prev}
+                    className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
+                    aria-label="Previous photo"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={next}
+                    className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
+                    aria-label="Next photo"
+                  >
+                    ›
+                  </button>
+                </>
+              ) : null}
+
+              <div
+                ref={pinchAreaRef}
+                className={`h-full w-full overflow-hidden ${
+                  isTouchDevice ? "" : "rounded-2xl border border-white/10 bg-black/40"
+                }`}
+                style={{ touchAction: "none" }}
+                onPointerDown={onZoomPointerDown}
+                onPointerMove={onZoomPointerMove}
+                onPointerUp={onZoomPointerUp}
+                onPointerCancel={onZoomPointerUp}
+                onDoubleClick={() => {
+                  if (zoom > 1.001) resetZoom();
+                  else setZoom(2);
+                }}
+              >
+                <div className="h-full w-full grid place-items-center">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={src}
-                    alt={`Thumb ${i + 1}`}
-                    className="h-full w-full object-contain bg-black/20"
+                    ref={lightboxImageRef}
+                    src={images[idx]}
+                    alt={`Fullscreen ${idx + 1}`}
+                    className={`${
+                      isTouchLandscape
+                        ? "h-auto w-auto object-contain"
+                        : "max-h-full max-w-full h-auto w-auto object-contain"
+                    } select-none`}
+                    draggable={false}
+                    onLoad={() => {
+                      if (isTouchLandscape) updateTouchLandscapeFit();
+                    }}
+                    style={{
+                      width:
+                        isTouchLandscape && touchLandscapeFit?.w
+                          ? `${touchLandscapeFit.w}px`
+                          : undefined,
+                      height:
+                        isTouchLandscape && touchLandscapeFit?.h
+                          ? `${touchLandscapeFit.h}px`
+                          : undefined,
+                      transform:
+                        zoom > 1.001 || pan.x || pan.y
+                          ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
+                          : "none",
+                      transformOrigin: "center center",
+                    }}
                   />
-                </button>
-              ))}
+                </div>
+              </div>
             </div>
+
+            {showThumbStrip ? (
+              <div
+                className={`z-30 ${
+                  isTouchDevice ? "px-2 pt-1 pb-1" : "px-4 pt-2 pb-3"
+                }`}
+              >
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {images.map((src, i) => (
+                    <button
+                      key={src + i}
+                      type="button"
+                      onClick={() => setIdx(i)}
+                      className={`${
+                        isTouchDevice ? "h-9 w-12" : "h-14 w-20"
+                      } flex-none overflow-hidden rounded-xl border ${
+                        i === idx ? "border-[#c8a44d]" : "border-white/20"
+                      } bg-black/30`}
+                      aria-label={`Select photo ${i + 1}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={src}
+                        alt={`Thumb ${i + 1}`}
+                        className="h-full w-full object-contain bg-black/20"
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -893,7 +1314,8 @@ export default function ListingDetailClient({
     }
   }
 
-  const msgRef = useRef(null);
+  const desktopMsgRef = useRef(null);
+  const mobileMsgRef = useRef(null);
 
   const defaultBuyerMsg = useMemo(
     () => `Please contact me and provide more details on this ${titleLine}.`,
@@ -996,6 +1418,131 @@ export default function ListingDetailClient({
     } finally {
       setSending(false);
     }
+  }
+
+  function renderMessageSellerForm(textareaRef) {
+    return (
+      <>
+        {sentOk ? (
+          <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+            {sentOk}
+          </div>
+        ) : null}
+
+        {sentErr ? (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
+            {sentErr}
+          </div>
+        ) : null}
+
+        <div className="text-[13px] font-extrabold text-[#0a2230]">
+          Message Seller
+        </div>
+
+        <form onSubmit={submitInquiry} className="mt-3 space-y-3">
+          <input
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={buyerWebsite}
+            onChange={(e) => setBuyerWebsite(e.target.value)}
+            className="hidden"
+            aria-hidden="true"
+            name="website"
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="First name *">
+              <input
+                className={inputBase()}
+                value={buyerFirst}
+                onChange={(e) => setBuyerFirst(e.target.value)}
+              />
+            </Field>
+            <Field label="Last name *">
+              <input
+                className={inputBase()}
+                value={buyerLast}
+                onChange={(e) => setBuyerLast(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <Field label="Email *">
+            <input
+              className={inputBase()}
+              value={buyerEmail}
+              onChange={(e) => setBuyerEmail(e.target.value)}
+              inputMode="email"
+            />
+          </Field>
+
+          <div className="mt-1">
+            <label className="mb-1.5 block text-[12px] font-semibold text-[#0a2230]">
+              Phone number{" "}
+              <span className="font-normal text-slate-500">(optional)</span>
+            </label>
+
+            <div className="rounded-xl border border-slate-300 px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40 bg-white">
+              <PhoneInput
+                defaultCountry="us"
+                value={buyerPhoneRaw}
+                onChange={(v) => setBuyerPhoneRaw(v)}
+                inputClassName="w-full !border-0 !shadow-none !outline-none !text-sm !p-0"
+                countrySelectorStyleProps={{
+                  buttonClassName: "!border-0 !shadow-none",
+                }}
+              />
+            </div>
+          </div>
+
+          <Field label="Message *">
+            <textarea
+              ref={textareaRef}
+              className={textareaBase()}
+              value={buyerMsg}
+              onChange={(e) => setBuyerMsg(e.target.value)}
+            />
+          </Field>
+
+          <div className="flex items-center justify-center">
+            <button
+              type="submit"
+              disabled={sending}
+              className={`inline-flex h-10 items-center justify-center rounded-full px-8 text-[13px] font-semibold text-white ${
+                sending
+                  ? "bg-slate-300 cursor-not-allowed"
+                  : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+              }`}
+            >
+              {sending ? "Sending…" : "Send Message"}
+            </button>
+          </div>
+        </form>
+      </>
+    );
+  }
+
+  function focusMessageSellerForm() {
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 1023px)").matches;
+
+    const scrollTarget = isMobile
+      ? document.getElementById("contact-form-mobile")
+      : document.getElementById("contact-card");
+
+    if (scrollTarget) {
+      scrollTarget.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+
+    setTimeout(() => {
+      const targetRef = isMobile ? mobileMsgRef : desktopMsgRef;
+      if (targetRef.current) targetRef.current.focus();
+    }, 250);
   }
 
   const galleryKeys = useMemo(() => {
@@ -1558,105 +2105,8 @@ export default function ListingDetailClient({
                 </div>
               </div>
 
-              <div className="p-5">
-                {sentOk ? (
-                  <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
-                    {sentOk}
-                  </div>
-                ) : null}
-
-                {sentErr ? (
-                  <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
-                    {sentErr}
-                  </div>
-                ) : null}
-
-                <div className="text-[13px] font-extrabold text-[#0a2230]">
-                  Message Seller
-                </div>
-
-                <form onSubmit={submitInquiry} className="mt-3 space-y-3">
-                  <input
-                    type="text"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    value={buyerWebsite}
-                    onChange={(e) => setBuyerWebsite(e.target.value)}
-                    className="hidden"
-                    aria-hidden="true"
-                    name="website"
-                  />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="First name *">
-                      <input
-                        className={inputBase()}
-                        value={buyerFirst}
-                        onChange={(e) => setBuyerFirst(e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Last name *">
-                      <input
-                        className={inputBase()}
-                        value={buyerLast}
-                        onChange={(e) => setBuyerLast(e.target.value)}
-                      />
-                    </Field>
-                  </div>
-
-                  <Field label="Email *">
-                    <input
-                      className={inputBase()}
-                      value={buyerEmail}
-                      onChange={(e) => setBuyerEmail(e.target.value)}
-                      inputMode="email"
-                    />
-                  </Field>
-
-                  <div className="mt-1">
-                    <label className="mb-1.5 block text-[12px] font-semibold text-[#0a2230]">
-                      Phone number{" "}
-                      <span className="font-normal text-slate-500">
-                        (optional)
-                      </span>
-                    </label>
-
-                    <div className="rounded-xl border border-slate-300 px-3 py-2 focus-within:ring-2 focus-within:ring-[#c8a44d]/40 bg-white">
-                      <PhoneInput
-                        defaultCountry="us"
-                        value={buyerPhoneRaw}
-                        onChange={(v) => setBuyerPhoneRaw(v)}
-                        inputClassName="w-full !border-0 !shadow-none !outline-none !text-sm !p-0"
-                        countrySelectorStyleProps={{
-                          buttonClassName: "!border-0 !shadow-none",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <Field label="Message *">
-                    <textarea
-                      ref={msgRef}
-                      className={textareaBase()}
-                      value={buyerMsg}
-                      onChange={(e) => setBuyerMsg(e.target.value)}
-                    />
-                  </Field>
-
-                  <div className="flex items-center justify-center">
-                    <button
-                      type="submit"
-                      disabled={sending}
-                      className={`inline-flex h-10 items-center justify-center rounded-full px-8 text-[13px] font-semibold text-white ${
-                        sending
-                          ? "bg-slate-300 cursor-not-allowed"
-                          : "bg-[#0a2230] hover:bg-[#0f2a3b]"
-                      }`}
-                    >
-                      {sending ? "Sending…" : "Send Message"}
-                    </button>
-                  </div>
-                </form>
+              <div className="hidden p-5 lg:block">
+                {renderMessageSellerForm(desktopMsgRef)}
               </div>
             </div>
           </div>
@@ -1767,6 +2217,15 @@ export default function ListingDetailClient({
           </SectionCard>
 
           {showBrokerageCard ? (
+            <div
+              id="contact-form-mobile"
+              className="lg:hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] p-5"
+            >
+              {renderMessageSellerForm(mobileMsgRef)}
+            </div>
+          ) : null}
+
+          {showBrokerageCard ? (
             <SectionCard title="Brokerage">
               <div className="flex flex-col items-center text-center">
                 {brokerHero ? (
@@ -1826,23 +2285,22 @@ export default function ListingDetailClient({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    const el = document.getElementById("contact-card");
-                    if (el)
-                      el.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    setTimeout(() => {
-                      if (msgRef.current) msgRef.current.focus();
-                    }, 250);
-                  }}
+                  onClick={focusMessageSellerForm}
                   className="mt-2 text-[12px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
                 >
                   Contact Broker
                 </button>
               </div>
             </SectionCard>
+          ) : null}
+
+          {!showBrokerageCard ? (
+            <div
+              id="contact-form-mobile"
+              className="lg:hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.06)] p-5"
+            >
+              {renderMessageSellerForm(mobileMsgRef)}
+            </div>
           ) : null}
         </div>
 

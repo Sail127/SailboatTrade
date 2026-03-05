@@ -37,6 +37,13 @@ function planLabelFromListing(l) {
   return parts.join(" • ");
 }
 
+function normalizeChangedSections(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return [];
+  const raw = meta.changedSections;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x || "").trim()).filter(Boolean);
+}
+
 export default async function AdminReviewPage() {
   const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
@@ -90,6 +97,26 @@ export default async function AdminReviewPage() {
     : [];
 
   const userById = new Map(users.map((u) => [u.id, u]));
+  const listingIds = items.map((x) => String(x.id || "")).filter(Boolean);
+
+  const submissionLogs = listingIds.length
+    ? await prisma.adminAuditLog.findMany({
+        where: {
+          entityType: "Listing",
+          entityId: { in: listingIds },
+          action: { in: ["LISTING_CHANGE_REAPPROVAL_SUBMIT", "LISTING_NEW_REVIEW_SUBMIT"] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { entityId: true, action: true, meta: true, createdAt: true },
+      })
+    : [];
+
+  const latestLogByListingId = new Map();
+  for (const log of submissionLogs) {
+    const entityId = String(log.entityId || "");
+    if (!entityId || latestLogByListingId.has(entityId)) continue;
+    latestLogByListingId.set(entityId, log);
+  }
 
   // ✅ Keep the same shape your AdminReviewClient already expects:
   // - plan (string)
@@ -97,6 +124,9 @@ export default async function AdminReviewPage() {
   // - paidAt (string iso) -> from lastPaidAt
   const initialItems = items.map((l) => {
     const u = userById.get(l.ownerId) || null;
+    const log = latestLogByListingId.get(String(l.id || ""));
+    const reviewType = log?.action === "LISTING_CHANGE_REAPPROVAL_SUBMIT" ? "CHANGE_APPROVAL" : "NEW_LISTING_REVIEW";
+    const changedSections = normalizeChangedSections(log?.meta);
 
     return {
       id: l.id,
@@ -110,6 +140,8 @@ export default async function AdminReviewPage() {
       previewToken: l.previewToken || null,
       heroImageUrl: l.heroImageUrl || null,
       imageUrls: Array.isArray(l.imageUrls) ? l.imageUrls : [],
+      reviewType,
+      changedSections,
 
       submittedForReviewAt: l.contentSubmittedAt ? new Date(l.contentSubmittedAt).toISOString() : null,
       paidAt: l.lastPaidAt ? new Date(l.lastPaidAt).toISOString() : null,

@@ -1,54 +1,27 @@
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import EditListingForm from "./ui";
+import { notFound, redirect } from "next/navigation";
+import ListingEditClient from "@/app/listings/[id]/edit/ListingEditClient";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function EditListingPage({ params }) {
-  let s;
-  try {
-    try {
-      try {
-        try {
-          s = await requireUser();
-        } catch {
-          return NextResponse.json(
-            { ok: false, error: "Authentication required" },
-            { status: 401 },
-          );
-        }
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
-      { ok: false, error: "Authentication required" },
-      { status: 401 },
-    );
+  const id = String(params?.id || "").trim();
+  if (!id) return notFound();
+
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) {
+    redirect(`/login?next=${encodeURIComponent(`/dashboard/listings/${id}/edit`)}`);
   }
 
-  const listing = await prisma.listing.findFirst({
-    where: { id: params.id, ownerId: s.uid },
-  });
+  const listing = await prisma.listing.findUnique({ where: { id } });
+  if (!listing) return notFound();
+  if (listing.ownerId !== s.uid) redirect("/dashboard/listings");
 
-  if (!listing) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <div className="rounded-2xl border bg-white p-6">
-          Listing not found.
-        </div>
-      </div>
-    );
-  }
+  const status = String(listing.status || "").toUpperCase();
+  if (!["DRAFT", "REJECTED", "PUBLISHED"].includes(status)) redirect("/dashboard/listings");
 
-  return <EditListingForm listing={listing} />;
+  const safe = JSON.parse(JSON.stringify(listing));
+  return <ListingEditClient initialListing={safe} previewToken={String(listing.previewToken || "")} />;
 }

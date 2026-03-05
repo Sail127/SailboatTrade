@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { notifyAuthChanged, onAuthChanged } from "@/lib/auth-client";
 import BrandWordmark from "@/components/BrandWordmark";
 
@@ -303,10 +303,12 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
 
 export default function Header() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const isListingsBrowse = pathname === "/listings";
 
   const [open, setOpen] = useState(false); // hamburger
   const [scrolled, setScrolled] = useState(false);
+  const [headerQuery, setHeaderQuery] = useState("");
   const menuRef = useRef(null);
 
   const [meLoading, setMeLoading] = useState(true);
@@ -402,6 +404,27 @@ export default function Header() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    const nextQ = isListingsBrowse ? String(searchParams?.get("q") || "") : "";
+    setHeaderQuery(nextQ);
+  }, [isListingsBrowse, searchParams]);
+
+  function submitHeaderSearch() {
+    const term = String(headerQuery || "").trim();
+
+    if (isListingsBrowse) {
+      const params = new URLSearchParams(searchParams?.toString() || "");
+      if (term) params.set("q", term);
+      else params.delete("q");
+      params.delete("page");
+      const qs = params.toString();
+      hardNav(qs ? `/listings?${qs}` : "/listings");
+      return;
+    }
+
+    hardNav(term ? `/listings?q=${encodeURIComponent(term)}` : "/listings");
+  }
+
   const navLink =
     "flex items-center gap-3 px-3 py-2 rounded-lg font-medium text-white/90 hover:bg-black/10 hover:text-white transition";
   const iconBox = "inline-flex h-6 w-6 items-center justify-center shrink-0";
@@ -449,19 +472,32 @@ export default function Header() {
               tone="dark"
               className="text-xl sm:text-2xl font-bold text-white leading-none whitespace-nowrap"
             />
-            <div className="text-[11px] text-slate-300">Built by Sailors – For Sailors</div>
+            <div className="text-[11px] text-slate-300">All Sailboats- All the Time!</div>
           </Link>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
-            <input
-              type="search"
-              placeholder="Search…"
-              className={[
-                "h-9 rounded-lg border border-white/15 bg-white text-[#0a2230]",
-                "px-3 text-sm outline-none focus:ring-2 focus:ring-[#f3b23f]/40",
-                isListingsBrowse ? "min-w-0 w-[120px] sm:w-44 md:w-48" : "flex-1 min-w-0 w-[140px] sm:w-56",
-              ].join(" ")}
-            />
+            <form
+              className={isListingsBrowse ? "min-w-0 w-[120px] sm:w-44 md:w-48" : "flex-1 min-w-0 w-[140px] sm:w-56"}
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitHeaderSearch();
+              }}
+              role="search"
+              aria-label="Search listings by keyword"
+            >
+              <input
+                type="search"
+                placeholder="Search…"
+                className={[
+                  "h-9 w-full rounded-lg border border-white/15 bg-white text-[#0a2230]",
+                  "px-3 text-sm outline-none focus:ring-2 focus:ring-[#f3b23f]/40",
+                ].join(" ")}
+                value={headerQuery}
+                onChange={(e) => setHeaderQuery(e.target.value)}
+                enterKeyHint="search"
+                aria-label="Search listings by keyword"
+              />
+            </form>
 
             <AccountMenu
               user={meUser}

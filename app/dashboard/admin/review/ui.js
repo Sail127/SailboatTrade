@@ -117,6 +117,8 @@ export default function AdminReviewClient({ initialItems }) {
               <div className="space-y-3">
                 {filtered.map((x) => {
                   const thumbSrc = listingThumbSrc(x);
+                  const isChangeApproval = String(x.reviewType || "").toUpperCase() === "CHANGE_APPROVAL";
+                  const changedSections = Array.isArray(x.changedSections) ? x.changedSections : [];
                   return (
                     <div
                       key={x.id}
@@ -143,6 +145,17 @@ export default function AdminReviewClient({ initialItems }) {
                           <div className="text-[14px] font-extrabold text-[#0a2230] truncate">
                             {x.title}
                           </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                                isChangeApproval
+                                  ? "border-amber-300 bg-amber-50 text-amber-800"
+                                  : "border-slate-300 bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              {isChangeApproval ? "Change approval" : "New listing review"}
+                            </span>
+                          </div>
                           <div className="mt-1 text-[12px] text-slate-600">
                             <span className="font-semibold">Plan:</span> {planLabel(x.plan)}{" "}
                             <span className="text-slate-400">•</span>{" "}
@@ -154,6 +167,11 @@ export default function AdminReviewClient({ initialItems }) {
                               </>
                             ) : null}
                           </div>
+                          {isChangeApproval && changedSections.length ? (
+                            <div className="mt-1 text-[12px] text-slate-700">
+                              <span className="font-semibold">Changed sections:</span> {changedSections.join(", ")}
+                            </div>
+                          ) : null}
                         </div>
                         </div>
 

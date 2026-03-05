@@ -35,6 +35,13 @@ function countryLabelFromIso2(options, iso2) {
   return found?.label || v || "";
 }
 
+function normalizeChangedSections(meta) {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return [];
+  const raw = meta.changedSections;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => String(x || "").trim()).filter(Boolean);
+}
+
 export default async function AdminReviewPreviewPage({ params }) {
   const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
@@ -46,6 +53,20 @@ export default async function AdminReviewPreviewPage({ params }) {
     where: { id },
   });
   if (!listing) return notFound();
+  const latestSubmission = await prisma.adminAuditLog.findFirst({
+    where: {
+      entityType: "Listing",
+      entityId: id,
+      action: { in: ["LISTING_CHANGE_REAPPROVAL_SUBMIT", "LISTING_NEW_REVIEW_SUBMIT"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { action: true, meta: true },
+  });
+  const reviewType =
+    latestSubmission?.action === "LISTING_CHANGE_REAPPROVAL_SUBMIT"
+      ? "CHANGE_APPROVAL"
+      : "NEW_LISTING_REVIEW";
+  const changedSections = normalizeChangedSections(latestSubmission?.meta);
 
   const status = String(listing.status || "").toUpperCase();
   const canApprove = status === "PENDING_REVIEW";
@@ -77,6 +98,18 @@ export default async function AdminReviewPreviewPage({ params }) {
                 Status:{" "}
                 <span className="font-semibold text-[#0a2230]">{status}</span>
               </div>
+              <div className="mt-1 text-[13px] text-slate-600">
+                Review type:{" "}
+                <span className="font-semibold text-[#0a2230]">
+                  {reviewType === "CHANGE_APPROVAL" ? "Change approval" : "New listing review"}
+                </span>
+              </div>
+              {reviewType === "CHANGE_APPROVAL" && changedSections.length ? (
+                <div className="mt-1 text-[13px] text-slate-600">
+                  Changed sections:{" "}
+                  <span className="font-semibold text-[#0a2230]">{changedSections.join(", ")}</span>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

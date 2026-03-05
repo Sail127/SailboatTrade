@@ -47,6 +47,7 @@ export async function POST(req, { params }) {
   }
 
   const now = new Date();
+  const wasPublished = String(listing.status || "").toUpperCase() === "PUBLISHED";
 
   await prisma.listing.update({
     where: { id },
@@ -67,6 +68,21 @@ export async function POST(req, { params }) {
       archivedImagesPrunedAt: null,
     },
   });
+  try {
+    await prisma.adminAuditLog.create({
+      data: {
+        actorId: s.uid,
+        action: wasPublished ? "LISTING_CHANGE_REAPPROVAL_SUBMIT" : "LISTING_NEW_REVIEW_SUBMIT",
+        entityType: "Listing",
+        entityId: id,
+        meta: {
+          reviewType: wasPublished ? "CHANGE_APPROVAL" : "NEW_LISTING_REVIEW",
+          changedSections: wasPublished ? ["Listing content"] : [],
+        },
+      },
+    });
+  } catch {}
+
   await notifyAdminListingPendingReview({
     req,
     listingId: id,

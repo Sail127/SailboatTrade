@@ -1,7 +1,7 @@
 // components/AdvancedSearchBar.js
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 
@@ -15,6 +15,7 @@ const RAW_BUILDERS = [
   "Bavaria",
   "Hunter",
   "Hanse",
+  "Sirius Yachts",
   "X-Yachts",
   "Oyster",
   "Hallberg-Rassy",
@@ -27,7 +28,15 @@ const RAW_BUILDERS = [
   "Bali",
   "Nautitech",
 ];
-const TOP5 = ["Beneteau", "Jeanneau", "Lagoon", "Catalina", "Bavaria"];
+const TOP7_BUILDERS = [
+  "Beneteau",
+  "Jeanneau",
+  "Lagoon",
+  "Catalina",
+  "Bavaria",
+  "Fountaine Pajot",
+  "Hanse",
+];
 
 // ✅ Match your listing form enum values (and add an "All" option for search)
 const US_REGION_OPTIONS = [
@@ -44,8 +53,9 @@ const US_REGION_OPTIONS = [
 function orderBuilders() {
   const set = new Set(RAW_BUILDERS.map((m) => m.trim()).filter(Boolean));
   const deduped = Array.from(set);
-  const rest = deduped.filter((m) => !TOP5.includes(m)).sort((a, b) => a.localeCompare(b));
-  return [...TOP5, ...rest];
+  const popular = TOP7_BUILDERS.filter((m) => set.has(m));
+  const rest = deduped.filter((m) => !popular.includes(m)).sort((a, b) => a.localeCompare(b));
+  return { popular, rest };
 }
 
 function buildYearOptions() {
@@ -150,7 +160,7 @@ function SmallUnitToggle({ value, onChange }) {
     <button
       type="button"
       onClick={() => onChange(nextValue)}
-      className="ml-2 inline -translate-y-[1px] align-middle text-[12px] font-semibold text-[#f3b23f] underline underline-offset-2 hover:text-[#f9c860]"
+      className="ml-2 inline-flex h-5 min-w-[28px] items-center justify-center rounded-md border border-[#f3b23f]/90 bg-[#0a2230]/55 px-1.5 align-middle text-[11px] font-bold tracking-wide text-white leading-none hover:bg-[#12364a] hover:text-white"
       aria-label={`Switch LOA unit to ${nextValue.toUpperCase()}`}
       title={`Switch to ${nextValue.toUpperCase()}`}
     >
@@ -209,7 +219,7 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
 export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = {} }) {
   const router = useRouter();
 
-  const builders = useMemo(orderBuilders, []);
+  const { popular: popularBuilders, rest: otherBuilders } = useMemo(orderBuilders, []);
   const yearOptions = useMemo(buildYearOptions, []);
   const countryOptions = useMemo(buildCountryOptionsForSearch, []);
   const initial = useMemo(() => normalizeInitialValues(initialValues), [initialValues]);
@@ -226,6 +236,9 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const [loaMax, setLoaMax] = useState(initial.loaMax);
   const [country, setCountry] = useState(initial.country); // ✅ ISO alpha-2 or ""
   const [usRegion, setUsRegion] = useState(initial.usRegion);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [desktopHullMenuOpen, setDesktopHullMenuOpen] = useState(false);
+  const desktopHullMenuRef = useRef(null);
 
   useEffect(() => {
     setQ(initial.q);
@@ -257,7 +270,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   const isUSA = String(country || "").toUpperCase() === "US";
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
-  const hasActiveFilters = useMemo(() => {
+  const activeFilterCount = useMemo(() => {
     const hasQuery = !!String(q || "").trim();
     const hasType = String(type || "both").toLowerCase() !== "both";
     const hasBuilder = !!String(builder || "").trim();
@@ -270,24 +283,58 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     const hasCountry = !!String(country || "").trim();
     const hasUsRegion = isUSA && !!String(usRegion || "").trim();
 
-    return (
-      hasQuery ||
-      hasType ||
-      hasBuilder ||
-      hasYearMin ||
-      hasYearMax ||
-      hasPriceMin ||
-      hasPriceMax ||
-      hasLoaMin ||
-      hasLoaMax ||
-      hasCountry ||
-      hasUsRegion
-    );
+    let count = 0;
+    if (hasQuery) count += 1;
+    if (hasType) count += 1;
+    if (hasBuilder) count += 1;
+    if (hasYearMin || hasYearMax) count += 1;
+    if (hasPriceMin || hasPriceMax) count += 1;
+    if (hasLoaMin || hasLoaMax) count += 1;
+    if (hasCountry) count += 1;
+    if (hasUsRegion) count += 1;
+    return count;
   }, [q, type, builder, yearMin, yearMax, priceMin, priceMax, loaMin, loaMax, country, isUSA, usRegion]);
+  const hasActiveFilters = activeFilterCount > 0;
 
-  const shell = "w-full rounded-2xl bg-[#0a2230] p-4 shadow-lg ring-1 ring-white/15";
+  useEffect(() => {
+    if (!mobileDrawerOpen || typeof document === "undefined") return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileDrawerOpen]);
 
-  const label = "block text-[12px] font-semibold tracking-wide text-white/80";
+  useEffect(() => {
+    if (!mobileDrawerOpen || typeof window === "undefined") return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMobileDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileDrawerOpen]);
+
+  useEffect(() => {
+    if (!desktopHullMenuOpen || typeof document === "undefined") return;
+    const onMouseDown = (e) => {
+      if (desktopHullMenuRef.current && !desktopHullMenuRef.current.contains(e.target)) {
+        setDesktopHullMenuOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setDesktopHullMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [desktopHullMenuOpen]);
+
+  const shell = "w-full rounded-2xl bg-[#0a2230] px-4 pb-3 pt-1 shadow-lg ring-1 ring-white/15";
+
+  const label = "block text-[12px] font-semibold tracking-wide text-white";
 
   // ✅ Force white inputs regardless of globals.css
   const input =
@@ -306,9 +353,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const button =
     "inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
     "hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]";
+  const mobileDrawerLabel = "block text-[12px] font-bold tracking-wide text-white";
+  const mobileDrawerSection = "space-y-2 border-t border-white/15 pt-3";
 
-  const submit = (e) => {
-    e.preventDefault();
+  const applyFilters = () => {
     const params = new URLSearchParams();
 
     const put = (k, v) => {
@@ -347,6 +395,31 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     router.push(qs ? `${submitPath}?${qs}` : submitPath);
   };
 
+  const submit = (e) => {
+    e.preventDefault();
+    applyFilters();
+  };
+
+  const renderBuilderOptions = (keyPrefix) => (
+    <>
+      <option value="">All</option>
+      {popularBuilders.map((b) => (
+        <option key={`${keyPrefix}-popular-${b}`} value={b}>
+          {b}
+        </option>
+      ))}
+      <option value="" disabled>
+        ──────────
+      </option>
+      {otherBuilders.map((b) => (
+        <option key={`${keyPrefix}-other-${b}`} value={b}>
+          {b}
+        </option>
+      ))}
+      <option value="Other">Other</option>
+    </>
+  );
+
   const clearFilters = () => {
     setQ("");
     setType("both");
@@ -365,242 +438,514 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   return (
     <section className="w-full">
-      <form onSubmit={submit} className={`${shell} relative`}>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="lg:hidden absolute right-4 top-4 text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
-        >
-          Clear filters
-        </button>
+      <div className="lg:hidden pb-2">
+        <div className="rounded-2xl bg-[#0a2230]/95 p-3 shadow-lg ring-1 ring-white/15 backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-extrabold text-white">Advanced Search</p>
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!activeFilterCount}
+                className="text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white disabled:opacity-40 disabled:no-underline"
+              >
+                Clear all filters
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-4 text-sm font-bold text-[#0a2230] hover:bg-[#f9c860]"
+            >
+              <span>Open Filters</span>
+              {activeFilterCount ? (
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0a2230] px-1.5 text-[11px] font-extrabold text-white">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        </div>
+      </div>
 
-        {/* ROW 1: Hull type + Keyword search (left), Clear (right) */}
-        <div className="grid grid-cols-12 gap-3 items-start">
-          <div className="col-span-12 lg:col-span-10 min-w-0">
-            <div className={label}>Hull type</div>
-            <div className="mt-1.5 flex flex-wrap xl:flex-nowrap items-center gap-2">
-              <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
-              <HullTile
-                active={type === "monohull"}
-                onClick={() => setType("monohull")}
-                label="Monohull"
-                imgSrc="/images/hulls/monohull.png"
-              />
-              <HullTile
-                active={type === "catamaran"}
-                onClick={() => setType("catamaran")}
-                label="Catamaran"
-                imgSrc="/images/hulls/catamaran.png"
-              />
-              <HullTile
-                active={type === "trimaran"}
-                onClick={() => setType("trimaran")}
-                label="Trimaran"
-                imgSrc="/images/hulls/trimaran.png"
-              />
+      {mobileDrawerOpen ? (
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] lg:hidden">
+          <button
+            type="button"
+            aria-label="Close advanced search panel"
+            onClick={() => setMobileDrawerOpen(false)}
+            className="absolute inset-0 bg-black/55"
+          />
 
-              <div className="basis-full xl:basis-auto w-full mt-2 xl:mt-0 xl:w-auto xl:ml-5 shrink-0">
-                <label htmlFor="home-keyword-search" className="sr-only">
-                  Keyword search
-                </label>
+          <aside className="absolute right-0 top-0 h-full w-[min(92vw,390px)] overflow-y-auto bg-[#0a2230] p-4 shadow-2xl ring-1 ring-white/15">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-extrabold text-white">Advanced Search</h2>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                className="text-sm font-semibold text-white/85 underline underline-offset-2 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3 pb-24">
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>HULL TYPE</label>
+                <div className="flex flex-wrap gap-2">
+                  <HullTile active={type === "both"} onClick={() => setType("both")} label="All" isAll />
+                  <HullTile active={type === "monohull"} onClick={() => setType("monohull")} label="Monohull" imgSrc="/images/hulls/monohull.png" />
+                  <HullTile active={type === "catamaran"} onClick={() => setType("catamaran")} label="Catamaran" imgSrc="/images/hulls/catamaran.png" />
+                  <HullTile active={type === "trimaran"} onClick={() => setType("trimaran")} label="Trimaran" imgSrc="/images/hulls/trimaran.png" />
+                </div>
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>KEYWORD SEARCH</label>
                 <input
-                  id="home-keyword-search"
                   type="text"
-                  placeholder="Keyword Search"
-                  className={`${input} max-w-[380px] xl:w-[33ch] xl:max-w-[33ch]`}
+                  placeholder="Search..."
+                  className={input}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>BUILDER</label>
+                <select className={`${select} ${selectTextClass(builder)}`} value={builder} onChange={(e) => setBuilder(e.target.value)}>
+                  {renderBuilderOptions("mobile-home-builder")}
+                </select>
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>YEAR</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className={`${select} ${selectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
+                    <option value="">Min</option>
+                    {yearOptions.map((y) => (
+                      <option key={`mobile-home-year-min-${y}`} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                  <select className={`${select} ${selectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
+                    <option value="">Max</option>
+                    {yearOptions.map((y) => (
+                      <option key={`mobile-home-year-max-${y}`} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <div className="flex items-center justify-between gap-2">
+                  <label className={mobileDrawerLabel}>Length</label>
+                  <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select className={`${select} ${selectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
+                    <option value="">Min</option>
+                    {loaOptions.map((v) => (
+                      <option key={`mobile-home-loa-min-${loaUnit}-${v}`} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                  <select className={`${select} ${selectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
+                    <option value="">Max</option>
+                    {loaOptions.map((v) => (
+                      <option key={`mobile-home-loa-max-${loaUnit}-${v}`} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>PRICE</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Min"
+                    className={input}
+                    value={formatPriceInput(priceMin)}
+                    onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
+                    aria-label="Minimum price"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="Max"
+                    className={input}
+                    value={formatPriceInput(priceMax)}
+                    onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
+                    aria-label="Maximum price"
+                  />
+                </div>
+              </div>
+
+              <div className={mobileDrawerSection}>
+                <label className={mobileDrawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
+
+                {!isUSA ? (
+                  <select
+                    className={`${select} ${selectTextClass(country)}`}
+                    value={country}
+                    onChange={(e) => {
+                      const next = String(e.target.value || "").toUpperCase();
+                      setCountry(next);
+                      if (next !== "US") setUsRegion("");
+                    }}
+                  >
+                    {countryOptions.map((c) => (
+                      <option key={`mobile-home-country-${c.value || "all"}`} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    <select
+                      className={`${select} ${selectTextClass(country)}`}
+                      value={country}
+                      onChange={(e) => {
+                        const next = String(e.target.value || "").toUpperCase();
+                        setCountry(next);
+                        if (next !== "US") setUsRegion("");
+                      }}
+                    >
+                      {countryOptions.map((c) => (
+                        <option key={`mobile-home-country-usa-${c.value || "all"}`} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      className={`${select} ${selectTextClass(usRegion)}`}
+                      value={usRegion}
+                      onChange={(e) => setUsRegion(e.target.value)}
+                      aria-label="USA Region"
+                    >
+                      {US_REGION_OPTIONS.map((o) => (
+                        <option key={`mobile-home-us-region-${o.value || "all"}`} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end border-t border-white/15 pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearFilters();
+                    setMobileDrawerOpen(false);
+                  }}
+                  className="text-[12px] font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+                >
+                  Clear filters
+                </button>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 -mx-4 border-t border-white/15 bg-[#0a2230]/95 px-4 py-3 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => {
+                  applyFilters();
+                  setMobileDrawerOpen(false);
+                }}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-6 text-sm font-extrabold text-[#0a2230] hover:bg-[#f9c860]"
+                aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
+              >
+                {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
+                <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      <form onSubmit={submit} className={`${shell} relative hidden lg:block`}>
+        <div className="mx-auto w-full max-w-[900px]">
+          {/* ROW 1 */}
+          <div className="mt-0 grid grid-cols-[270px_120px_270px] items-end justify-center gap-3">
+            <div className="min-w-0">
+              <label htmlFor="home-keyword-search" className={label}>
+                Keyword Search
+              </label>
+              <input
+                id="home-keyword-search"
+                type="text"
+                placeholder="Keyword Search"
+                className={`${input} mt-2 w-full`}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+
+            <div className="min-w-0" ref={desktopHullMenuRef}>
+              <label className={`${label} text-center`}>Hull type</label>
+              <div className="relative mt-2 flex justify-center">
+                {type === "both" ? (
+                  <HullTile
+                    active
+                    onClick={() => setDesktopHullMenuOpen((v) => !v)}
+                    label="All"
+                    isAll
+                  />
+                ) : type === "monohull" ? (
+                  <HullTile
+                    active
+                    onClick={() => setDesktopHullMenuOpen((v) => !v)}
+                    label="Monohull"
+                    imgSrc="/images/hulls/monohull.png"
+                  />
+                ) : type === "catamaran" ? (
+                  <HullTile
+                    active
+                    onClick={() => setDesktopHullMenuOpen((v) => !v)}
+                    label="Catamaran"
+                    imgSrc="/images/hulls/catamaran.png"
+                  />
+                ) : (
+                  <HullTile
+                    active
+                    onClick={() => setDesktopHullMenuOpen((v) => !v)}
+                    label="Trimaran"
+                    imgSrc="/images/hulls/trimaran.png"
+                  />
+                )}
+                {desktopHullMenuOpen ? (
+                  <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 rounded-xl border border-white/20 bg-[#0f2a3b]/98 p-2 shadow-xl">
+                    <div className="flex items-center gap-2">
+                      <HullTile
+                        active={type === "both"}
+                        onClick={() => {
+                          setType("both");
+                          setDesktopHullMenuOpen(false);
+                        }}
+                        label="All"
+                        isAll
+                      />
+                      <HullTile
+                        active={type === "monohull"}
+                        onClick={() => {
+                          setType("monohull");
+                          setDesktopHullMenuOpen(false);
+                        }}
+                        label="Monohull"
+                        imgSrc="/images/hulls/monohull.png"
+                      />
+                      <HullTile
+                        active={type === "catamaran"}
+                        onClick={() => {
+                          setType("catamaran");
+                          setDesktopHullMenuOpen(false);
+                        }}
+                        label="Catamaran"
+                        imgSrc="/images/hulls/catamaran.png"
+                      />
+                      <HullTile
+                        active={type === "trimaran"}
+                        onClick={() => {
+                          setType("trimaran");
+                          setDesktopHullMenuOpen(false);
+                        }}
+                        label="Trimaran"
+                        imgSrc="/images/hulls/trimaran.png"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <div className="mb-0.5 text-right leading-none">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="text-[12px] font-semibold text-white underline underline-offset-2 hover:text-white"
+                >
+                  Clear filters
+                </button>
+              </div>
+              <label className={label}>Builder</label>
+              <select
+                className={`${select} mt-2 w-full ${selectTextClass(builder)}`}
+                value={builder}
+                onChange={(e) => setBuilder(e.target.value)}
+                aria-label="Builder"
+              >
+                {renderBuilderOptions("desktop-home-builder")}
+              </select>
+            </div>
+          </div>
+
+          {/* ROW 2 */}
+          <div className="mt-3 grid grid-cols-[220px_220px_220px] items-end justify-center gap-3">
+            <div className="min-w-0">
+              <label className={label}>Year</label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <select
+                  className={`${select} w-full ${selectTextClass(yearMin)}`}
+                  value={yearMin}
+                  onChange={(e) => setYearMin(e.target.value)}
+                  aria-label="Minimum year"
+                >
+                  <option value="">Min</option>
+                  {yearOptions.map((y) => (
+                    <option key={`year-min-${y}`} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={`${select} w-full ${selectTextClass(yearMax)}`}
+                  value={yearMax}
+                  onChange={(e) => setYearMax(e.target.value)}
+                  aria-label="Maximum year"
+                >
+                  <option value="">Max</option>
+                  {yearOptions.map((y) => (
+                    <option key={`year-max-${y}`} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <label className={label}>
+                Length
+                <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+              </label>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <select
+                  className={`${select} w-full ${selectTextClass(loaMin)}`}
+                  value={loaMin}
+                  onChange={(e) => setLoaMin(e.target.value)}
+                  aria-label={`Minimum LOA (${loaUnit})`}
+                >
+                  <option value="">{loaUnit.toUpperCase()} Min</option>
+                  {loaOptions.map((v) => (
+                    <option key={`loa-min-${loaUnit}-${v}`} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={`${select} w-full ${selectTextClass(loaMax)}`}
+                  value={loaMax}
+                  onChange={(e) => setLoaMax(e.target.value)}
+                  aria-label={`Maximum LOA (${loaUnit})`}
+                >
+                  <option value="">{loaUnit.toUpperCase()} Max</option>
+                  {loaOptions.map((v) => (
+                    <option key={`loa-max-${loaUnit}-${v}`} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <label className={label}>Price</label>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Min"
+                  className={`${input} w-full`}
+                  value={formatPriceInput(priceMin)}
+                  onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
+                  aria-label="Minimum price"
+                />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Max"
+                  className={`${input} w-full`}
+                  value={formatPriceInput(priceMax)}
+                  onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
+                  aria-label="Maximum price"
                 />
               </div>
             </div>
           </div>
 
-          <div className="hidden lg:block lg:col-span-2 min-w-0 lg:pt-[18px]">
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="text-[12px] font-semibold text-white/90 underline underline-offset-2 hover:text-white"
-              >
-                Clear filters
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* ROW 2: Year + Builder + LOA + Price */}
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[252px_360px_252px_252px] lg:items-start">
-          <div className="min-w-0">
-            <label className={label}>Year</label>
-            <div className="mt-2 flex gap-2">
-              <select
-                className={`${select} !w-[120px] ${selectTextClass(yearMin)}`}
-                value={yearMin}
-                onChange={(e) => setYearMin(e.target.value)}
-                aria-label="Minimum year"
-              >
-                <option value="">Min</option>
-                {yearOptions.map((y) => (
-                  <option key={`year-min-${y}`} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={`${select} !w-[120px] ${selectTextClass(yearMax)}`}
-                value={yearMax}
-                onChange={(e) => setYearMax(e.target.value)}
-                aria-label="Maximum year"
-              >
-                <option value="">Max</option>
-                {yearOptions.map((y) => (
-                  <option key={`year-max-${y}`} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="min-w-0 lg:w-[360px]">
-            <label className={label}>Builder</label>
-            <select
-              className={`${select} mt-2 w-full max-w-[380px] lg:max-w-none ${selectTextClass(builder)}`}
-              value={builder}
-              onChange={(e) => setBuilder(e.target.value)}
-            >
-              <option value="">All</option>
-              {builders.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <div className="min-w-0">
-            <label className={label}>
-              LOA <span className="text-white/55 font-semibold">(length overall)</span>
-              <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
-            </label>
-
-            <div className="mt-2 lg:mt-1 flex gap-2">
-              <select
-                className={`${select} !w-[120px] ${selectTextClass(loaMin)}`}
-                value={loaMin}
-                onChange={(e) => setLoaMin(e.target.value)}
-                aria-label={`Minimum LOA (${loaUnit})`}
-              >
-                <option value="">{loaUnit.toUpperCase()} Min</option>
-                {loaOptions.map((v) => (
-                  <option key={`loa-min-${loaUnit}-${v}`} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              <select
-                className={`${select} !w-[120px] ${selectTextClass(loaMax)}`}
-                value={loaMax}
-                onChange={(e) => setLoaMax(e.target.value)}
-                aria-label={`Maximum LOA (${loaUnit})`}
-              >
-                <option value="">{loaUnit.toUpperCase()} Max</option>
-                {loaOptions.map((v) => (
-                  <option key={`loa-max-${loaUnit}-${v}`} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="min-w-0">
-            <label className={label}>Price</label>
-            <div className="mt-2 lg:mt-1 flex gap-2">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Min"
-                className={`${input} !w-[120px]`}
-                value={formatPriceInput(priceMin)}
-                onChange={(e) => setPriceMin(digitsOnly(e.target.value))}
-                aria-label="Minimum price"
-              />
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="Max"
-                className={`${input} !w-[120px]`}
-                value={formatPriceInput(priceMax)}
-                onChange={(e) => setPriceMax(digitsOnly(e.target.value))}
-                aria-label="Maximum price"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ROW 3: Country + Region slot + Search */}
-        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_280px] lg:gap-2">
+          {/* ROW 3 */}
+          <div className="mt-3 grid grid-cols-[220px_220px_220px] items-end justify-center gap-3">
             <div className="min-w-0">
-            <label className={label}>Country</label>
-
-            <div className="mt-2">
-              <select
-                className={`${select} w-full max-w-[380px] lg:max-w-none ${selectTextClass(country)}`}
-                value={country}
-                onChange={(e) => {
-                  const next = String(e.target.value || "").toUpperCase();
-                  setCountry(next);
-                  if (next !== "US") setUsRegion("");
-                }}
-              >
-                {countryOptions.map((c) => (
-                  <option key={c.value || "all"} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            </div>
-
-            <div className="min-w-0">
-            <label className={label}>
-              {isUSA ? "USA Region" : <span className="invisible">USA Region</span>}
-            </label>
-            <div className="mt-2">
-              {isUSA ? (
+              <label className={label}>Country</label>
+              <div className="mt-2">
                 <select
-                  className={`${select} w-full max-w-[380px] lg:max-w-none ${selectTextClass(usRegion)}`}
-                  value={usRegion}
-                  onChange={(e) => setUsRegion(e.target.value)}
-                  aria-label="USA Region"
+                  className={`${select} w-full ${selectTextClass(country)}`}
+                  value={country}
+                  onChange={(e) => {
+                    const next = String(e.target.value || "").toUpperCase();
+                    setCountry(next);
+                    if (next !== "US") setUsRegion("");
+                  }}
                 >
-                  {US_REGION_OPTIONS.map((o) => (
-                    <option key={o.value || "all"} value={o.value}>
-                      {o.label}
+                  {countryOptions.map((c) => (
+                    <option key={c.value || "all"} value={c.value}>
+                      {c.label}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <div className="hidden h-10 lg:block" aria-hidden="true" />
-              )}
+              </div>
             </div>
-            </div>
-          </div>
 
-          <div className="lg:ml-auto lg:pl-4">
-            <button
-              type="submit"
-              className={`${button} mt-2 w-full max-w-[380px] lg:mt-0 lg:w-auto lg:min-w-[220px]`}
-              aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
-            >
-              {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
-              <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
-            </button>
+            <div className="min-w-0">
+              <label className={label}>
+                {isUSA ? "USA Region" : <span className="invisible">USA Region</span>}
+              </label>
+              <div className="mt-2">
+                {isUSA ? (
+                  <select
+                    className={`${select} w-full ${selectTextClass(usRegion)}`}
+                    value={usRegion}
+                    onChange={(e) => setUsRegion(e.target.value)}
+                    aria-label="USA Region"
+                  >
+                    {US_REGION_OPTIONS.map((o) => (
+                      <option key={o.value || "all"} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="h-10" aria-hidden="true" />
+                )}
+              </div>
+            </div>
+
+            <div className="min-w-0">
+              <button
+                type="submit"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-4 text-sm font-semibold text-black hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]"
+                aria-label={hasActiveFilters ? "Apply selected filters" : "Browse all sailboats"}
+              >
+                {hasActiveFilters ? <FunnelIcon /> : <CompassIcon />}
+                <span>{hasActiveFilters ? "Apply Filters" : "Browse All Sailboats"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </form>

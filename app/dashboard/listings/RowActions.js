@@ -40,9 +40,7 @@ export default function RowActions({
           previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""
         }`;
 
-  const editHref = `/listings/${encodeURIComponent(id)}/edit${
-    previewToken ? `?token=${encodeURIComponent(previewToken)}` : ""
-  }`;
+  const editHref = `/dashboard/listings/${encodeURIComponent(id)}/edit`;
 
   const showEdit = Boolean(canEdit);
   const showAdminReviewHint = s === "PENDING_REVIEW";

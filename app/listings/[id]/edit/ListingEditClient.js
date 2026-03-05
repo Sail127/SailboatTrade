@@ -274,8 +274,15 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const router = useRouter();
   const status = String(initialListing?.status || "").toUpperCase();
   const billingStatus = String(initialListing?.billingStatus || "FREE").toUpperCase();
+  const photoPlan = String(initialListing?.photoPlan || "FREE_3").toUpperCase();
+  const addons = Array.isArray(initialListing?.billingAddons) ? initialListing.billingAddons : [];
   const isRejected = status === "REJECTED";
-  const canSubmitForReview = isRejected && billingStatus === "ACTIVE";
+  const isDraft = status === "DRAFT";
+  const isPublished = status === "PUBLISHED";
+  const isPendingReview = status === "PENDING_REVIEW";
+  const canSubmitForReview = (isRejected || isDraft) && billingStatus === "ACTIVE";
+  const hasPhotoPlus = photoPlan === "PHOTO_PLUS_25" || addons.includes("PHOTO_PLUS_25");
+  const maxAllowedPhotos = hasPhotoPlus ? MAX_PHOTOS : FREE_PHOTO_LIMIT;
   const countryOptions = useMemo(() => getCountryOptions("en"), []);
   const usStateOptions = useMemo(() => getUsStateOptions(), []);
 
@@ -376,7 +383,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     [photoItems]
   );
   const photoCount = photoItems.length;
-  const overMax = photoCount > MAX_PHOTOS;
+  const overMax = photoCount > maxAllowedPhotos;
   const hasPendingLocalPhotos = pendingPhotoCount > 0;
   const uploadedPhotoKeys = useMemo(
     () =>
@@ -387,6 +394,14 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         ""
       ),
     [photoItems]
+  );
+  const initialUploadedPhotoKeys = useMemo(
+    () => normalizePhotoOrder(initialListing?.imageUrls || [], initialListing?.heroImageUrl || ""),
+    [initialListing]
+  );
+  const uploadedPhotosChanged = useMemo(
+    () => !arraysEqual(uploadedPhotoKeys, initialUploadedPhotoKeys),
+    [uploadedPhotoKeys, initialUploadedPhotoKeys]
   );
   const gallerySources = useMemo(
     () =>
@@ -491,9 +506,9 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     const incoming = Array.from(files).filter((f) => /^image\//i.test(String(f?.type || "")));
     if (!incoming.length) return;
 
-    const remaining = MAX_PHOTOS - photoItems.length;
+    const remaining = maxAllowedPhotos - photoItems.length;
     if (remaining <= 0) {
-      setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
+      setPhotoErr(`Max ${maxAllowedPhotos} photos.`);
       return;
     }
 
@@ -518,8 +533,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setPhotoErr("");
     const localItems = (photoItemsRef.current || []).filter((p) => p?.status === "local" && p?.file);
     if (!localItems.length) return;
-    if (photoItemsRef.current.length > MAX_PHOTOS) {
-      setPhotoErr(`Max ${MAX_PHOTOS} photos.`);
+    if (photoItemsRef.current.length > maxAllowedPhotos) {
+      setPhotoErr(`Max ${maxAllowedPhotos} photos.`);
       return;
     }
 
@@ -595,7 +610,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setForm((p) => ({ ...p, equipment: (p.equipment || []).filter((x) => x !== name) }));
   }
 
-  async function save(returnToPreview = false) {
+  async function save(returnToPreview = false, submitForPhotoReview = false) {
     setSaveErr("");
     setSaveOk("");
 
@@ -604,7 +619,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       return false;
     }
     if (overMax) {
-      setSaveErr(`You have ${photoCount} photos. Max is ${MAX_PHOTOS}. Remove photos first.`);
+      setSaveErr(`You have ${photoCount} photos. Max is ${maxAllowedPhotos}. Remove photos first.`);
       return false;
     }
     if (hasPendingLocalPhotos) {
@@ -681,6 +696,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         dinghyDetails: strOrNull(form.dinghyDetails),
 
         equipment: (form.equipment || []).filter(Boolean),
+        submitForPhotoReview: Boolean(submitForPhotoReview),
       };
 
       const res = await fetch(`/api/listings/${encodeURIComponent(id)}/edit`, {
@@ -692,10 +708,22 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Save failed.");
 
-      setSaveOk("Saved.");
-      setReviewMsg("");
+      if (data?.submittedForPhotoReview) {
+        setReviewMsg("Photo changes submitted for admin review.");
+        setSaveOk("");
+      } else if (data?.liveUpdated) {
+        setSaveOk("Saved. Changes are now live.");
+        setReviewMsg("");
+      } else {
+        setSaveOk("Saved.");
+        setReviewMsg("");
+      }
       if (returnToPreview) {
         router.push(previewHref);
+        return true;
+      }
+      if (data?.submittedForPhotoReview) {
+        router.refresh();
         return true;
       }
       setTimeout(() => setSaveOk(""), 2000);
@@ -737,34 +765,74 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     await submitForReview();
   }
 
+  async function submitPhotoChanges() {
+    if (!isPublished) return;
+    if (!uploadedPhotosChanged) {
+      setSaveErr("No uploaded photo changes to submit.");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Submit photo changes for admin review now? The listing will move to review until approved."
+    );
+    if (!confirmed) return;
+    await save(false, true);
+  }
+
   return (
     <div className="py-8">
       <div className={CONTAINER}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Badge tone="navy">Edit Draft</Badge>
+            <Badge tone={isPublished ? "emerald" : isPendingReview ? "gold" : isRejected ? "red" : "navy"}>
+              {isPublished
+                ? "Edit Live Listing"
+                : isPendingReview
+                ? "Pending Review"
+                : isRejected
+                ? "Edit Rejected Listing"
+                : "Edit Draft"}
+            </Badge>
             <Badge tone={overMax ? "red" : photoCount > FREE_PHOTO_LIMIT ? "gold" : "emerald"}>
-              Photos: {photoCount} / {photoCount > FREE_PHOTO_LIMIT ? MAX_PHOTOS : FREE_PHOTO_LIMIT}
+              Photos: {photoCount} / {maxAllowedPhotos}
             </Badge>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <a href={previewHref} className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50">
-              Return to preview
+              {isPublished ? "View live listing" : "View preview"}
             </a>
 
             <button
               type="button"
-              onClick={() => save(true)}
+              onClick={() => save(false)}
               disabled={saving}
               className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
                 saving ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
               }`}
             >
-              Save &amp; Return
+              {saving ? "Saving…" : "Save changes"}
             </button>
 
-            {canSubmitForReview ? (
+            {isPublished && (uploadedPhotosChanged || hasPendingLocalPhotos) ? (
+              <button
+                type="button"
+                onClick={submitPhotoChanges}
+                disabled={saving || reviewBusy || overMax || hasPendingLocalPhotos}
+                className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold ${
+                  saving || reviewBusy || overMax || hasPendingLocalPhotos
+                    ? "bg-amber-200 text-amber-900 cursor-not-allowed"
+                    : "bg-[#c8a44d] text-[#0a2230] hover:brightness-95"
+                }`}
+              >
+                {hasPendingLocalPhotos
+                  ? "Upload photos first"
+                  : reviewBusy
+                  ? "Submitting…"
+                  : "Submit photo changes"}
+              </button>
+            ) : null}
+
+            {canSubmitForReview && !isPublished && !isPendingReview ? (
               <button
                 type="button"
                 onClick={saveAndResubmit}
@@ -773,9 +841,17 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   saving || reviewBusy || overMax ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
               >
-                {reviewBusy ? "Submitting…" : saving ? "Saving…" : "Save & Resubmit"}
+                {reviewBusy ? "Submitting…" : saving ? "Saving…" : isRejected ? "Save & Resubmit" : "Save & Submit"}
               </button>
             ) : null}
+
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard/listings")}
+              className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+            >
+              Back to My Listings
+            </button>
           </div>
         </div>
 
@@ -794,13 +870,18 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             {saveErr}
           </div>
         ) : null}
+        {isPublished ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] text-slate-700">
+            Non-photo edits go live when you save. Photo changes require Submit photo changes for moderation.
+          </div>
+        ) : null}
 
         {isRejected ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">
             <div className="font-semibold">Admin comment</div>
             <div className="mt-1">{initialListing?.rejectionReason || "Changes required before publishing."}</div>
             {canSubmitForReview ? (
-              <div className="mt-2 text-[11px]">Use the green Save &amp; Resubmit button above after making your edits.</div>
+              <div className="mt-2 text-[11px]">Use Save &amp; Resubmit in the top action row after making your edits.</div>
             ) : (
               <div className="mt-2 text-[11px]">
                 Complete checkout first to resubmit for admin review.
@@ -820,7 +901,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[13px] font-extrabold text-[#0a2230]">Photos</div>
-                <div className="text-[11px] text-slate-600">Max {MAX_PHOTOS}. First photo is the hero image.</div>
+                <div className="text-[11px] text-slate-600">Max {maxAllowedPhotos}. First photo is the hero image.</div>
               </div>
 
               {photoErr ? (
@@ -833,10 +914,10 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
                 <button
                   type="button"
-                  disabled={photoBusy || photoCount >= MAX_PHOTOS}
+                  disabled={photoBusy || photoCount >= maxAllowedPhotos}
                   onClick={() => fileRef.current?.click()}
                   className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] ${
-                    photoBusy || photoCount >= MAX_PHOTOS ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
+                    photoBusy || photoCount >= maxAllowedPhotos ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
                   }`}
                 >
                   Add photos

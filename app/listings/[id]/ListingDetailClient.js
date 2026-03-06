@@ -14,18 +14,23 @@ const CONTAINER = "mx-auto max-w-6xl px-4 sm:px-6 lg:px-8";
 // ✅ Free + paid plan constants (schema-aligned)
 const FREE_PHOTO_LIMIT = 3;
 const MAX_PHOTOS = 25;
-const SWIPE_OFFSET_THRESHOLD = 50;
-const SWIPE_VELOCITY_THRESHOLD = 360;
+const SWIPE_OFFSET_THRESHOLD = 28;
+const SWIPE_VELOCITY_THRESHOLD = 220;
+const SLIDE_TRANSITION = {
+  type: "tween",
+  duration: 0.2,
+  ease: [0.22, 1, 0.36, 1],
+};
 
 const gallerySlideVariants = {
   enter: (dir) => ({
-    x: dir > 0 ? 120 : -120,
+    x: dir > 0 ? "100%" : "-100%",
   }),
   center: {
-    x: 0,
+    x: "0%",
   },
   exit: (dir) => ({
-    x: dir > 0 ? -120 : 120,
+    x: dir > 0 ? "-100%" : "100%",
   }),
 };
 
@@ -401,6 +406,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
   const galleryDragRef = useRef(false);
   const pinchAreaRef = useRef(null);
   const lightboxImageRef = useRef(null);
+  const wheelStateRef = useRef({ lastTs: 0, acc: 0 });
   const pointersRef = useRef(new Map());
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
@@ -594,8 +600,8 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
     if (!el) return;
     const w = el.clientWidth || 0;
     if (w <= 0) return;
-    el.scrollTo({ left: idx * w, behavior: "smooth" });
-  }, [idx, lightboxOpen]);
+    el.scrollTo({ left: idx * w, behavior: "auto" });
+  }, [lightboxOpen]);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -708,13 +714,35 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
       const isSwipe =
-        pinchStateRef.current.swipeEligible && absX > 40 && absX > absY * 1.2;
+        pinchStateRef.current.swipeEligible && absX > 24 && absX > absY * 1.05;
       if (isSwipe) {
         if (dx < 0) next();
         else prev();
       }
       pinchStateRef.current.swipeEligible = false;
     }
+  }
+
+  function onLightboxWheel(e) {
+    if (!lightboxOpen || images.length <= 1 || isTouchDevice) return;
+    if (zoomRef.current > 1.001) return;
+
+    const primaryDelta =
+      Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!Number.isFinite(primaryDelta) || primaryDelta === 0) return;
+
+    e.preventDefault();
+
+    const now = Date.now();
+    const state = wheelStateRef.current;
+    if (now - state.lastTs > 220) state.acc = 0;
+    state.lastTs = now;
+    state.acc += primaryDelta;
+
+    if (Math.abs(state.acc) < 60) return;
+    if (state.acc > 0) next();
+    else prev();
+    state.acc = 0;
   }
 
   const isTouchLandscape =
@@ -769,49 +797,47 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
     <div className="space-y-3">
       <div className="hidden sm:block">
         <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-          <AnimatePresence initial={false} custom={slideDirection} mode="sync">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <motion.img
-              key={`gallery-main-${idx}`}
-              src={images[idx]}
-              alt={`${title} ${idx + 1}`}
-              className="w-full aspect-[16/10] object-contain bg-slate-100 cursor-zoom-in"
-              loading="eager"
-              custom={slideDirection}
-              variants={gallerySlideVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{
-                type: "spring",
-                stiffness: 680,
-                damping: 46,
-                mass: 0.62,
-              }}
-              drag={images.length > 1 ? "x" : false}
-              dragConstraints={{ left: 0, right: 0 }}
-              dragElastic={0.28}
-              dragMomentum={false}
-              onDrag={(_, info) => {
-                if (Math.abs(info.offset.x) > 6) galleryDragRef.current = true;
-              }}
-              onDragEnd={(_, info) => {
-                const offsetX = info.offset.x || 0;
-                const velocityX = info.velocity.x || 0;
-                if (shouldSwipe(offsetX, velocityX)) {
-                  if (offsetX < 0 || velocityX < 0) next();
-                  else prev();
-                }
-                requestAnimationFrame(() => {
-                  galleryDragRef.current = false;
-                });
-              }}
-              onClick={() => {
-                if (galleryDragRef.current) return;
-                setLightboxOpen(true);
-              }}
-            />
-          </AnimatePresence>
+          <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
+            <AnimatePresence initial={false} custom={slideDirection} mode="sync">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <motion.img
+                key={`gallery-main-${idx}`}
+                src={images[idx]}
+                alt={`${title} ${idx + 1}`}
+                className="absolute inset-0 h-full w-full object-contain bg-slate-100 cursor-zoom-in"
+                loading="eager"
+                custom={slideDirection}
+                variants={gallerySlideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={SLIDE_TRANSITION}
+                style={{ willChange: "transform" }}
+                drag={images.length > 1 ? "x" : false}
+                dragConstraints={{ left: 0, right: 0 }}
+                dragElastic={0.16}
+                dragMomentum={false}
+                onDrag={(_, info) => {
+                  if (Math.abs(info.offset.x) > 6) galleryDragRef.current = true;
+                }}
+                onDragEnd={(_, info) => {
+                  const offsetX = info.offset.x || 0;
+                  const velocityX = info.velocity.x || 0;
+                  if (shouldSwipe(offsetX, velocityX)) {
+                    if (offsetX < 0 || velocityX < 0) next();
+                    else prev();
+                  }
+                  requestAnimationFrame(() => {
+                    galleryDragRef.current = false;
+                  });
+                }}
+                onClick={() => {
+                  if (galleryDragRef.current) return;
+                  setLightboxOpen(true);
+                }}
+              />
+            </AnimatePresence>
+          </div>
 
           {images.length > 1 ? (
             <>
@@ -876,7 +902,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
       <div className="sm:hidden">
         <div
           ref={mobileTrackRef}
-          className="flex w-full overflow-x-auto snap-x snap-mandatory scroll-smooth rounded-2xl border border-slate-200 bg-slate-100"
+          className="flex w-full overflow-x-auto snap-x snap-mandatory rounded-2xl border border-slate-200 bg-slate-100"
         >
           {images.map((src, i) => (
             <button
@@ -891,7 +917,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                 src={src}
                 alt={`${title} ${i + 1}`}
                 className="w-full aspect-[4/3] object-contain bg-slate-100"
-                loading={i === 0 ? "eager" : "lazy"}
+                loading={i < 3 ? "eager" : "lazy"}
               />
             </button>
           ))}
@@ -1035,6 +1061,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   isTouchDevice ? "" : "rounded-2xl border border-white/10 bg-black/40"
                 }`}
                 style={{ touchAction: "none" }}
+                onWheel={onLightboxWheel}
                 onPointerDown={onZoomPointerDown}
                 onPointerMove={onZoomPointerMove}
                 onPointerUp={onZoomPointerUp}
@@ -1048,18 +1075,14 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   <AnimatePresence initial={false} custom={slideDirection} mode="sync">
                     <motion.div
                       key={`gallery-lightbox-${idx}`}
-                      className="h-full w-full grid place-items-center"
+                      className="absolute inset-0 grid place-items-center"
                       custom={slideDirection}
                       variants={gallerySlideVariants}
                       initial="enter"
                       animate="center"
                       exit="exit"
-                      transition={{
-                        type: "spring",
-                        stiffness: 680,
-                        damping: 46,
-                        mass: 0.62,
-                      }}
+                      transition={SLIDE_TRANSITION}
+                      style={{ willChange: "transform" }}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img

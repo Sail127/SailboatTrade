@@ -7,6 +7,7 @@ import ListingsFilterSidebar from "../../components/ListingsFilterSidebar.js";
 import SortSelect from "../../components/SortSelect.js";
 import ResultsPerPage from "../../components/ResultsPerPage.js";
 import { getCountryOptions } from "../../lib/countries.js";
+import { KNOWN_BUILDERS } from "../../lib/builders.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,29 +15,6 @@ export const dynamic = "force-dynamic";
 const DEFAULT_PER_PAGE = 24;
 const ALLOWED_PER_PAGE = [12, 18, 24, 36, 48];
 const M_PER_FT = 0.3048; // 1 ft = 0.3048 m
-
-const KNOWN_BUILDERS = [
-  "Beneteau",
-  "Jeanneau",
-  "Lagoon",
-  "Catalina",
-  "Fountaine Pajot",
-  "Dufour",
-  "Bavaria",
-  "Hunter",
-  "Hanse",
-  "X-Yachts",
-  "Oyster",
-  "Hallberg-Rassy",
-  "Island Packet",
-  "J/Boats",
-  "Elan",
-  "Excess",
-  "Hylas",
-  "Leopard",
-  "Bali",
-  "Nautitech",
-];
 
 // USA regions (UI label -> Prisma enum)
 const US_REGION_MAP = {
@@ -108,6 +86,40 @@ function parseUsRegion(raw) {
   return "";
 }
 
+function readParamList(searchParams, keys, { upper = false } = {}) {
+  const keyList = Array.isArray(keys) ? keys : [keys];
+  const out = [];
+  const seen = new Set();
+
+  for (const key of keyList) {
+    const rawValue = searchParams?.[key];
+    const values = Array.isArray(rawValue) ? rawValue : rawValue == null ? [] : [rawValue];
+    for (const value of values) {
+      const trimmed = String(value ?? "").trim();
+      if (!trimmed) continue;
+      const normalized = upper ? trimmed.toUpperCase() : trimmed;
+      const dedupeKey = normalized.toLowerCase();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      out.push(normalized);
+    }
+  }
+
+  return out;
+}
+
+function dedupeCountries(parsedCountries) {
+  const out = [];
+  const seen = new Set();
+  for (const country of parsedCountries) {
+    const keyBase = country?.code ? country.code.toUpperCase() : String(country?.raw || "").toLowerCase();
+    if (!keyBase || seen.has(keyBase)) continue;
+    seen.add(keyBase);
+    out.push(country);
+  }
+  return out;
+}
+
 async function resolveTypeValue(desired) {
   const now = new Date();
   const publishedFilter = { status: "PUBLISHED", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
@@ -173,13 +185,20 @@ export default async function Browse({ searchParams }) {
   const q = (searchParams?.q ?? "").toString().trim();
   const type = (searchParams?.type || "both").toString().toLowerCase();
 
-  const builder = (searchParams?.builder ?? "").toString().trim();
+  const builders = readParamList(searchParams, ["builder", "make"]);
 
-  const countryRaw = searchParams?.country?.toString().trim() || "";
-  const country = parseCountry(countryRaw);
+  const countries = dedupeCountries(
+    readParamList(searchParams, "country", { upper: true })
+      .map((rawCountry) => parseCountry(rawCountry))
+      .filter((c) => c?.raw)
+  );
+  const selectedCountryCodes = countries
+    .map((c) => String(c?.code || c?.raw || "").toUpperCase())
+    .filter(Boolean);
+  const hasUsCountry = countries.some((c) => c.code === "US");
 
   const usRegionParam = searchParams?.usRegion ?? searchParams?.locationUsRegion ?? "";
-  const usRegion = parseUsRegion(usRegionParam);
+  const usRegion = hasUsCountry ? parseUsRegion(usRegionParam) : "";
 
   const yearMin = toInt(searchParams?.yearMin);
   const yearMax = toInt(searchParams?.yearMax);
@@ -218,22 +237,39 @@ export default async function Browse({ searchParams }) {
     if (typeValue) where.type = typeValue;
   }
 
-  if (builder === "Other") {
-    where.builder = { notIn: KNOWN_BUILDERS };
-  } else if (builder) {
-    where.builder = { equals: builder, mode: "insensitive" };
+  if (builders.length) {
+    const builderClauses = [];
+    const hasOtherBuilder = builders.some((b) => b === "Other");
+    const explicitBuilders = builders.filter((b) => b !== "Other");
+
+    if (hasOtherBuilder) {
+      builderClauses.push({ builder: { notIn: KNOWN_BUILDERS } });
+    }
+    for (const selectedBuilder of explicitBuilders) {
+      builderClauses.push({ builder: { equals: selectedBuilder, mode: "insensitive" } });
+    }
+
+    if (builderClauses.length === 1) where.AND.push(builderClauses[0]);
+    else if (builderClauses.length > 1) where.AND.push({ OR: builderClauses });
   }
 
-  if (country.raw) {
-    where.AND.push({
-      OR: country.variants.map((v) => ({
-        locationCountry: { equals: v, mode: "insensitive" },
-      })),
+  if (countries.length) {
+    const countryClauses = countries.map((country) => {
+      const baseCountryClause = {
+        OR: country.variants.map((v) => ({
+          locationCountry: { equals: v, mode: "insensitive" },
+        })),
+      };
+
+      if (country.code === "US" && usRegion) {
+        return { AND: [baseCountryClause, { locationUsRegion: usRegion }] };
+      }
+
+      return baseCountryClause;
     });
 
-    if (country.code === "US" && usRegion) {
-      where.locationUsRegion = usRegion;
-    }
+    if (countryClauses.length === 1) where.AND.push(countryClauses[0]);
+    else where.AND.push({ OR: countryClauses });
   }
 
   if (yearMin != null || yearMax != null) {
@@ -321,8 +357,8 @@ export default async function Browse({ searchParams }) {
   const initial = {
     q,
     type,
-    builder,
-    country: country.code || "",
+    builder: builders,
+    country: selectedCountryCodes,
     usRegion,
     yearMin: searchParams?.yearMin || "",
     yearMax: searchParams?.yearMax || "",

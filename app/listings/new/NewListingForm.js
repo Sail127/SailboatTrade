@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
  * ✅ MUST NOT CHANGE — shared with other pages
  */
 import { getCountryOptions } from "@/lib/countries";
+import { getBuilderGroups } from "@/lib/builders";
 import { guessDefaultPhoneCountry, normalizePhoneToE164, toPhoneIso2Lower } from "@/lib/phone";
 
 /**
@@ -184,38 +185,6 @@ function fmtWhen(ts) {
 /* =========================================================
    3) OPTIONS
 ========================================================= */
-const RAW_BUILDERS = [
-  "Beneteau",
-  "Jeanneau",
-  "Lagoon",
-  "Catalina",
-  "Fountaine Pajot",
-  "Dufour",
-  "Bavaria",
-  "Hunter",
-  "Hanse",
-  "X-Yachts",
-  "Oyster",
-  "Hallberg-Rassy",
-  "Island Packet",
-  "J/Boats",
-  "Elan",
-  "Excess",
-  "Hylas",
-  "Leopard",
-  "Bali",
-  "Nautitech",
-];
-
-const TOP5 = ["Beneteau", "Jeanneau", "Lagoon", "Catalina", "Bavaria"];
-
-function orderBuilders() {
-  const set = new Set(RAW_BUILDERS.map((m) => m.trim()));
-  const deduped = Array.from(set);
-  const rest = deduped.filter((m) => !TOP5.includes(m)).sort((a, b) => a.localeCompare(b));
-  return [...TOP5, ...rest];
-}
-
 const US_REGION_OPTIONS = [
   { label: "Select…", value: "" },
   { label: "West Coast", value: "WEST_COAST" },
@@ -377,7 +346,7 @@ function SectionCard({ title, subtitle, headerRight, children }) {
 export default function NewListingForm() {
   const router = useRouter();
 
-  const builders = useMemo(orderBuilders, []);
+  const { popular: topBuilders, rest: otherBuilders } = useMemo(getBuilderGroups, []);
   const countryOptions = useMemo(() => getCountryOptions("en"), []);
   const usStateOptions = useMemo(() => getUsStateOptions(), []);
 
@@ -1803,11 +1772,11 @@ export default function NewListingForm() {
             </label>
             <select className={input("builder")} value={builderSel} onChange={(e) => setBuilderSel(e.target.value)} onBlur={() => touch("builder")}>
               <option value="">Select a builder</option>
-              {TOP5.map((b) => (
+              {topBuilders.map((b) => (
                 <option key={`top-${b}`} value={b}>{b}</option>
               ))}
               <option disabled>──────────</option>
-              {builders.filter((b) => !TOP5.includes(b)).map((b) => (
+              {otherBuilders.map((b) => (
                 <option key={`az-${b}`} value={b}>{b}</option>
               ))}
               <option disabled>──────────</option>

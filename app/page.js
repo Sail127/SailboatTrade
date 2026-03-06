@@ -91,18 +91,19 @@ export default async function Home() {
   const shuffledSamples = shuffleInPlace([...SAMPLE_PLACEHOLDER_IMAGES]);
   const samplePlaceholders = Array.from({ length: placeholdersNeeded }).map((_, i) => ({
     id: `sample-${i + 1}`,
-    title: "Sample Featured Listing",
+    title: "",
     price: null,
     currency: "USD",
     year: null,
-    builder: "Sample",
-    model: "Featured Listing",
+    builder: "",
+    model: "",
     loa: null,
     loaUnit: "ft",
-    locationCity: "Sample",
+    locationCity: "",
     locationState: "",
-    locationCountry: "US",
+    locationCountry: "",
     locationUsRegion: "",
+    location: "Premium Listing Upgrade",
     heroImageUrl: shuffledSamples[i % shuffledSamples.length],
   }));
 
@@ -110,7 +111,7 @@ export default async function Home() {
     <main className="bg-white">
       <section className="mx-auto max-w-7xl px-5 md:px-8 pt-6">
         <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-[linear-gradient(130deg,#ffffff_0%,#f8fafc_55%,#eef3f8_100%)] p-0 shadow-[0_16px_35px_rgba(2,6,23,0.12)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-[#c9972e]" />
+          <div className="pointer-events-none absolute left-0 right-0 top-0 z-20 h-1 bg-[#c9972e]" />
           <div className="pointer-events-none absolute -right-20 -top-16 h-48 w-48 rounded-full bg-[#0a2230]/8 blur-3xl" />
           <div className="pointer-events-none absolute -left-10 bottom-0 h-36 w-72 rounded-full bg-[#c9972e]/10 blur-2xl" />
 
@@ -174,7 +175,7 @@ export default async function Home() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {featuredReal.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} variant="featured" />
+            <ListingCard key={listing.id} listing={listing} variant="featured" imageFit="contain" />
           ))}
 
           {samplePlaceholders.map((sample) => (
@@ -182,8 +183,9 @@ export default async function Home() {
               key={sample.id}
               listing={sample}
               variant="featured"
+              imageFit="contain"
               hrefOverride="/listings/new"
-              imageTopLabel="Sample Listing Only"
+              samplePlaceholder
             />
           ))}
         </div>

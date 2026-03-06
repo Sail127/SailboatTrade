@@ -4,39 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
-
-const RAW_BUILDERS = [
-  "Beneteau",
-  "Jeanneau",
-  "Lagoon",
-  "Catalina",
-  "Fountaine Pajot",
-  "Dufour",
-  "Bavaria",
-  "Hunter",
-  "Hanse",
-  "Sirius Yachts",
-  "X-Yachts",
-  "Oyster",
-  "Hallberg-Rassy",
-  "Island Packet",
-  "J/Boats",
-  "Elan",
-  "Excess",
-  "Hylas",
-  "Leopard",
-  "Bali",
-  "Nautitech",
-];
-const TOP7_BUILDERS = [
-  "Beneteau",
-  "Jeanneau",
-  "Lagoon",
-  "Catalina",
-  "Bavaria",
-  "Fountaine Pajot",
-  "Hanse",
-];
+import { getBuilderGroups } from "@/lib/builders";
 
 // ✅ Match your listing form enum values (and add an "All" option for search)
 const US_REGION_OPTIONS = [
@@ -49,14 +17,6 @@ const US_REGION_OPTIONS = [
   { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
   { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
 ];
-
-function orderBuilders() {
-  const set = new Set(RAW_BUILDERS.map((m) => m.trim()).filter(Boolean));
-  const deduped = Array.from(set);
-  const popular = TOP7_BUILDERS.filter((m) => set.has(m));
-  const rest = deduped.filter((m) => !popular.includes(m)).sort((a, b) => a.localeCompare(b));
-  return { popular, rest };
-}
 
 function buildYearOptions() {
   const nowYear = new Date().getFullYear();
@@ -93,6 +53,40 @@ function formatPriceInput(value) {
   const digits = digitsOnly(value);
   if (!digits) return "";
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function normalizeMultiSelectValues(value, { upper = false } = {}) {
+  const arr = Array.isArray(value) ? value : value == null ? [] : [value];
+  const out = [];
+  const seen = new Set();
+
+  for (const item of arr) {
+    const trimmed = String(item ?? "").trim();
+    if (!trimmed) continue;
+    const normalized = upper ? trimmed.toUpperCase() : trimmed;
+    const dedupeKey = normalized.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
+function addUniqueValue(values, nextValue, { upper = false } = {}) {
+  const next = String(nextValue ?? "").trim();
+  if (!next) return values;
+  const normalized = upper ? next.toUpperCase() : next;
+  const targetKey = normalized.toLowerCase();
+  const exists = values.some((v) => String(v || "").toLowerCase() === targetKey);
+  if (exists) return values;
+  return [...values, normalized];
+}
+
+function removeValue(values, targetValue) {
+  const targetKey = String(targetValue ?? "").trim().toLowerCase();
+  if (!targetKey) return values;
+  return values.filter((v) => String(v || "").toLowerCase() !== targetKey);
 }
 
 function CompassIcon({ className = "h-4 w-4" }) {
@@ -140,7 +134,7 @@ function normalizeInitialValues(initialValues = {}) {
   return {
     q: String(initialValues?.q || ""),
     type: safeType,
-    builder: String(initialValues?.builder || ""),
+    builder: normalizeMultiSelectValues(initialValues?.builder),
     yearMin: String(initialValues?.yearMin || ""),
     yearMax: String(initialValues?.yearMax || ""),
     priceMin: digitsOnly(initialValues?.priceMin),
@@ -148,7 +142,7 @@ function normalizeInitialValues(initialValues = {}) {
     loaUnit: safeLoaUnit,
     loaMin: String(initialValues?.loaMin || ""),
     loaMax: String(initialValues?.loaMax || ""),
-    country: String(initialValues?.country || "").toUpperCase(),
+    country: normalizeMultiSelectValues(initialValues?.country, { upper: true }),
     usRegion: String(initialValues?.usRegion || ""),
   };
 }
@@ -219,7 +213,7 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
 export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = {} }) {
   const router = useRouter();
 
-  const { popular: popularBuilders, rest: otherBuilders } = useMemo(orderBuilders, []);
+  const { popular: popularBuilders, rest: otherBuilders } = useMemo(getBuilderGroups, []);
   const yearOptions = useMemo(buildYearOptions, []);
   const countryOptions = useMemo(buildCountryOptionsForSearch, []);
   const initial = useMemo(() => normalizeInitialValues(initialValues), [initialValues]);
@@ -268,19 +262,20 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     initial.usRegion,
   ]);
 
-  const isUSA = String(country || "").toUpperCase() === "US";
+  const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
+  const countryOptionsNoBlank = useMemo(() => countryOptions.filter((c) => c?.value), [countryOptions]);
   const activeFilterCount = useMemo(() => {
     const hasQuery = !!String(q || "").trim();
     const hasType = String(type || "both").toLowerCase() !== "both";
-    const hasBuilder = !!String(builder || "").trim();
+    const hasBuilder = builder.length > 0;
     const hasYearMin = !!String(yearMin || "").trim();
     const hasYearMax = !!String(yearMax || "").trim();
     const hasPriceMin = !!String(priceMin || "").trim();
     const hasPriceMax = !!String(priceMax || "").trim();
     const hasLoaMin = !!String(loaMin || "").trim();
     const hasLoaMax = !!String(loaMax || "").trim();
-    const hasCountry = !!String(country || "").trim();
+    const hasCountry = country.length > 0;
     const hasUsRegion = isUSA && !!String(usRegion || "").trim();
 
     let count = 0;
@@ -348,11 +343,19 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
 
   const selectTextClass = (value) =>
-    String(value || "").trim() ? "!text-[#0a2230]" : "!text-slate-400";
+    Array.isArray(value)
+      ? value.length
+        ? "!text-[#0a2230]"
+        : "!text-slate-400"
+      : String(value || "").trim()
+      ? "!text-[#0a2230]"
+      : "!text-slate-400";
+  const pickerRowClass = (active) =>
+    [
+      "w-full rounded-md px-2 py-1.5 text-left text-[13px] transition",
+      active ? "bg-[#0a2230] text-white font-semibold" : "text-[#0a2230] hover:bg-slate-50",
+    ].join(" ");
 
-  const button =
-    "inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-6 text-sm font-semibold text-black " +
-    "hover:bg-[#f9c860] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f3b23f]";
   const mobileDrawerLabel = "block text-[12px] font-bold tracking-wide text-white";
   const mobileDrawerSection = "space-y-2 border-t border-white/15 pt-3";
 
@@ -367,7 +370,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     put("q", q);
     if (type && type !== "both") put("type", type);
 
-    put("builder", builder);
+    for (const selectedBuilder of builder) params.append("builder", selectedBuilder);
 
     put("yearMin", yearMin);
     put("yearMax", yearMax);
@@ -381,9 +384,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       put("loaMax", loaMax);
     }
 
-    // ✅ Country is ISO alpha-2 (matches your listing form + DB)
-    if (country) params.set("country", String(country).toUpperCase());
-    else params.delete("country");
+    for (const selectedCountry of country) params.append("country", String(selectedCountry).toUpperCase());
 
     // ✅ Only allow usRegion when country is US
     if (isUSA) put("usRegion", usRegion);
@@ -400,30 +401,32 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     applyFilters();
   };
 
-  const renderBuilderOptions = (keyPrefix) => (
-    <>
-      <option value="">All</option>
-      {popularBuilders.map((b) => (
-        <option key={`${keyPrefix}-popular-${b}`} value={b}>
-          {b}
-        </option>
-      ))}
-      <option value="" disabled>
-        ──────────
-      </option>
-      {otherBuilders.map((b) => (
-        <option key={`${keyPrefix}-other-${b}`} value={b}>
-          {b}
-        </option>
-      ))}
-      <option value="Other">Other</option>
-    </>
-  );
+  const handleBuilderToggle = (value) => {
+    const next = String(value || "").trim();
+    if (!next) return;
+    setBuilder((prev) => {
+      const key = next.toLowerCase();
+      const exists = prev.some((b) => String(b || "").toLowerCase() === key);
+      return exists ? removeValue(prev, next) : addUniqueValue(prev, next);
+    });
+  };
+
+  const handleCountryToggle = (value) => {
+    const next = String(value || "").toUpperCase().trim();
+    if (!next) return;
+    setCountry((prev) => {
+      const key = next.toLowerCase();
+      const exists = prev.some((c) => String(c || "").toLowerCase() === key);
+      const updated = exists ? removeValue(prev, next) : addUniqueValue(prev, next, { upper: true });
+      if (!updated.includes("US")) setUsRegion("");
+      return updated;
+    });
+  };
 
   const clearFilters = () => {
     setQ("");
     setType("both");
-    setBuilder("");
+    setBuilder([]);
     setYearMin("");
     setYearMax("");
     setPriceMin("");
@@ -431,7 +434,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     setLoaUnit("ft");
     setLoaMin("");
     setLoaMax("");
-    setCountry("");
+    setCountry([]);
     setUsRegion("");
     router.push(submitPath);
   };
@@ -513,9 +516,56 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>BUILDER</label>
-                <select className={`${select} ${selectTextClass(builder)}`} value={builder} onChange={(e) => setBuilder(e.target.value)}>
-                  {renderBuilderOptions("mobile-home-builder")}
-                </select>
+                <details className="group">
+                  <summary
+                    className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                  >
+                    <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
+                    <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                      ▼
+                    </span>
+                  </summary>
+                  <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2">
+                    <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
+                    <div className="space-y-1">
+                      {popularBuilders.map((b) => (
+                        <button
+                          key={`mobile-builder-pop-${b}`}
+                          type="button"
+                          onClick={() => handleBuilderToggle(b)}
+                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
+                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
+                        >
+                          {b}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
+                    <div className="space-y-1">
+                      {otherBuilders.map((b) => (
+                        <button
+                          key={`mobile-builder-az-${b}`}
+                          type="button"
+                          onClick={() => handleBuilderToggle(b)}
+                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
+                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
+                        >
+                          {b}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 border-t border-slate-200 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleBuilderToggle("Other")}
+                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
+                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
+                      >
+                        Other
+                      </button>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <div className={mobileDrawerSection}>
@@ -594,39 +644,34 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
 
-                {!isUSA ? (
-                  <select
-                    className={`${select} ${selectTextClass(country)}`}
-                    value={country}
-                    onChange={(e) => {
-                      const next = String(e.target.value || "").toUpperCase();
-                      setCountry(next);
-                      if (next !== "US") setUsRegion("");
-                    }}
-                  >
-                    {countryOptions.map((c) => (
-                      <option key={`mobile-home-country-${c.value || "all"}`} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2">
-                    <select
-                      className={`${select} ${selectTextClass(country)}`}
-                      value={country}
-                      onChange={(e) => {
-                        const next = String(e.target.value || "").toUpperCase();
-                        setCountry(next);
-                        if (next !== "US") setUsRegion("");
-                      }}
+                <div className="grid grid-cols-1 gap-2">
+                  <details className="group">
+                    <summary
+                      className={`${select} list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
                     >
-                      {countryOptions.map((c) => (
-                        <option key={`mobile-home-country-usa-${c.value || "all"}`} value={c.value}>
+                      <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
+                      <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                        ▼
+                      </span>
+                    </summary>
+                    <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1">
+                      {countryOptionsNoBlank.map((c) => (
+                        <button
+                          key={`mobile-home-country-${c.value}`}
+                          type="button"
+                          onClick={() => handleCountryToggle(c.value)}
+                          aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
+                          className={pickerRowClass(
+                            country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
+                          )}
+                        >
                           {c.label}
-                        </option>
+                        </button>
                       ))}
-                    </select>
+                    </div>
+                  </details>
+
+                  {isUSA ? (
                     <select
                       className={`${select} ${selectTextClass(usRegion)}`}
                       value={usRegion}
@@ -639,8 +684,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
 
               <div className="flex justify-end border-t border-white/15 pt-3">
@@ -781,14 +826,57 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 </button>
               </div>
               <label className={label}>Builder</label>
-              <select
-                className={`${select} mt-2 w-full ${selectTextClass(builder)}`}
-                value={builder}
-                onChange={(e) => setBuilder(e.target.value)}
-                aria-label="Builder"
-              >
-                {renderBuilderOptions("desktop-home-builder")}
-              </select>
+              <details className="group mt-2">
+                <summary
+                  className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                  aria-label="Builder"
+                >
+                  <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
+                  <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                    ▼
+                  </span>
+                </summary>
+                <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2">
+                  <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
+                  <div className="space-y-1">
+                    {popularBuilders.map((b) => (
+                      <button
+                        key={`desktop-builder-pop-${b}`}
+                        type="button"
+                        onClick={() => handleBuilderToggle(b)}
+                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
+                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
+                  <div className="space-y-1">
+                    {otherBuilders.map((b) => (
+                      <button
+                        key={`desktop-builder-az-${b}`}
+                        type="button"
+                        onClick={() => handleBuilderToggle(b)}
+                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
+                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 border-t border-slate-200 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handleBuilderToggle("Other")}
+                      aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
+                      className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
+                    >
+                      Other
+                    </button>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -894,21 +982,31 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <div className="min-w-0">
               <label className={label}>Country</label>
               <div className="mt-2">
-                <select
-                  className={`${select} w-full ${selectTextClass(country)}`}
-                  value={country}
-                  onChange={(e) => {
-                    const next = String(e.target.value || "").toUpperCase();
-                    setCountry(next);
-                    if (next !== "US") setUsRegion("");
-                  }}
-                >
-                  {countryOptions.map((c) => (
-                    <option key={c.value || "all"} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
+                <details className="group">
+                  <summary
+                    className={`${select} w-full list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                  >
+                    <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
+                    <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                      ▼
+                    </span>
+                  </summary>
+                  <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1">
+                    {countryOptionsNoBlank.map((c) => (
+                      <button
+                        key={`desktop-home-country-${c.value}`}
+                        type="button"
+                        onClick={() => handleCountryToggle(c.value)}
+                        aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
+                        className={pickerRowClass(
+                          country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
+                        )}
+                      >
+                        {c.label}
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
 

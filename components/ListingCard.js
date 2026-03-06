@@ -74,7 +74,7 @@ function usRegionLabel(v) {
 
 function Pill({ children }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium leading-none text-slate-700">
       {children}
     </span>
   );
@@ -122,6 +122,8 @@ export default function ListingCard({
   showFavorite = false,
   hrefOverride = null,
   imageTopLabel = "",
+  sampleStampLines = [],
+  samplePlaceholder = false,
 }) {
   const {
     id,
@@ -176,12 +178,17 @@ export default function ListingCard({
     null;
 
   const hull = hullLabel(type);
+  const hasMetaPills = Boolean(hull || cabins != null || heads != null);
   const isFeatured = variant === "featured";
-  const useContain = isFeatured || imageFit === "contain";
+  const isSamplePlaceholder =
+    Boolean(samplePlaceholder) ||
+    (Array.isArray(sampleStampLines) && sampleStampLines.length > 0);
+  const useContain = imageFit === "contain";
   const canFavorite = showFavorite && Boolean(id);
   const imageClass = useContain
     ? "object-contain object-center bg-slate-100"
     : "object-cover object-center transition-transform duration-300 group-hover:scale-105";
+  const featuredTitleText = isSamplePlaceholder ? "Sample Feature Listing" : topTitle;
 
   async function onToggleFavorite(e) {
     e.preventDefault();
@@ -228,19 +235,23 @@ export default function ListingCard({
   return (
     <Link
       href={hrefOverride || (id ? `/listings/${id}` : "/listings/new")}
-      className="
-        group block overflow-hidden rounded-2xl
-        border border-slate-200 bg-white
+      className={`
+        group block h-full overflow-hidden rounded-2xl
+        border
         shadow-[0_8px_18px_rgba(15,23,42,0.08)]
         hover:shadow-[0_18px_30px_rgba(15,23,42,0.18)] hover:-translate-y-1
-        transition-all duration-300
-      "
+        transition-all duration-300 flex flex-col
+        border-slate-200 bg-white
+      `}
     >
       {!isFeatured ? (
-        <div className="px-3 pt-2 pb-1">
-          <h3 className="line-clamp-1 text-lg font-bold text-slate-900 group-hover:text-[#0a2230] sm:text-[20px]">
-            {topTitle}
-          </h3>
+        <div className="px-3 pt-2.5 pb-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="line-clamp-1 flex-1 text-lg font-bold text-slate-900 group-hover:text-[#0a2230] sm:text-[20px]">
+              {topTitle}
+            </h3>
+            {lengthText ? <Pill>{lengthText}</Pill> : null}
+          </div>
         </div>
       ) : null}
 
@@ -249,7 +260,7 @@ export default function ListingCard({
           src={photo}
           alt={displayTitle}
           fill
-          className={imageClass}
+          className={`${imageClass} ${isSamplePlaceholder ? "grayscale" : ""}`}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           unoptimized={isUnoptimized}
         />
@@ -285,40 +296,41 @@ export default function ListingCard({
         ) : null}
       </div>
 
-      <div className="px-4 pt-4 pb-2">
+      <div className="px-4 pt-2.5 pb-2.5 flex flex-1 flex-col">
         {isFeatured ? (
-          <h3 className="line-clamp-1 text-[15px] font-semibold text-slate-900 group-hover:text-[#0a2230]">
-            {topTitle}
-          </h3>
-        ) : null}
-
-        {!isFeatured ? (
-          <div className="mt-1 flex items-center justify-between gap-3">
-            <div className="text-[17px] font-bold leading-none text-[#0a2230]">
-              {priceText}
-            </div>
-            {lengthText ? (
-              <div className="text-[15px] font-semibold leading-none text-slate-700">
-                {lengthText}
-              </div>
-            ) : null}
+          <div className="min-h-[28px] flex items-center justify-between gap-2">
+            <h3
+              className="line-clamp-1 flex-1 text-[15px] font-semibold leading-none text-slate-900 group-hover:text-[#0a2230]"
+            >
+              {featuredTitleText}
+            </h3>
+            {!isSamplePlaceholder && lengthText ? <Pill>{lengthText}</Pill> : null}
           </div>
         ) : null}
 
-        <div className={`${isFeatured ? "mt-2" : "mt-1"} flex flex-wrap gap-2`}>
-          {isFeatured && loa != null ? <Pill>{loa} {loaUnit || "ft"}</Pill> : null}
-          {hull ? <Pill>{hull}</Pill> : null}
-          {cabins != null ? <Pill>{cabins} cabins</Pill> : null}
-          {heads != null ? <Pill>{heads} heads</Pill> : null}
-        </div>
+        {!isFeatured ? (
+          <div className="mt-0.5 flex items-center justify-between gap-3">
+            <div className="text-[17px] font-bold leading-none text-[#0a2230]">
+              {priceText}
+            </div>
+          </div>
+        ) : null}
+
+        {hasMetaPills ? (
+          <div className={`${isFeatured ? "mt-1" : "mt-1"} flex flex-wrap gap-2`}>
+            {hull ? <Pill>{hull}</Pill> : null}
+            {cabins != null ? <Pill>{cabins} cabins</Pill> : null}
+            {heads != null ? <Pill>{heads} heads</Pill> : null}
+          </div>
+        ) : null}
 
         {loc ? (
-          <div className="mt-3 flex items-center gap-1.5 text-[13px] text-slate-600">
+          <div className="mt-0.5 flex items-center gap-1.5 text-[13px] leading-tight text-slate-600">
             <span className="text-slate-400"><PinIcon /></span>
             <span className="line-clamp-1">{loc}</span>
           </div>
         ) : (
-          <div className="mt-3 text-[13px] text-slate-400"> </div>
+          <div className="mt-0.5 text-[13px] text-slate-400"> </div>
         )}
       </div>
     </Link>

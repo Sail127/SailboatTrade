@@ -150,11 +150,11 @@ export default async function Home() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-5 md:px-8 pt-5">
+      <div className="relative z-[60] isolate mx-auto max-w-7xl px-5 md:px-8 pt-5">
         <AdvancedSearchBar variant="dark" />
       </div>
 
-      <section className="mx-auto max-w-7xl px-5 md:px-8 py-10">
+      <section className="relative z-0 mx-auto max-w-7xl px-5 md:px-8 py-10">
         <div className="mb-6 flex items-end justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-[#0a2230]">Featured Sailboats</h2>

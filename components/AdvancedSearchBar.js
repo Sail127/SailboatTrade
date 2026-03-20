@@ -19,6 +19,8 @@ const US_REGION_OPTIONS = [
   { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
 ];
 
+const EMPTY_INITIAL_VALUES = Object.freeze({});
+
 function buildYearOptions() {
   const nowYear = new Date().getFullYear();
   const max = nowYear + 1;
@@ -56,6 +58,10 @@ function formatPriceInput(value) {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+function numericText(value, maxLength = 4) {
+  return digitsOnly(value).slice(0, maxLength);
+}
+
 function normalizeMultiSelectValues(value, { upper = false } = {}) {
   const arr = Array.isArray(value) ? value : value == null ? [] : [value];
   const out = [];
@@ -88,6 +94,19 @@ function removeValue(values, targetValue) {
   const targetKey = String(targetValue ?? "").trim().toLowerCase();
   if (!targetKey) return values;
   return values.filter((v) => String(v || "").toLowerCase() !== targetKey);
+}
+
+function truncateWithEllipsis(value, maxLength = 18) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function formatSelectionSummary(values, { fallback, maxLength = 18 } = {}) {
+  const list = Array.isArray(values) ? values.filter(Boolean) : [];
+  if (!list.length) return fallback;
+  return `${list.length} (${truncateWithEllipsis(list.join(", "), maxLength)})`;
 }
 
 function CompassIcon({ className = "h-4 w-4" }) {
@@ -211,7 +230,96 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = {} }) {
+function ValuePicker({
+  detailsRef,
+  value,
+  onChange,
+  options,
+  placeholder,
+  ariaLabel,
+  summaryClassName,
+  panelClassName,
+  inputClassName,
+  rowClassName,
+  anchorValue,
+  maxLength = 4,
+  optionLabel = (option) => option,
+}) {
+  const scrollBoxRef = useRef(null);
+  const inputRef = useRef(null);
+  const optionRefs = useRef(new Map());
+
+  const centerOnValue = (targetValue) => {
+    const key = String(targetValue || "").trim();
+    if (!key) return;
+    const container = scrollBoxRef.current;
+    const node = optionRefs.current.get(key);
+    if (!container || !node) return;
+    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
+    container.scrollTop = Math.max(0, nextTop);
+  };
+
+  const handleToggle = (e) => {
+    if (!e.currentTarget.open) return;
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      centerOnValue(value || anchorValue);
+    });
+  };
+
+  const chooseValue = (nextValue) => {
+    onChange(String(nextValue || ""));
+    detailsRef?.current?.removeAttribute?.("open");
+  };
+
+  return (
+    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+      <summary
+        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+        aria-label={ariaLabel}
+      >
+        <span>{value || placeholder}</span>
+        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className={panelClassName}>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={value}
+          onChange={(e) => onChange(numericText(e.target.value, maxLength))}
+          placeholder={placeholder}
+          className={inputClassName}
+          aria-label={`${ariaLabel} value`}
+        />
+        <div ref={scrollBoxRef} className="mt-2 max-h-44 overflow-y-auto space-y-1">
+          <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
+            {placeholder}
+          </button>
+          {options.map((option) => (
+            <button
+              key={`${ariaLabel}-${option}`}
+              type="button"
+              ref={(node) => {
+                if (node) optionRefs.current.set(String(option), node);
+                else optionRefs.current.delete(String(option));
+              }}
+              onClick={() => chooseValue(option)}
+              className={rowClassName(String(value) === String(option))}
+            >
+              {optionLabel(option)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = EMPTY_INITIAL_VALUES }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -236,6 +344,18 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [desktopHullMenuOpen, setDesktopHullMenuOpen] = useState(false);
   const desktopHullMenuRef = useRef(null);
+  const mobileBuilderDetailsRef = useRef(null);
+  const mobileCountryDetailsRef = useRef(null);
+  const mobileYearMinDetailsRef = useRef(null);
+  const mobileYearMaxDetailsRef = useRef(null);
+  const mobileLoaMinDetailsRef = useRef(null);
+  const mobileLoaMaxDetailsRef = useRef(null);
+  const desktopBuilderDetailsRef = useRef(null);
+  const desktopCountryDetailsRef = useRef(null);
+  const desktopYearMinDetailsRef = useRef(null);
+  const desktopYearMaxDetailsRef = useRef(null);
+  const desktopLoaMinDetailsRef = useRef(null);
+  const desktopLoaMaxDetailsRef = useRef(null);
 
   useEffect(() => {
     setQ(initial.q);
@@ -268,6 +388,22 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
   const countryOptionsNoBlank = useMemo(() => countryOptions.filter((c) => c?.value), [countryOptions]);
+  const countryLabelMap = useMemo(
+    () => new Map(countryOptionsNoBlank.map((option) => [String(option.value).toUpperCase(), option.label])),
+    [countryOptionsNoBlank],
+  );
+  const builderSummary = useMemo(
+    () => formatSelectionSummary(builder, { fallback: "Select builders" }),
+    [builder],
+  );
+  const countrySummary = useMemo(
+    () =>
+      formatSelectionSummary(
+        country.map((code) => countryLabelMap.get(String(code).toUpperCase()) || code),
+        { fallback: "Select countries" },
+      ),
+    [country, countryLabelMap],
+  );
   const activeFilterCount = useMemo(() => {
     const hasQuery = !!String(q || "").trim();
     const hasType = String(type || "both").toLowerCase() !== "both";
@@ -331,6 +467,48 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   }, [desktopHullMenuOpen]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const detailRefs = [
+      mobileBuilderDetailsRef,
+      mobileCountryDetailsRef,
+      mobileYearMinDetailsRef,
+      mobileYearMaxDetailsRef,
+      mobileLoaMinDetailsRef,
+      mobileLoaMaxDetailsRef,
+      desktopBuilderDetailsRef,
+      desktopCountryDetailsRef,
+      desktopYearMinDetailsRef,
+      desktopYearMaxDetailsRef,
+      desktopLoaMinDetailsRef,
+      desktopLoaMaxDetailsRef,
+    ];
+
+    const onMouseDown = (e) => {
+      for (const ref of detailRefs) {
+        const node = ref.current;
+        if (!node?.hasAttribute?.("open")) continue;
+        if (node.contains(e.target)) continue;
+        node.removeAttribute("open");
+      }
+    };
+
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      for (const ref of detailRefs) {
+        ref.current?.removeAttribute?.("open");
+      }
+    };
+
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  useEffect(() => {
     setMobileDrawerOpen(false);
     setDesktopHullMenuOpen(false);
   }, [pathname, searchParams]);
@@ -363,6 +541,8 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       "w-full rounded-md px-2 py-1.5 text-left text-[13px] transition",
       active ? "bg-[#0a2230] text-white font-semibold" : "text-[#0a2230] hover:bg-slate-50",
     ].join(" ");
+  const pickerPanelClass =
+    "mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl";
 
   const mobileDrawerLabel = "block text-[12px] font-bold tracking-wide text-white";
   const mobileDrawerSection = "space-y-2 border-t border-white/15 pt-3";
@@ -444,12 +624,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     setLoaMax("");
     setCountry([]);
     setUsRegion("");
-    router.push(submitPath);
   };
 
   return (
     <section className="w-full">
-      <div className="md:hidden pb-2">
+      <div className="min-[901px]:hidden pb-2">
         <div className="rounded-2xl bg-[#0a2230]/95 p-3 shadow-lg ring-1 ring-white/15 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -480,7 +659,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       </div>
 
       {mobileDrawerOpen ? (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] md:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] min-[901px]:hidden">
           <button
             type="button"
             aria-label="Close advanced search panel"
@@ -524,11 +703,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>BUILDER</label>
-                <details className="group">
+                <details className="group" ref={mobileBuilderDetailsRef}>
                   <summary
                     className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
                   >
-                    <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
+                      <span>{builderSummary}</span>
                     <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
                       ▼
                     </span>
@@ -579,22 +758,34 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>YEAR</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <select className={`${select} ${selectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
-                    <option value="">Min</option>
-                    {yearOptions.map((y) => (
-                      <option key={`mobile-home-year-min-${y}`} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                  <select className={`${select} ${selectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
-                    <option value="">Max</option>
-                    {yearOptions.map((y) => (
-                      <option key={`mobile-home-year-max-${y}`} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
+                  <ValuePicker
+                    detailsRef={mobileYearMinDetailsRef}
+                    value={yearMin}
+                    onChange={setYearMin}
+                    options={yearOptions}
+                    placeholder="Min"
+                    ariaLabel="Minimum year"
+                    summaryClassName={`${select} ${selectTextClass(yearMin)}`}
+                    panelClassName={pickerPanelClass}
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                    anchorValue="2000"
+                    maxLength={4}
+                  />
+                  <ValuePicker
+                    detailsRef={mobileYearMaxDetailsRef}
+                    value={yearMax}
+                    onChange={setYearMax}
+                    options={yearOptions}
+                    placeholder="Max"
+                    ariaLabel="Maximum year"
+                    summaryClassName={`${select} ${selectTextClass(yearMax)}`}
+                    panelClassName={pickerPanelClass}
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                    anchorValue="2015"
+                    maxLength={4}
+                  />
                 </div>
               </div>
 
@@ -604,22 +795,36 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <select className={`${select} ${selectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
-                    <option value="">Min</option>
-                    {loaOptions.map((v) => (
-                      <option key={`mobile-home-loa-min-${loaUnit}-${v}`} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                  <select className={`${select} ${selectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
-                    <option value="">Max</option>
-                    {loaOptions.map((v) => (
-                      <option key={`mobile-home-loa-max-${loaUnit}-${v}`} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
+                  <ValuePicker
+                    detailsRef={mobileLoaMinDetailsRef}
+                    value={loaMin}
+                    onChange={setLoaMin}
+                    options={loaOptions}
+                    placeholder={`${loaUnit.toUpperCase()} Min`}
+                    ariaLabel={`Minimum LOA (${loaUnit})`}
+                    summaryClassName={`${select} ${selectTextClass(loaMin)}`}
+                    panelClassName={pickerPanelClass}
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                    anchorValue={loaUnit === "m" ? "6" : "20"}
+                    maxLength={3}
+                    optionLabel={(option) => `${option} ${loaUnit}`}
+                  />
+                  <ValuePicker
+                    detailsRef={mobileLoaMaxDetailsRef}
+                    value={loaMax}
+                    onChange={setLoaMax}
+                    options={loaOptions}
+                    placeholder={`${loaUnit.toUpperCase()} Max`}
+                    ariaLabel={`Maximum LOA (${loaUnit})`}
+                    summaryClassName={`${select} ${selectTextClass(loaMax)}`}
+                    panelClassName={pickerPanelClass}
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                    anchorValue={loaUnit === "m" ? "18" : "60"}
+                    maxLength={3}
+                    optionLabel={(option) => `${option} ${loaUnit}`}
+                  />
                 </div>
               </div>
 
@@ -653,11 +858,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 <label className={mobileDrawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
 
                 <div className="grid grid-cols-1 gap-2">
-                  <details className="group">
+                  <details className="group" ref={mobileCountryDetailsRef}>
                     <summary
                       className={`${select} list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
                     >
-                      <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
+                      <span>{countrySummary}</span>
                       <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
                         ▼
                       </span>
@@ -728,7 +933,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
         </div>
       ) : null}
 
-      <form onSubmit={submit} className={`${shell} relative hidden md:block`}>
+      <form onSubmit={submit} className={`${shell} relative z-[40] max-[900px]:hidden`}>
         <div className="mx-auto w-full max-w-[900px]">
           {/* ROW 1 */}
           <div className="mt-0 grid grid-cols-[270px_120px_270px] items-end justify-center gap-3">
@@ -746,7 +951,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               />
             </div>
 
-            <div className="min-w-0" ref={desktopHullMenuRef}>
+            <div className="min-w-0 relative z-[70]" ref={desktopHullMenuRef}>
               <label className={`${label} text-center`}>Hull type</label>
               <div className="relative mt-2 flex justify-center">
                 {type === "both" ? (
@@ -779,7 +984,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   />
                 )}
                 {desktopHullMenuOpen ? (
-                  <div className="absolute left-1/2 top-[calc(100%+8px)] z-20 -translate-x-1/2 rounded-xl border border-white/20 bg-[#0f2a3b]/98 p-2 shadow-xl">
+                  <div className="absolute left-1/2 top-[calc(100%+8px)] z-[90] -translate-x-1/2 rounded-xl border border-white/20 bg-[#0f2a3b]/98 p-2 shadow-xl">
                     <div className="flex items-center gap-2">
                       <HullTile
                         active={type === "both"}
@@ -823,7 +1028,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               </div>
             </div>
 
-            <div className="min-w-0">
+            <div className="min-w-0 relative z-[80]">
               <div className="mb-0.5 text-right leading-none">
                 <button
                   type="button"
@@ -834,17 +1039,17 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 </button>
               </div>
               <label className={label}>Builder</label>
-              <details className="group mt-2">
+              <details className="group relative mt-2" ref={desktopBuilderDetailsRef}>
                 <summary
                   className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
                   aria-label="Builder"
                 >
-                  <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
+                  <span>{builderSummary}</span>
                   <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
                     ▼
                   </span>
                 </summary>
-                <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2">
+                <div className="absolute left-0 right-0 top-full z-[90] mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 shadow-xl">
                   <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
                   <div className="space-y-1">
                     {popularBuilders.map((b) => (
@@ -890,35 +1095,37 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
           {/* ROW 2 */}
           <div className="mt-3 grid grid-cols-[220px_220px_220px] items-end justify-center gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 relative z-[70]">
               <label className={label}>Year</label>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <select
-                  className={`${select} w-full ${selectTextClass(yearMin)}`}
+                <ValuePicker
+                  detailsRef={desktopYearMinDetailsRef}
                   value={yearMin}
-                  onChange={(e) => setYearMin(e.target.value)}
-                  aria-label="Minimum year"
-                >
-                  <option value="">Min</option>
-                  {yearOptions.map((y) => (
-                    <option key={`year-min-${y}`} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={`${select} w-full ${selectTextClass(yearMax)}`}
+                  onChange={setYearMin}
+                  options={yearOptions}
+                  placeholder="Min"
+                  ariaLabel="Minimum year"
+                  summaryClassName={`${select} w-full ${selectTextClass(yearMin)}`}
+                  panelClassName={`absolute left-0 right-0 top-full z-[90] ${pickerPanelClass}`}
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                  anchorValue="2000"
+                  maxLength={4}
+                />
+                <ValuePicker
+                  detailsRef={desktopYearMaxDetailsRef}
                   value={yearMax}
-                  onChange={(e) => setYearMax(e.target.value)}
-                  aria-label="Maximum year"
-                >
-                  <option value="">Max</option>
-                  {yearOptions.map((y) => (
-                    <option key={`year-max-${y}`} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setYearMax}
+                  options={yearOptions}
+                  placeholder="Max"
+                  ariaLabel="Maximum year"
+                  summaryClassName={`${select} w-full ${selectTextClass(yearMax)}`}
+                  panelClassName={`absolute left-0 right-0 top-full z-[90] ${pickerPanelClass}`}
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                  anchorValue="2015"
+                  maxLength={4}
+                />
               </div>
             </div>
 
@@ -929,32 +1136,36 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               </label>
 
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <select
-                  className={`${select} w-full ${selectTextClass(loaMin)}`}
+                <ValuePicker
+                  detailsRef={desktopLoaMinDetailsRef}
                   value={loaMin}
-                  onChange={(e) => setLoaMin(e.target.value)}
-                  aria-label={`Minimum LOA (${loaUnit})`}
-                >
-                  <option value="">{loaUnit.toUpperCase()} Min</option>
-                  {loaOptions.map((v) => (
-                    <option key={`loa-min-${loaUnit}-${v}`} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={`${select} w-full ${selectTextClass(loaMax)}`}
+                  onChange={setLoaMin}
+                  options={loaOptions}
+                  placeholder={`${loaUnit.toUpperCase()} Min`}
+                  ariaLabel={`Minimum LOA (${loaUnit})`}
+                  summaryClassName={`${select} w-full ${selectTextClass(loaMin)}`}
+                  panelClassName={`absolute left-0 right-0 top-full z-[90] ${pickerPanelClass}`}
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                  anchorValue={loaUnit === "m" ? "6" : "20"}
+                  maxLength={3}
+                  optionLabel={(option) => `${option} ${loaUnit}`}
+                />
+                <ValuePicker
+                  detailsRef={desktopLoaMaxDetailsRef}
                   value={loaMax}
-                  onChange={(e) => setLoaMax(e.target.value)}
-                  aria-label={`Maximum LOA (${loaUnit})`}
-                >
-                  <option value="">{loaUnit.toUpperCase()} Max</option>
-                  {loaOptions.map((v) => (
-                    <option key={`loa-max-${loaUnit}-${v}`} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setLoaMax}
+                  options={loaOptions}
+                  placeholder={`${loaUnit.toUpperCase()} Max`}
+                  ariaLabel={`Maximum LOA (${loaUnit})`}
+                  summaryClassName={`${select} w-full ${selectTextClass(loaMax)}`}
+                  panelClassName={`absolute left-0 right-0 top-full z-[90] ${pickerPanelClass}`}
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                  anchorValue={loaUnit === "m" ? "18" : "60"}
+                  maxLength={3}
+                  optionLabel={(option) => `${option} ${loaUnit}`}
+                />
               </div>
             </div>
 
@@ -990,16 +1201,16 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <div className="min-w-0">
               <label className={label}>Country</label>
               <div className="mt-2">
-                <details className="group">
+                <details className="group relative" ref={desktopCountryDetailsRef}>
                   <summary
                     className={`${select} w-full list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
                   >
-                    <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
+                    <span>{countrySummary}</span>
                     <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
                       ▼
                     </span>
                   </summary>
-                  <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1">
+                  <div className="absolute left-0 right-0 top-full z-[90] mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1 shadow-xl">
                     {countryOptionsNoBlank.map((c) => (
                       <button
                         key={`desktop-home-country-${c.value}`}

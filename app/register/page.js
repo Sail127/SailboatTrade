@@ -231,12 +231,18 @@ function RegisterInner() {
         throw new Error(data?.error || "Register failed.");
       }
 
-      setSuccess("Account created successfully! Redirecting to your dashboard…");
+      const verificationSent = data?.emailVerificationSent !== false;
+
+      setSuccess(
+        verificationSent
+          ? "Account created successfully. Please check your inbox to verify your email. Redirecting…"
+          : "Account created, but we could not send your verification email yet. Redirecting to your account so you can resend it."
+      );
 
       setTimeout(() => {
-        router.replace(next);
+        router.replace(verificationSent ? next : "/dashboard/account");
         router.refresh();
-      }, 700);
+      }, verificationSent ? 900 : 1400);
     } catch (e2) {
       setErr(e2?.message || "Register failed.");
     } finally {

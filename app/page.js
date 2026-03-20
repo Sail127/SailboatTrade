@@ -1,6 +1,5 @@
 // app/page.js
 import prisma from "../lib/prisma.js";
-import Link from "next/link";
 import Image from "next/image";
 import ListingCard from "../components/ListingCard.js";
 import AdvancedSearchBar from "../components/AdvancedSearchBar.js";
@@ -139,12 +138,12 @@ export default async function Home() {
             </div>
 
             <div className="flex items-center px-4 pb-4 sm:px-5 sm:pb-5 md:justify-end md:px-6 md:py-5">
-              <Link
+              <a
                 href="/listings/new"
                 className="inline-flex h-11 items-center justify-center rounded-full border-2 border-[#c9972e] bg-[#0a2230] px-6 text-sm font-extrabold text-white transition hover:bg-[#12364a]"
               >
                 Create Free Listing
-              </Link>
+              </a>
             </div>
             </div>
           </div>
@@ -168,9 +167,9 @@ export default async function Home() {
             </p>
           </div>
 
-          <Link href="/listings" className="text-sm font-semibold text-[#0a2230] hover:underline">
+          <a href="/listings" className="text-sm font-semibold text-[#0a2230] hover:underline">
             See all
-          </Link>
+          </a>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

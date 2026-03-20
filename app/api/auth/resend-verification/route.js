@@ -2,6 +2,7 @@
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { sendEmail, getAppUrl } from "@/lib/email";
+import { buildVerifyEmailMessage } from "@/lib/email/templates";
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
@@ -35,25 +36,9 @@ export async function POST(req) {
     );
   }
 
-  let s;
-  try {
-    try {
-      try {
-        s = await requireUser();
-      } catch {
-        return NextResponse.json(
-          { ok: false, error: "Authentication required" },
-          { status: 401 },
-        );
-      }
-    } catch {
-      return NextResponse.json(
-        { ok: false, error: "Authentication required" },
-        { status: 401 },
-      );
-    }
-  } catch {
-    return Response.json(
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) {
+    return NextResponse.json(
       { ok: false, error: "Authentication required" },
       { status: 401 },
     );
@@ -68,6 +53,8 @@ export async function POST(req) {
       firstName: true,
       lastName: true,
       emailVerifiedAt: true,
+      emailVerificationToken: true,
+      emailVerificationExpires: true,
       emailVerificationSentAt: true,
       deletedAt: true,
       isDisabled: true,
@@ -112,16 +99,7 @@ export async function POST(req) {
   const verifyToken = newToken();
   const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      emailVerificationToken: verifyToken,
-      emailVerificationExpires: verifyExpires,
-      emailVerificationSentAt: new Date(),
-    },
-  });
-
-  // Send (don’t fail the API if the email provider is flaky)
+  // Send and only start cooldown if the provider call succeeds.
   try {
     const appUrl = getAppUrl(req);
     const displayName =
@@ -129,29 +107,51 @@ export async function POST(req) {
         ? `${user.firstName} ${user.lastName}`
         : user.name) || "";
     const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verifyToken)}`;
+    const { subject, html, text } = buildVerifyEmailMessage({
+      appUrl,
+      verifyUrl,
+      displayName,
+      reason: "resend",
+    });
 
     await sendEmail({
       to: user.email,
-      subject: "Verify your email — SailboatTrade",
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2 style="margin:0 0 10px;">Verify your email${displayName ? `, ${displayName}` : ""}</h2>
-          <p>Click the button below to verify your email.</p>
-          <p>
-            <a href="${verifyUrl}" style="display:inline-block;background:#c8a44d;color:#0a2230;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;">
-              Verify email
-            </a>
-          </p>
-          <p style="color:#64748b;font-size:13px;margin-top:18px;">
-            If you didn’t create an account, you can ignore this email.
-          </p>
-        </div>
-      `,
-      text: `Verify your email: ${verifyUrl}`,
+      subject,
+      html,
+      text,
       tags: [{ name: "type", value: "verify_email_resend" }],
+    });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken: verifyToken,
+        emailVerificationExpires: verifyExpires,
+        emailVerificationSentAt: new Date(),
+      },
     });
   } catch (e) {
     console.error("Resend verification email failed:", e?.message || e);
+
+    await prisma.user
+      .update({
+        where: { id: user.id },
+        data: {
+          emailVerificationToken: user.emailVerificationToken,
+          emailVerificationExpires: user.emailVerificationExpires,
+          emailVerificationSentAt: user.emailVerificationSentAt,
+        },
+      })
+      .catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "EMAIL_SEND_FAILED",
+        error: "We could not send the verification email right now. Please try again in a moment.",
+      },
+      { status: 502 },
+    );
   }
 
   return NextResponse.json({ ok: true, retryAfterSeconds: COOLDOWN_SECONDS });

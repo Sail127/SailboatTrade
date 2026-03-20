@@ -51,6 +51,28 @@ function SimpleLink({ href, label, right }) {
   );
 }
 
+function SectionCard({ eyebrow, title, description, tone = "default", children }) {
+  const isAdminTone = tone === "admin";
+  return (
+    <section
+      className={
+        isAdminTone
+          ? "rounded-3xl border border-[#e6d49a] bg-[linear-gradient(180deg,#fffdf7_0%,#fff7df_100%)] p-5 shadow-[0_16px_32px_rgba(2,6,23,0.07)]"
+          : "rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_26px_rgba(2,6,23,0.06)]"
+      }
+    >
+      <div>
+        <div className={`text-[12px] font-extrabold tracking-[0.18em] ${isAdminTone ? "text-[#8a6a12]" : "text-slate-500"}`}>
+          {eyebrow}
+        </div>
+        <h2 className={`mt-2 text-xl font-extrabold ${isAdminTone ? "text-[#0a2230]" : "text-[#0a2230]"}`}>{title}</h2>
+        {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
+      </div>
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
+
 export default async function DashboardHome() {
   const s = await requireUser().catch(() => null);
   if (!s?.uid) redirect(`/login?next=${encodeURIComponent("/dashboard")}`);
@@ -109,25 +131,31 @@ export default async function DashboardHome() {
             </div>
           </div>
 
-          {/* Links */}
-          <div className="mt-8">
-            <SimpleLink href="/dashboard/listings" label="My Listings" />
-            <SimpleLink href="/listings/new" label="Create listing" />
-            <SimpleLink href="/dashboard/favorites" label="Favorite Boats" right={`${favoritesCount} saved`} />
-            <SimpleLink href="/dashboard/alerts" label="Email Alerts" />
-            <SimpleLink href="/dashboard/account" label="Account" />
+          <div className="mt-8 space-y-5">
+            <SectionCard
+              eyebrow="MEMBER TOOLS"
+              title="Your Account"
+              description="Manage listings, favorites, and the personal details tied to your account."
+            >
+              <SimpleLink href="/dashboard/listings" label="My Listings" />
+              <SimpleLink href="/listings/new" label="Create listing" />
+              <SimpleLink href="/dashboard/favorites" label="Favorite Boats" right={`${favoritesCount} saved`} />
+              <SimpleLink href="/dashboard/alerts" label="Email Alerts" />
+              <SimpleLink href="/dashboard/account" label="Account" />
+            </SectionCard>
 
-            {/* ✅ Staff-only */}
             {isStaff ? (
-              <>
-                <div className="h-3" />
-                <div className="text-[11px] font-extrabold tracking-wide text-slate-500 px-1">ADMIN</div>
-
+              <SectionCard
+                eyebrow="ADMIN CONTROLS"
+                title="Staff Access"
+                description="Moderation and back-office tools are separated here so they’re easy to find and harder to confuse with standard user actions."
+                tone="admin"
+              >
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
-
-                {/* ✅ Admin-only destructive tools */}
+                {isAdmin ? <SimpleLink href="/dashboard/admin/users" label="User Management" right="All site users" /> : null}
+                {isAdmin ? <SimpleLink href="/dashboard/admin/email-previews" label="Email Previews" right="Transactional mail" /> : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Draft uploads" /> : null}
-              </>
+              </SectionCard>
             ) : null}
           </div>
 

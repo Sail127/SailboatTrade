@@ -139,9 +139,13 @@ function DashboardChip({ user }) {
 
 function MenuItemLink({ href, onPick, icon, children }) {
   return (
-    <Link
+    <a
       href={href}
-      onClick={onPick}
+      onClick={(e) => {
+        e.preventDefault();
+        onPick?.();
+        hardNav(href);
+      }}
       className="flex items-center justify-between px-3 py-2 text-[13px] font-semibold text-white hover:bg-white/10 transition"
       role="menuitem"
     >
@@ -150,7 +154,23 @@ function MenuItemLink({ href, onPick, icon, children }) {
         <span className="text-white">{children}</span>
       </span>
       <span className="text-white/35 text-lg leading-none">›</span>
-    </Link>
+    </a>
+  );
+}
+
+function HeaderActionLink({ href, className, onPick, children }) {
+  return (
+    <a
+      href={href}
+      className={className}
+      onClick={(e) => {
+        e.preventDefault();
+        onPick?.();
+        hardNav(href);
+      }}
+    >
+      {children}
+    </a>
   );
 }
 
@@ -158,7 +178,7 @@ function MenuItemLink({ href, onPick, icon, children }) {
  * - Logged OUT: circle silhouette (no gold), click -> /login
  * - Logged IN: gold initials circle, click -> dropdown links
  */
-function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
+function AccountMenu({ user, loading, onLogout, onBeforeNav, closeKey }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -180,6 +200,10 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [closeKey]);
 
   // Logged OUT
   if (!isAuthed) {
@@ -301,7 +325,7 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav }) {
   );
 }
 
-export default function Header() {
+export default function Header({ initialUser = null }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isListingsBrowse = pathname === "/listings";
@@ -311,11 +335,12 @@ export default function Header() {
   const [headerQuery, setHeaderQuery] = useState("");
   const menuRef = useRef(null);
 
-  const [meLoading, setMeLoading] = useState(true);
-  const [meUser, setMeUser] = useState(null);
+  const [meLoading, setMeLoading] = useState(false);
+  const [meUser, setMeUser] = useState(initialUser);
+  const hasBootstrappedAuthRef = useRef(false);
 
-  const refreshMe = useCallback(async () => {
-    setMeLoading(true);
+  const refreshMe = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setMeLoading(true);
     try {
       const res = await fetch(ME_ENDPOINT, {
         method: "GET",
@@ -329,11 +354,17 @@ export default function Header() {
     } catch {
       setMeUser(null);
     } finally {
-      setMeLoading(false);
+      if (!silent) setMeLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    if (!hasBootstrappedAuthRef.current) {
+      hasBootstrappedAuthRef.current = true;
+      refreshMe({ silent: true });
+      return;
+    }
+
     refreshMe();
   }, [pathname, refreshMe]);
 
@@ -408,6 +439,10 @@ export default function Header() {
     const nextQ = isListingsBrowse ? String(searchParams?.get("q") || "") : "";
     setHeaderQuery(nextQ);
   }, [isListingsBrowse, searchParams]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, searchParams]);
 
   function submitHeaderSearch() {
     const term = String(headerQuery || "").trim();
@@ -504,6 +539,7 @@ export default function Header() {
               loading={meLoading}
               onLogout={onLogout}
               onBeforeNav={() => setOpen(false)}
+              closeKey={`${pathname}?${searchParams?.toString() || ""}`}
             />
 
             <div className="relative shrink-0" ref={menuRef}>
@@ -531,19 +567,19 @@ export default function Header() {
                   />
 
                   <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-white/15 bg-[#0f2a3b]/98 backdrop-blur shadow-2xl shadow-black/25 p-2 z-50 text-white">
-                    <Link href="/listings" className={navPrimary} onClick={() => setOpen(false)}>
+                    <HeaderActionLink href="/listings" className={navPrimary} onPick={() => setOpen(false)}>
                       <span className={iconBox}>
                         <BinocularsIcon />
                       </span>
                       Browse all Sailboats
-                    </Link>
+                    </HeaderActionLink>
 
-                    <Link href="/listings/new" className={navPrimary} onClick={() => setOpen(false)}>
+                    <HeaderActionLink href="/listings/new" className={navPrimary} onPick={() => setOpen(false)}>
                       <span className={iconBox}>
                         <DollarIcon />
                       </span>
                       Post a Sailboat Listing
-                    </Link>
+                    </HeaderActionLink>
 
                     <div className="my-2 h-px bg-white/15" />
 

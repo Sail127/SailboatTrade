@@ -5,6 +5,7 @@ import { Inter, Libre_Baskerville } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import { Suspense } from "react";
+import { readSession } from "@/lib/auth";
 import "react-international-phone/style.css";
 
 const SITE_URL_RAW =
@@ -66,12 +67,14 @@ export const metadata = {
   manifest: "/images/favicon/site.webmanifest",
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const session = await readSession().catch(() => null);
+
   return (
     <html lang="en" className={`h-full ${sans.variable} ${brand.variable}`}>
       <body className="min-h-screen flex flex-col font-sans text-slate-900 bg-[#0a2230]">
         <Suspense fallback={<div className="h-[72px] bg-[#0a2230]" />}>
-          <Header />
+          <Header initialUser={session || null} />
         </Suspense>
         <div className="flex-1 bg-[#f8fafc]">{children}</div>
         <Footer />

@@ -1,6 +1,5 @@
 ﻿// components/Footer.js
 import Image from "next/image";
-import Link from "next/link";
 
 const CONTAINER = "mx-auto max-w-7xl px-4 sm:px-6 lg:px-8";
 const GOLD = "#c8a44d";
@@ -39,15 +38,15 @@ export default function Footer() {
 
               {/* Row 2 (links) */}
               <nav className="mt-1 flex items-center justify-center gap-4 text-[12px] text-white/80 leading-none">
-                <Link href="/why-list" className="hover:text-white transition">
+                <a href="/why-list" className="hover:text-white transition">
                   Why List with ST.com?
-                </Link>
-                <Link href="/contact" className="hover:text-white transition">
+                </a>
+                <a href="/contact" className="hover:text-white transition">
                   Contact Us
-                </Link>
-                <Link href="/privacy-terms" className="hover:text-white transition">
+                </a>
+                <a href="/privacy-terms" className="hover:text-white transition">
                   Privacy &amp; Terms
-                </Link>
+                </a>
               </nav>
 
               {/* ✅ More spacing between links and copyright */}

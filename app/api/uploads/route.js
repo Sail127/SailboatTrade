@@ -31,6 +31,38 @@ function isDraftKey(key) {
   return String(key || "").startsWith("drafts/");
 }
 
+async function canUserAccessDraftKey(userId, key) {
+  const uid = String(userId || "").trim();
+  const normalizedKey = String(key || "").trim();
+  if (!uid || !normalizedKey || !isDraftKey(normalizedKey)) return false;
+
+  const userPrefix = `drafts/${uid}/`;
+  if (normalizedKey.startsWith(userPrefix)) return true;
+
+  const [user, listing] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: uid },
+      select: { brokerHeroImageUrl: true },
+    }),
+    prisma.listing.findFirst({
+      where: {
+        ownerId: uid,
+        OR: [
+          { heroImageUrl: normalizedKey },
+          { brokerHeroImageUrl: normalizedKey },
+          { imageUrls: { has: normalizedKey } },
+        ],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  if (user?.brokerHeroImageUrl === normalizedKey) return true;
+  if (listing?.id) return true;
+
+  return false;
+}
+
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -78,7 +110,7 @@ export async function GET(req) {
       select: { id: true },
     });
 
-    // 3) Draft access: allow logged-in users to view drafts/*
+    // 3) Draft access: only the owning user may view drafts/*
     if (!published) {
       if (!isDraftKey(key)) {
         return NextResponse.json({ error: "Image is not public." }, { status: 403 });
@@ -89,11 +121,9 @@ export async function GET(req) {
         return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
       }
 
-      // If the key is in the new per-user folder drafts/<uid>/..., enforce it.
-      const userPrefix = `drafts/${String(s.uid)}/`;
-      if (key.startsWith("drafts/") && key.includes("/") && key.startsWith("drafts/") && key.startsWith(userPrefix) === false) {
-        // Backward compatibility: allow older drafts/* keys that didn't include uid.
-        // If you want to strictly enforce per-user drafts only, remove this block and 403 here.
+      const allowed = await canUserAccessDraftKey(s.uid, key);
+      if (!allowed) {
+        return NextResponse.json({ error: "Not authorized to access this draft image." }, { status: 403 });
       }
     }
 

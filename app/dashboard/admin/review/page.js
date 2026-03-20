@@ -163,6 +163,20 @@ export default async function AdminReviewPage() {
 
           <div className="flex items-center gap-2">
             <Link
+              href="/dashboard/admin/users"
+              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+            >
+              User Management
+            </Link>
+
+            <Link
+              href="/dashboard/admin/email-previews"
+              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+            >
+              Email Previews
+            </Link>
+
+            <Link
               href="/dashboard/admin/storage"
               className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
               title="Admin-only destructive tool"

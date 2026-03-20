@@ -2,6 +2,7 @@
 import prisma from "@/lib/prisma";
 import { hashPassword, signSession, setSessionCookie } from "@/lib/auth";
 import { sendEmail, getAppUrl } from "@/lib/email";
+import { buildVerifyEmailMessage } from "@/lib/email/templates";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 import { isTrustedOrigin } from "@/lib/requestSecurity";
 import crypto from "crypto";
@@ -192,7 +193,7 @@ export async function POST(req) {
       emailVerifiedAt: null,
       emailVerificationToken: verifyToken,
       emailVerificationExpires: verifyExpires,
-      emailVerificationSentAt: new Date(),
+      emailVerificationSentAt: null,
     },
     select: {
       id: true,
@@ -217,6 +218,8 @@ export async function POST(req) {
 
   setSessionCookie(token);
 
+  let emailVerificationSent = false;
+
   // ✅ Send verification email (do not fail registration if this fails)
   try {
     const appUrl = getAppUrl(req);
@@ -224,23 +227,12 @@ export async function POST(req) {
       (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.name) || "";
 
     const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verifyToken)}`;
-
-    const subject = "Verify your email — SailboatTrade";
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-        <h2 style="margin:0 0 10px;">Welcome aboard${displayName ? `, ${displayName}` : ""}!</h2>
-        <p>Please verify your email to post listings and protect your account.</p>
-        <p>
-          <a href="${verifyUrl}" style="display:inline-block;background:#c8a44d;color:#0a2230;padding:10px 14px;border-radius:10px;text-decoration:none;font-weight:700;">
-            Verify email
-          </a>
-        </p>
-        <p style="color:#64748b;font-size:13px;margin-top:18px;">
-          If you didn’t create this account, you can ignore this email.
-        </p>
-      </div>
-    `;
-    const text = `Verify your email: ${verifyUrl}`;
+    const { subject, html, text } = buildVerifyEmailMessage({
+      appUrl,
+      verifyUrl,
+      displayName,
+      reason: "signup",
+    });
 
     await sendEmail({
       to: user.email,
@@ -249,9 +241,20 @@ export async function POST(req) {
       text,
       tags: [{ name: "type", value: "verify_email" }],
     });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerificationSentAt: new Date() },
+    });
+
+    emailVerificationSent = true;
   } catch (e) {
     console.error("Verification email failed:", e?.message || e);
   }
 
-  return Response.json({ ok: true });
+  return Response.json({
+    ok: true,
+    emailVerificationRequired: true,
+    emailVerificationSent,
+  });
 }

@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
 
@@ -212,6 +213,8 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
 
 export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = {} }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const { popular: popularBuilders, rest: otherBuilders } = useMemo(getBuilderGroups, []);
   const yearOptions = useMemo(buildYearOptions, []);
@@ -326,6 +329,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       document.removeEventListener("keydown", onKey);
     };
   }, [desktopHullMenuOpen]);
+
+  useEffect(() => {
+    setMobileDrawerOpen(false);
+    setDesktopHullMenuOpen(false);
+  }, [pathname, searchParams]);
 
   const shell = "w-full rounded-2xl bg-[#0a2230] px-4 pb-3 pt-1 shadow-lg ring-1 ring-white/15";
 

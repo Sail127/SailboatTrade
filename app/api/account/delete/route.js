@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { deleteUserCompletely } from "@/lib/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,31 +26,7 @@ export async function POST() {
       return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
     }
 
-    // Gather listing IDs so we can delete favorites that reference them (FK-safe)
-    const listingIds = await prisma.listing.findMany({
-      where: { ownerId: user.id },
-      select: { id: true },
-    });
-    const ids = listingIds.map((x) => x.id);
-
-    await prisma.$transaction([
-      // Favorites owned by this user
-      prisma.favorite.deleteMany({ where: { userId: user.id } }),
-
-      // Favorites on this user's listings (avoid FK constraint issues)
-      ...(ids.length
-        ? [prisma.favorite.deleteMany({ where: { listingId: { in: ids } } })]
-        : []),
-
-      // Listings owned by this user
-      prisma.listing.deleteMany({ where: { ownerId: user.id } }),
-
-      // Audit logs (in case they ever acted as admin/mod)
-      prisma.adminAuditLog.deleteMany({ where: { actorId: user.id } }),
-
-      // Finally delete the user
-      prisma.user.delete({ where: { id: user.id } }),
-    ]);
+    await deleteUserCompletely(user.id);
 
     // Clear auth cookie so they're logged out immediately
     const res = NextResponse.json({ ok: true });

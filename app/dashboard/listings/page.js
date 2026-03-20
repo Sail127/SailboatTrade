@@ -27,6 +27,20 @@ function fmtDateShort(d) {
   }
 }
 
+function formatListingPrice(price, currency = "USD") {
+  const amount = Number(price);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: String(currency || "USD").toUpperCase(),
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${String(currency || "USD").toUpperCase()} ${amount.toLocaleString()}`;
+  }
+}
+
 function addDays(date, days) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -205,6 +219,8 @@ export default async function MyListings() {
     select: {
       id: true,
       title: true,
+      price: true,
+      currency: true,
       status: true,
       previewToken: true,
       createdAt: true,
@@ -234,6 +250,7 @@ export default async function MyListings() {
     const plan = planLabel(l);
     const billing = billingLabel(l);
     const thumbSrc = listingThumbSrc(l);
+    const listingPrice = formatListingPrice(l.price, l.currency);
 
     const monthly =
       typeof l.billingMonthlyCents === "number"
@@ -272,7 +289,12 @@ export default async function MyListings() {
             </div>
 
             <div className="min-w-0">
-              <div className="font-extrabold text-[#0a2230] truncate">{l.title || "(Untitled)"}</div>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <div className="min-w-0 truncate font-extrabold text-[#0a2230]">{l.title || "(Untitled)"}</div>
+                {listingPrice ? (
+                  <div className="shrink-0 text-sm font-semibold text-slate-700">{listingPrice}</div>
+                ) : null}
+              </div>
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusBadge status={l.status} />

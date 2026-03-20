@@ -11,6 +11,7 @@ import {
   PayPalScriptProvider,
   usePayPalCardFields,
 } from "@paypal/react-paypal-js";
+import { getCountryOptions } from "@/lib/countries";
 
 function textOrEmpty(value) {
   return String(value || "").trim();
@@ -84,6 +85,16 @@ function SubmitCardButton({ disabled, isPaying, setIsPaying, billingAddress, set
   );
 }
 
+function BillingField({ label, hint, children, span = "" }) {
+  return (
+    <label className={`block ${span}`}>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">{label}</div>
+      {children}
+      {hint ? <div className="mt-1 text-[10px] text-slate-500">{hint}</div> : null}
+    </label>
+  );
+}
+
 export default function PayPalExpandedCheckout({
   listingId,
   clientId,
@@ -96,6 +107,7 @@ export default function PayPalExpandedCheckout({
   onSuccess,
 }) {
   const resolvedClientId = textOrEmpty(clientId || process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID);
+  const countryOptions = useMemo(() => getCountryOptions("en"), []);
   const [isPaying, setIsPaying] = useState(false);
   const [billingAddress, setBillingAddress] = useState({
     addressLine1: "",
@@ -185,6 +197,10 @@ export default function PayPalExpandedCheckout({
     }),
     [resolvedClientId]
   );
+  const selectedCountryCode = textOrEmpty(billingAddress.countryCode || "US").toUpperCase() || "US";
+  const countryLabel =
+    countryOptions.find((option) => option.value === selectedCountryCode)?.label || "Selected country";
+  const regionLabel = selectedCountryCode === "US" ? "State" : "State / Province / Region";
 
   if (!resolvedClientId) {
     return (
@@ -252,88 +268,133 @@ export default function PayPalExpandedCheckout({
           }}
           style={{
             input: {
-              "font-size": "13px",
+              "font-size": "14px",
               "font-family": "ui-sans-serif, system-ui, sans-serif",
-              "line-height": "18px",
-              padding: "7px 10px",
+              "line-height": "20px",
+              padding: "10px 12px",
               color: "#0f172a",
             },
             ".invalid": { color: "#7f1d1d" },
           }}
         >
           <div className="mx-auto w-full sm:max-w-[80%]">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-              <div className="mb-2 text-[11px] font-semibold text-slate-700">Card checkout</div>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="rounded-md border border-slate-300 bg-white px-2 py-1 sm:col-span-2">
-                  <PayPalNameField />
-                </div>
-                <div className="rounded-md border border-slate-300 bg-white px-2 py-1 sm:col-span-2">
-                  <PayPalNumberField />
-                </div>
-                <div className="rounded-md border border-slate-300 bg-white px-2 py-1">
-                  <PayPalExpiryField />
-                </div>
-                <div className="rounded-md border border-slate-300 bg-white px-2 py-1">
-                  <PayPalCVVField />
-                </div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.07)]">
+              <div className="border-b border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] px-4 py-3">
+                <div className="text-[12px] font-extrabold uppercase tracking-[0.18em] text-slate-500">Card Checkout</div>
+                <div className="mt-1 text-[14px] font-semibold text-[#0a2230]">Secure payment card details</div>
               </div>
 
-              <div className="mt-2 text-[11px] font-semibold text-slate-700">Billing Address</div>
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <input
-                  type="text"
-                  placeholder="Address line 1"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800 sm:col-span-2"
-                  value={billingAddress.addressLine1}
-                  onChange={(e) => handleBillingAddressChange("addressLine1", e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Address line 2"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800 sm:col-span-2"
-                  value={billingAddress.addressLine2}
-                  onChange={(e) => handleBillingAddressChange("addressLine2", e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="City"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
-                  value={billingAddress.adminArea2}
-                  onChange={(e) => handleBillingAddressChange("adminArea2", e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="State"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
-                  value={billingAddress.adminArea1}
-                  onChange={(e) => handleBillingAddressChange("adminArea1", e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Postal/zip code"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
-                  value={billingAddress.postalCode}
-                  onChange={(e) => handleBillingAddressChange("postalCode", e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Country code (US)"
-                  className="h-8 rounded-md border border-slate-300 px-2 text-[11px] text-slate-800"
-                  value={billingAddress.countryCode}
-                  onChange={(e) => handleBillingAddressChange("countryCode", e.target.value.toUpperCase())}
+              <div className="space-y-5 p-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <BillingField label="Cardholder name" hint="Enter the name as it appears on the card." span="sm:col-span-2">
+                    <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
+                      <PayPalNameField />
+                    </div>
+                  </BillingField>
+
+                  <BillingField label="Card number" span="sm:col-span-2">
+                    <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
+                      <PayPalNumberField />
+                    </div>
+                  </BillingField>
+
+                  <BillingField label="Expiry date">
+                    <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
+                      <PayPalExpiryField />
+                    </div>
+                  </BillingField>
+
+                  <BillingField label="Security code" hint="3 or 4 digits, depending on the card.">
+                    <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
+                      <PayPalCVVField />
+                    </div>
+                  </BillingField>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-slate-500">Billing Address</div>
+                  <div className="mt-1 text-[12px] text-slate-600">
+                    Use the card billing address for <span className="font-semibold">{countryLabel}</span>.
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <BillingField label="Country / Region" span="sm:col-span-2">
+                      <select
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={selectedCountryCode}
+                        onChange={(e) => handleBillingAddressChange("countryCode", e.target.value.toUpperCase())}
+                      >
+                        {countryOptions.map((option) => (
+                          <option key={option.value || "blank"} value={option.value || "US"}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </BillingField>
+
+                    <BillingField label="Address line 1" span="sm:col-span-2">
+                      <input
+                        type="text"
+                        placeholder="Street address"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={billingAddress.addressLine1}
+                        onChange={(e) => handleBillingAddressChange("addressLine1", e.target.value)}
+                      />
+                    </BillingField>
+
+                    <BillingField label="Address line 2" hint="Apartment, suite, unit, building, floor, etc.">
+                      <input
+                        type="text"
+                        placeholder="Apartment, suite, unit, building"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={billingAddress.addressLine2}
+                        onChange={(e) => handleBillingAddressChange("addressLine2", e.target.value)}
+                      />
+                    </BillingField>
+
+                    <div className="hidden sm:block" aria-hidden="true" />
+
+                    <BillingField label="City / Locality">
+                      <input
+                        type="text"
+                        placeholder="City"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={billingAddress.adminArea2}
+                        onChange={(e) => handleBillingAddressChange("adminArea2", e.target.value)}
+                      />
+                    </BillingField>
+
+                    <BillingField label={regionLabel}>
+                      <input
+                        type="text"
+                        placeholder={regionLabel}
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={billingAddress.adminArea1}
+                        onChange={(e) => handleBillingAddressChange("adminArea1", e.target.value)}
+                      />
+                    </BillingField>
+
+                    <BillingField label="Postal code / ZIP">
+                      <input
+                        type="text"
+                        placeholder="Postal code / ZIP"
+                        className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-slate-800 shadow-sm outline-none focus:border-[#c8a44d] focus:ring-2 focus:ring-[#c8a44d]/25"
+                        value={billingAddress.postalCode}
+                        onChange={(e) => handleBillingAddressChange("postalCode", e.target.value)}
+                      />
+                    </BillingField>
+                  </div>
+                </div>
+
+                <SubmitCardButton
+                  disabled={disabled}
+                  isPaying={isPaying}
+                  setIsPaying={setIsPaying}
+                  billingAddress={billingAddress}
+                  setBusy={setBusy}
+                  onError={setError}
                 />
               </div>
-
-              <SubmitCardButton
-                disabled={disabled}
-                isPaying={isPaying}
-                setIsPaying={setIsPaying}
-                billingAddress={billingAddress}
-                setBusy={setBusy}
-                onError={setError}
-              />
             </div>
           </div>
         </PayPalCardFieldsProvider>

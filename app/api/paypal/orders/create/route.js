@@ -72,6 +72,9 @@ export async function POST(req) {
         status: true,
         imageUrls: true,
         billingStatus: true,
+        photoPlan: true,
+        featuredHome: true,
+        billingAddons: true,
       },
     });
 
@@ -79,9 +82,16 @@ export async function POST(req) {
       return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
     }
 
-    if (String(listing.billingStatus || "").toUpperCase() === "ACTIVE") {
+    const addons = Array.isArray(listing.billingAddons) ? listing.billingAddons : [];
+    const currentPhotoPlus =
+      String(listing.photoPlan || "").toUpperCase() === "PHOTO_PLUS_25" ||
+      addons.includes("PHOTO_PLUS_25");
+    const currentFeaturedHome = Boolean(listing.featuredHome) || addons.includes("FEATURED_HOME");
+    const billingActive = String(listing.billingStatus || "").toUpperCase() === "ACTIVE";
+
+    if (billingActive && photoPlus === currentPhotoPlus && featuredHome === currentFeaturedHome) {
       return NextResponse.json(
-        { ok: false, error: "This listing already has active billing." },
+        { ok: false, error: "This listing already has active billing for the selected upgrades." },
         { status: 400 }
       );
     }

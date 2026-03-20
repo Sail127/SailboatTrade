@@ -154,7 +154,8 @@ function numOrNull(v) {
   return Number.isFinite(n) ? n : null;
 }
 function intOrNull(v) {
-  const n = numOrNull(v);
+  const normalized = typeof v === "string" ? v.replace(/[^\d-]/g, "") : v;
+  const n = numOrNull(normalized);
   if (n == null) return null;
   return Math.trunc(n);
 }
@@ -182,6 +183,36 @@ function splitBuilderValue(rawBuilder, allBuilders = []) {
     return { builderSel: builder, builderOther: "" };
   }
   return { builderSel: "Other", builderOther: builder };
+}
+
+function formatStatusTimestamp(value) {
+  if (!value) return "";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return "";
+  }
+}
+
+function StatusBanner({ notice }) {
+  if (!notice?.message) return null;
+
+  const toneClass =
+    notice.tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : notice.tone === "error"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-[12px] ${toneClass}`}>
+      <div className="font-semibold">{notice.message}</div>
+      {notice.timestamp ? (
+        <div className="mt-1 text-[11px] opacity-80">Last update: {formatStatusTimestamp(notice.timestamp)}</div>
+      ) : null}
+      {notice.detail ? <div className="mt-1 text-[11px] opacity-90">{notice.detail}</div> : null}
+    </div>
+  );
 }
 
 function imageUrlFromKey(key, token) {
@@ -445,13 +476,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewMsg, setReviewMsg] = useState("");
+  const [pageNotice, setPageNotice] = useState(null);
 
   const [equipInput, setEquipInput] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [saveErr, setSaveErr] = useState("");
-  const [saveOk, setSaveOk] = useState("");
 
   const normalizedCountry = normalizeCountryCode(form.locationCountry);
   const knownCountry = countryOptions.some((c) => c.value === normalizedCountry);
@@ -487,6 +516,15 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
   function setField(k, v) {
     setForm((p) => ({ ...p, [k]: v }));
+  }
+
+  function showNotice(tone, message, detail = "") {
+    setPageNotice({
+      tone,
+      message,
+      detail,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   function setBuilderSelection(nextValue) {
@@ -668,19 +706,16 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   }
 
   async function save(returnToPreview = false, submitForPhotoReview = false) {
-    setSaveErr("");
-    setSaveOk("");
-
     if (!id) {
-      setSaveErr("Missing listing id.");
+      showNotice("error", "Missing listing id.");
       return false;
     }
     if (overMax) {
-      setSaveErr(`You have ${photoCount} photos. Max is ${maxAllowedPhotos}. Remove photos first.`);
+      showNotice("error", `You have ${photoCount} photos. Max is ${maxAllowedPhotos}. Remove photos first.`);
       return false;
     }
     if (hasPendingLocalPhotos) {
-      setSaveErr("You selected photos. Please press Upload in the Photos section before saving.");
+      showNotice("error", "You selected photos. Please press Upload in the Photos section before saving.");
       return false;
     }
 
@@ -766,15 +801,21 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Save failed.");
 
+      const expectedPrice = intOrNull(form.price);
+      const savedPrice =
+        data?.listing?.price == null || data?.listing?.price === ""
+          ? null
+          : Number(data.listing.price);
+      if (expectedPrice !== savedPrice) {
+        throw new Error("Save verification failed: the saved price does not match the live listing value.");
+      }
+
       if (data?.submittedForPhotoReview) {
-        setReviewMsg("Photo changes submitted for admin review.");
-        setSaveOk("");
+        showNotice("success", "Photo changes submitted for admin review.");
       } else if (data?.liveUpdated) {
-        setSaveOk("Saved. Changes are now live.");
-        setReviewMsg("");
+        showNotice("success", "Saved. Changes are now live.");
       } else {
-        setSaveOk("Saved.");
-        setReviewMsg("");
+        showNotice("success", "Saved.");
       }
       if (returnToPreview) {
         router.push(previewHref);
@@ -784,10 +825,10 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
         router.refresh();
         return true;
       }
-      setTimeout(() => setSaveOk(""), 2000);
+      router.refresh();
       return true;
     } catch (e) {
-      setSaveErr(e?.message || "Save failed.");
+      showNotice("error", e?.message || "Save failed.");
       return false;
     } finally {
       setSaving(false);
@@ -797,19 +838,17 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   async function submitForReview() {
     if (!id) return false;
     setReviewBusy(true);
-    setReviewMsg("");
-    setSaveErr("");
     try {
       const res = await fetch(`/api/listings/${encodeURIComponent(id)}/submit-for-review`, {
         method: "POST",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Resubmit failed.");
-      setReviewMsg("Resubmitted for admin review.");
+      showNotice("success", "Resubmitted for admin review.");
       router.refresh();
       return true;
     } catch (e) {
-      setSaveErr(e?.message || "Resubmit failed.");
+      showNotice("error", e?.message || "Resubmit failed.");
       return false;
     } finally {
       setReviewBusy(false);
@@ -826,7 +865,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   async function submitPhotoChanges() {
     if (!isPublished) return;
     if (!uploadedPhotosChanged) {
-      setSaveErr("No uploaded photo changes to submit.");
+      showNotice("error", "No uploaded photo changes to submit.");
       return;
     }
     const confirmed = window.confirm(
@@ -919,21 +958,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
           <ActionRow />
         </div>
 
-        {saveOk ? (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-800">
-            {saveOk}
-          </div>
-        ) : null}
-        {reviewMsg ? (
-          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-800">
-            {reviewMsg}
-          </div>
-        ) : null}
-        {saveErr ? (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-[12px] text-red-700">
-            {saveErr}
-          </div>
-        ) : null}
+        {pageNotice ? <div className="mt-3"><StatusBanner notice={pageNotice} /></div> : null}
         {isPublished ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-[12px] text-slate-700">
             Non-photo edits go live when you save. Photo changes require Submit photo changes for moderation.
@@ -1474,6 +1499,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
           </SectionCard>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(2,6,23,0.06)]">
+            {pageNotice ? <div className="mb-3"><StatusBanner notice={pageNotice} /></div> : null}
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Page Controls</div>
               <ActionRow />

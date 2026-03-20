@@ -81,6 +81,20 @@ function valueEqual(a, b) {
   return String(a ?? "") === String(b ?? "");
 }
 
+const editResponseSelect = {
+  id: true,
+  status: true,
+  title: true,
+  price: true,
+  currency: true,
+  year: true,
+  builder: true,
+  model: true,
+  heroImageUrl: true,
+  imageUrls: true,
+  updatedAt: true,
+};
+
 function collectChangedSections(prev, next) {
   const groups = [
     {
@@ -313,7 +327,11 @@ export async function PATCH(req, { params }) {
       if (data[k] === undefined) delete data[k];
     });
 
-    await prisma.listing.update({ where: { id }, data });
+    const updatedListing = await prisma.listing.update({
+      where: { id },
+      data,
+      select: editResponseSelect,
+    });
 
     if (status === "PUBLISHED" && submitForPhotoReview && uploadedPhotosChanged) {
       try {
@@ -336,10 +354,18 @@ export async function PATCH(req, { params }) {
         listingId: id,
         source: "api/listings/[id]/edit PHOTO_REVIEW",
       });
-      return NextResponse.json({ ok: true, submittedForPhotoReview: true });
+      return NextResponse.json({
+        ok: true,
+        submittedForPhotoReview: true,
+        listing: updatedListing,
+      });
     }
 
-    return NextResponse.json({ ok: true, liveUpdated: status === "PUBLISHED" });
+    return NextResponse.json({
+      ok: true,
+      liveUpdated: status === "PUBLISHED",
+      listing: updatedListing,
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e?.message || "Update failed." }, { status: 500 });
   }

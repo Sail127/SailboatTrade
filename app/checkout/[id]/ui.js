@@ -115,6 +115,8 @@ export default function CheckoutUI({
   const [photoPlus, setPhotoPlus] = useState(String(initialPhotoPlan || "") === "PHOTO_PLUS_25");
   const [featuredHome, setFeaturedHome] = useState(Boolean(initialFeaturedHome));
   const [termMonths, setTermMonths] = useState(clampTerm(initialTermMonths));
+  const initialPhotoPlusActive = String(initialPhotoPlan || "") === "PHOTO_PLUS_25";
+  const initialFeaturedHomeActive = Boolean(initialFeaturedHome);
 
   const requirePhotoPlusByPhotos = photoCount > freePhotoLimit;
   const overMax = photoCount > maxPhotos;
@@ -143,7 +145,10 @@ export default function CheckoutUI({
   const statusUpper = String(billingStatus || "").toUpperCase();
   const providerUpper = String(billingProvider || "").toUpperCase();
   const hasActiveBilling = statusUpper === "ACTIVE" || statusUpper === "PAST_DUE";
-  const disableChanges = busy || hasActiveBilling;
+  const disableChanges = busy;
+  const hasUpgradeChange =
+    photoPlus !== initialPhotoPlusActive || featuredHome !== initialFeaturedHomeActive;
+  const paymentDisabled = overMax || (hasActiveBilling && !hasUpgradeChange);
 
   async function submitFree() {
     setErr("");
@@ -246,7 +251,9 @@ export default function CheckoutUI({
 
         {needsPaymentUI && hasActiveBilling ? (
           <div className="mt-3 text-[12px] text-slate-600">
-            This listing already has active billing. Wait for the current term to end before purchasing again.
+            {hasUpgradeChange
+              ? "This listing already has active billing, but you can still purchase additional upgrades."
+              : "This listing already has active billing. Select a new upgrade to continue checkout."}
           </div>
         ) : null}
       </div>
@@ -285,7 +292,7 @@ export default function CheckoutUI({
               photoPlus={photoPlus}
               featuredHome={featuredHome}
               termMonths={termMonths}
-              disabled={overMax || hasActiveBilling}
+              disabled={paymentDisabled}
               onBusyChange={setBusy}
               onError={setErr}
               onSuccess={(data) => {

@@ -449,7 +449,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   return (
     <section className="w-full">
-      <div className="lg:hidden pb-2">
+      <div className="md:hidden pb-2">
         <div className="rounded-2xl bg-[#0a2230]/95 p-3 shadow-lg ring-1 ring-white/15 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -480,7 +480,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       </div>
 
       {mobileDrawerOpen ? (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-[70] md:hidden">
           <button
             type="button"
             aria-label="Close advanced search panel"
@@ -728,7 +728,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
         </div>
       ) : null}
 
-      <form onSubmit={submit} className={`${shell} relative hidden lg:block`}>
+      <form onSubmit={submit} className={`${shell} relative hidden md:block`}>
         <div className="mx-auto w-full max-w-[900px]">
           {/* ROW 1 */}
           <div className="mt-0 grid grid-cols-[270px_120px_270px] items-end justify-center gap-3">

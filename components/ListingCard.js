@@ -121,6 +121,7 @@ export default function ListingCard({
   imageFit = "cover",
   showFavorite = false,
   hrefOverride = null,
+  hardNavigate = false,
   imageTopLabel = "",
   sampleStampLines = [],
   samplePlaceholder = false,
@@ -189,6 +190,15 @@ export default function ListingCard({
     ? "object-contain object-center bg-slate-100"
     : "object-cover object-center transition-transform duration-300 group-hover:scale-105";
   const featuredTitleText = isSamplePlaceholder ? "Sample Feature Listing" : topTitle;
+  const href = hrefOverride || (id ? `/listings/${id}` : "/listings/new");
+  const cardClass = `
+    group block h-full overflow-hidden rounded-2xl
+    border
+    shadow-[0_8px_18px_rgba(15,23,42,0.08)]
+    hover:shadow-[0_18px_30px_rgba(15,23,42,0.18)] hover:-translate-y-1
+    transition-all duration-300 flex flex-col
+    border-slate-200 bg-white
+  `;
 
   async function onToggleFavorite(e) {
     e.preventDefault();
@@ -232,18 +242,8 @@ export default function ListingCard({
     }
   }
 
-  return (
-    <Link
-      href={hrefOverride || (id ? `/listings/${id}` : "/listings/new")}
-      className={`
-        group block h-full overflow-hidden rounded-2xl
-        border
-        shadow-[0_8px_18px_rgba(15,23,42,0.08)]
-        hover:shadow-[0_18px_30px_rgba(15,23,42,0.18)] hover:-translate-y-1
-        transition-all duration-300 flex flex-col
-        border-slate-200 bg-white
-      `}
-    >
+  const cardBody = (
+    <>
       {!isFeatured ? (
         <div className="px-3 pt-2.5 pb-1">
           <div className="flex items-baseline justify-between gap-2">
@@ -298,9 +298,9 @@ export default function ListingCard({
 
       <div className="px-4 pt-2.5 pb-2.5 flex flex-1 flex-col">
         {isFeatured ? (
-          <div className="min-h-[28px] flex items-center justify-between gap-2">
+          <div className="min-h-[30px] flex items-center justify-between gap-2">
             <h3
-              className="line-clamp-1 flex-1 text-[15px] font-semibold leading-none text-slate-900 group-hover:text-[#0a2230]"
+              className="line-clamp-1 flex-1 text-[15px] font-semibold leading-[1.15] text-slate-900 group-hover:text-[#0a2230]"
             >
               {featuredTitleText}
             </h3>
@@ -333,6 +333,20 @@ export default function ListingCard({
           <div className="mt-0.5 text-[13px] text-slate-400"> </div>
         )}
       </div>
+    </>
+  );
+
+  if (hardNavigate) {
+    return (
+      <a href={href} className={cardClass}>
+        {cardBody}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className={cardClass}>
+      {cardBody}
     </Link>
   );
 }

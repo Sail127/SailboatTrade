@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getBuilderGroups } from "@/lib/builders";
 import { getCountryOptions } from "@/lib/countries";
 import { getUsStateOptions } from "@/lib/us-states";
 import { PhoneInput } from "react-international-phone";
@@ -162,6 +163,27 @@ function strOrNull(v) {
   return s ? s : null;
 }
 
+function formatWholeDollars(raw) {
+  const digits = String(raw ?? "").replace(/[^\d]/g, "");
+  if (!digits) return "";
+  const normalized = String(Number(digits));
+  return normalized.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function currencySymbolFor(code) {
+  const map = { USD: "$", EUR: "€", GBP: "£", CAD: "C$", AUD: "A$" };
+  return map[code] || "";
+}
+
+function splitBuilderValue(rawBuilder, allBuilders = []) {
+  const builder = String(rawBuilder || "").trim();
+  if (!builder) return { builderSel: "", builderOther: "" };
+  if (allBuilders.includes(builder)) {
+    return { builderSel: builder, builderOther: "" };
+  }
+  return { builderSel: "Other", builderOther: builder };
+}
+
 function imageUrlFromKey(key, token) {
   if (!key) return "";
   const k = String(key).trim();
@@ -285,6 +307,15 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const maxAllowedPhotos = hasPhotoPlus ? MAX_PHOTOS : FREE_PHOTO_LIMIT;
   const countryOptions = useMemo(() => getCountryOptions("en"), []);
   const usStateOptions = useMemo(() => getUsStateOptions(), []);
+  const { popular: topBuilders, rest: otherBuilders, all: allBuilders } = useMemo(getBuilderGroups, []);
+  const nowYear = new Date().getFullYear();
+  const yearOptions = useMemo(() => {
+    const max = nowYear + 1;
+    const min = 1950;
+    const arr = [];
+    for (let y = max; y >= min; y -= 1) arr.push(String(y));
+    return arr;
+  }, [nowYear]);
 
   const [form, setForm] = useState(() => {
     const l = initialListing || {};
@@ -425,10 +456,19 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const knownCountry = countryOptions.some((c) => c.value === normalizedCountry);
   const countrySelectValue = knownCountry ? normalizedCountry : String(form.locationCountry || "").trim() ? "Other" : "";
   const isUSA = normalizedCountry === "US";
+  const [builderSel, setBuilderSel] = useState(() => splitBuilderValue(form.builder, allBuilders).builderSel);
+  const [builderOther, setBuilderOther] = useState(() => splitBuilderValue(form.builder, allBuilders).builderOther);
+  const curSymbol = currencySymbolFor(form.currency || "USD");
 
   useEffect(() => {
     photoItemsRef.current = photoItems;
   }, [photoItems]);
+
+  useEffect(() => {
+    const next = splitBuilderValue(form.builder, allBuilders);
+    setBuilderSel(next.builderSel);
+    setBuilderOther(next.builderOther);
+  }, [form.builder, allBuilders]);
 
   useEffect(() => {
     setForm((p) => {
@@ -446,6 +486,22 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
   function setField(k, v) {
     setForm((p) => ({ ...p, [k]: v }));
+  }
+
+  function setBuilderSelection(nextValue) {
+    setBuilderSel(nextValue);
+    if (nextValue === "Other") {
+      const custom = builderSel === "Other" ? builderOther : "";
+      setField("builder", custom);
+      return;
+    }
+    setBuilderOther("");
+    setField("builder", nextValue);
+  }
+
+  function setBuilderCustom(nextValue) {
+    setBuilderOther(nextValue);
+    setField("builder", nextValue);
   }
 
   function movePhoto(from, to) {
@@ -630,8 +686,9 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setSaving(true);
     try {
       const orderedPhotos = normalizePhotoOrder(uploadedPhotoKeys, uploadedPhotoKeys[0] || "");
+      const computedTitle = strOrNull(titleLine) || strOrNull(form.title);
       const payload = {
-        title: strOrNull(form.title),
+        title: computedTitle,
         year: intOrNull(form.year),
         builder: strOrNull(form.builder),
         model: strOrNull(form.model),
@@ -778,6 +835,67 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     await save(false, true);
   }
 
+  function ActionRow() {
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <a href={previewHref} className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50">
+          {isPublished ? "View live listing" : "View preview"}
+        </a>
+
+        <button
+          type="button"
+          onClick={() => save(false)}
+          disabled={saving}
+          className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
+            saving ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
+          }`}
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+
+        {isPublished && (uploadedPhotosChanged || hasPendingLocalPhotos) ? (
+          <button
+            type="button"
+            onClick={submitPhotoChanges}
+            disabled={saving || reviewBusy || overMax || hasPendingLocalPhotos}
+            className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold ${
+              saving || reviewBusy || overMax || hasPendingLocalPhotos
+                ? "bg-amber-200 text-amber-900 cursor-not-allowed"
+                : "bg-[#c8a44d] text-[#0a2230] hover:brightness-95"
+            }`}
+          >
+            {hasPendingLocalPhotos
+              ? "Upload photos first"
+              : reviewBusy
+              ? "Submitting…"
+              : "Submit photo changes"}
+          </button>
+        ) : null}
+
+        {canSubmitForReview && !isPublished && !isPendingReview ? (
+          <button
+            type="button"
+            onClick={saveAndResubmit}
+            disabled={saving || reviewBusy || overMax}
+            className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
+              saving || reviewBusy || overMax ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
+            }`}
+          >
+            {reviewBusy ? "Submitting…" : saving ? "Saving…" : isRejected ? "Save & Resubmit" : "Save & Submit"}
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard/listings")}
+          className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
+        >
+          Back to My Listings
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="py-8">
       <div className={CONTAINER}>
@@ -797,62 +915,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             </Badge>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={previewHref} className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50">
-              {isPublished ? "View live listing" : "View preview"}
-            </a>
-
-            <button
-              type="button"
-              onClick={() => save(false)}
-              disabled={saving}
-              className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                saving ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
-              }`}
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-
-            {isPublished && (uploadedPhotosChanged || hasPendingLocalPhotos) ? (
-              <button
-                type="button"
-                onClick={submitPhotoChanges}
-                disabled={saving || reviewBusy || overMax || hasPendingLocalPhotos}
-                className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold ${
-                  saving || reviewBusy || overMax || hasPendingLocalPhotos
-                    ? "bg-amber-200 text-amber-900 cursor-not-allowed"
-                    : "bg-[#c8a44d] text-[#0a2230] hover:brightness-95"
-                }`}
-              >
-                {hasPendingLocalPhotos
-                  ? "Upload photos first"
-                  : reviewBusy
-                  ? "Submitting…"
-                  : "Submit photo changes"}
-              </button>
-            ) : null}
-
-            {canSubmitForReview && !isPublished && !isPendingReview ? (
-              <button
-                type="button"
-                onClick={saveAndResubmit}
-                disabled={saving || reviewBusy || overMax}
-                className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                  saving || reviewBusy || overMax ? "bg-emerald-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
-                }`}
-              >
-                {reviewBusy ? "Submitting…" : saving ? "Saving…" : isRejected ? "Save & Resubmit" : "Save & Submit"}
-              </button>
-            ) : null}
-
-            <button
-              type="button"
-              onClick={() => router.push("/dashboard/listings")}
-              className="inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"
-            >
-              Back to My Listings
-            </button>
-          </div>
+          <ActionRow />
         </div>
 
         {saveOk ? (
@@ -1023,8 +1086,76 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
               <div className="px-5 py-4 border-b border-slate-200 space-y-3">
                 <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Basics</div>
 
+                <div className="rounded-2xl border border-[#ead49a] bg-[linear-gradient(180deg,#fffdf7_0%,#fff7df_100%)] p-4">
+                  <div className="text-[11px] font-extrabold tracking-[0.16em] text-[#8a6a12]">LISTING TITLE</div>
+                  <div className="mt-2 text-xl font-extrabold text-[#0a2230]">
+                    {titleLine}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label="Year">
+                    <select
+                      className={inputBase()}
+                      value={form.year ?? ""}
+                      onChange={(e) => setField("year", e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Builder">
+                    <div className="space-y-3">
+                      <select
+                        className={inputBase()}
+                        value={builderSel}
+                        onChange={(e) => setBuilderSelection(e.target.value)}
+                      >
+                        <option value="">Select a builder</option>
+                        {topBuilders.map((builder) => (
+                          <option key={`top-${builder}`} value={builder}>{builder}</option>
+                        ))}
+                        <option disabled>──────────</option>
+                        {otherBuilders.map((builder) => (
+                          <option key={`az-${builder}`} value={builder}>{builder}</option>
+                        ))}
+                        <option disabled>──────────</option>
+                        <option value="Other">Other</option>
+                      </select>
+                      {builderSel === "Other" ? (
+                        <input
+                          className={inputBase()}
+                          value={builderOther}
+                          onChange={(e) => setBuilderCustom(e.target.value)}
+                          placeholder="Enter custom builder"
+                        />
+                      ) : null}
+                    </div>
+                  </Field>
+                  <Field label="Model">
+                    <input
+                      className={inputBase()}
+                      value={form.model ?? ""}
+                      onChange={(e) => setField("model", e.target.value)}
+                    />
+                  </Field>
+                </div>
+
                 <Field label="Price">
-                  <input className={inputBase()} value={form.price ?? ""} onChange={(e) => setField("price", e.target.value)} />
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">
+                      {curSymbol}
+                    </span>
+                    <input
+                      className={`${inputBase()} pl-10`}
+                      value={form.price ?? ""}
+                      onChange={(e) => setField("price", formatWholeDollars(e.target.value))}
+                      inputMode="numeric"
+                      placeholder="0"
+                    />
+                  </div>
                 </Field>
 
                 <Field label="Currency">
@@ -1051,19 +1182,6 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     <option value="TRIMARAN">Trimaran</option>
                   </select>
                 </Field>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Field label="Year">
-                    <input className={inputBase()} value={form.year ?? ""} onChange={(e) => setField("year", e.target.value)} />
-                  </Field>
-                  <Field label="Builder">
-                    <input className={inputBase()} value={form.builder ?? ""} onChange={(e) => setField("builder", e.target.value)} />
-                  </Field>
-                  <Field label="Model">
-                    <input className={inputBase()} value={form.model ?? ""} onChange={(e) => setField("model", e.target.value)} />
-                  </Field>
-                </div>
-
               </div>
 
               <div className="p-5 space-y-4">
@@ -1325,6 +1443,13 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
           <SectionCard title="Additional Information">
             <textarea className={textareaBase()} value={form.additionalInfo ?? ""} onChange={(e) => setField("additionalInfo", e.target.value)} />
           </SectionCard>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(2,6,23,0.06)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-[14px] font-extrabold tracking-wide text-slate-600">Page Controls</div>
+              <ActionRow />
+            </div>
+          </div>
         </div>
 
         <div className="h-10" />

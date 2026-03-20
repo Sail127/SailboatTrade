@@ -174,7 +174,7 @@ export default async function Home() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {featuredReal.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} variant="featured" imageFit="contain" />
+            <ListingCard key={listing.id} listing={listing} variant="featured" imageFit="contain" hardNavigate />
           ))}
 
           {samplePlaceholders.map((sample) => (
@@ -184,6 +184,7 @@ export default async function Home() {
               variant="featured"
               imageFit="contain"
               hrefOverride="/listings/new"
+              hardNavigate
               samplePlaceholder
             />
           ))}

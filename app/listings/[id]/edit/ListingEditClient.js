@@ -414,6 +414,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     [photoItems]
   );
   const photoCount = photoItems.length;
+  const atPhotoLimit = photoCount >= maxAllowedPhotos;
   const overMax = photoCount > maxAllowedPhotos;
   const hasPendingLocalPhotos = pendingPhotoCount > 0;
   const uploadedPhotoKeys = useMemo(
@@ -973,17 +974,45 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                 </div>
               ) : null}
 
+              {!photoErr && atPhotoLimit ? (
+                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                  {hasPhotoPlus ? (
+                    <span>
+                      This listing is at its {maxAllowedPhotos}-photo limit. Remove one photo to add another.
+                    </span>
+                  ) : (
+                    <span>
+                      This free listing is at its {FREE_PHOTO_LIMIT}-photo limit. Remove one photo to add another, or{" "}
+                      <a
+                        href={`/checkout/${encodeURIComponent(id)}`}
+                        className="font-semibold underline underline-offset-2 hover:text-amber-950"
+                      >
+                        upgrade to 25 photos
+                      </a>
+                      .
+                    </span>
+                  )}
+                </div>
+              ) : null}
+
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
                 <button
                   type="button"
-                  disabled={photoBusy || photoCount >= maxAllowedPhotos}
+                  disabled={photoBusy || atPhotoLimit}
                   onClick={() => fileRef.current?.click()}
+                  title={
+                    atPhotoLimit
+                      ? hasPhotoPlus
+                        ? `Remove a photo first. This listing allows up to ${maxAllowedPhotos} photos.`
+                        : `Remove a photo first, or upgrade this listing to 25 photos.`
+                      : "Add photos"
+                  }
                   className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] ${
-                    photoBusy || photoCount >= maxAllowedPhotos ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
+                    photoBusy || atPhotoLimit ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
                   }`}
                 >
-                  Add photos
+                  {atPhotoLimit ? "Photo limit reached" : "Add photos"}
                 </button>
 
                 <button

@@ -88,6 +88,12 @@ function EyeIcon({ open }) {
   );
 }
 
+function isDialCodeOnlyPhone(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return true;
+  return /^\+\d{1,4}$/.test(s);
+}
+
 function RegisterInner() {
   const sp = useSearchParams();
   const router = useRouter();
@@ -157,7 +163,7 @@ function RegisterInner() {
 
   function normalizePhoneToE164(raw) {
     const s = String(raw || "").trim();
-    if (!s) return { e164: null, ok: true }; // optional
+    if (!s || isDialCodeOnlyPhone(s)) return { e164: null, ok: true }; // optional
     const pn = parsePhoneNumberFromString(s);
     if (!pn) return { e164: null, ok: false };
     if (!pn.isValid()) return { e164: null, ok: false };

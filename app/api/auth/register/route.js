@@ -30,6 +30,12 @@ function newToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+function isDialCodeOnlyPhone(raw) {
+  const s = toStr(raw, 40);
+  if (!s) return true;
+  return /^\+\d{1,4}$/.test(s);
+}
+
 // Very light E.164 check (frontend should build E.164; backend enforces basic shape)
 function normalizeE164(raw) {
   const s = toStr(raw, 40);
@@ -109,7 +115,7 @@ export async function POST(req) {
 
   // Accept old and new field names, but normalize to phoneE164 storage
   const rawPhone = body?.phoneE164 ?? body?.phone ?? body?.phoneNumber ?? "";
-  const phoneE164 = normalizeE164(rawPhone);
+  const phoneE164 = isDialCodeOnlyPhone(rawPhone) ? null : normalizeE164(rawPhone);
 
   // Brokerage fields (country now ISO)
   const brokerageName = toStr(body?.brokerageName ?? "", 120) || null;
@@ -146,7 +152,7 @@ export async function POST(req) {
   }
 
   // Phone is optional, but if provided, must be valid E.164
-  if (rawPhone && !phoneE164) {
+  if (!isDialCodeOnlyPhone(rawPhone) && rawPhone && !phoneE164) {
     return Response.json(
       { ok: false, error: "Please enter a valid phone number (include country code)." },
       { status: 400 }

@@ -32,6 +32,9 @@ export async function POST(req, { params }) {
       firstName: true,
       lastName: true,
       emailVerifiedAt: true,
+      emailVerificationToken: true,
+      emailVerificationExpires: true,
+      emailVerificationSentAt: true,
       deletedAt: true,
       isDisabled: true,
     },
@@ -50,9 +53,21 @@ export async function POST(req, { params }) {
 
   const verifyToken = newToken();
   const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
+  const previousToken = user.emailVerificationToken;
+  const previousExpires = user.emailVerificationExpires;
+  const previousSentAt = user.emailVerificationSentAt;
   const appUrl = getAppUrl(req);
   const displayName =
     (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.name) || "";
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      emailVerificationToken: verifyToken,
+      emailVerificationExpires: verifyExpires,
+    },
+  });
+
   const verifyUrl = `${appUrl}/verify-email?token=${encodeURIComponent(verifyToken)}`;
   const { subject, html, text } = buildVerifyEmailMessage({
     appUrl,
@@ -61,26 +76,55 @@ export async function POST(req, { params }) {
     reason: "signup",
   });
 
-  const emailResult = await sendEmailWithRetry({
-    to: user.email,
-    subject,
-    html,
-    text,
-    tags: [
-      { name: "type", value: "verify_email" },
-      { name: "source", value: "admin_resend_welcome" },
-    ],
-  });
+  let emailResult;
+  try {
+    emailResult = await sendEmailWithRetry({
+      to: user.email,
+      subject,
+      html,
+      text,
+      tags: [
+        { name: "type", value: "verify_email" },
+        { name: "source", value: "admin_resend_welcome" },
+      ],
+    });
+  } catch (error) {
+    await prisma.user
+      .update({
+        where: { id: user.id },
+        data: {
+          emailVerificationToken: previousToken,
+          emailVerificationExpires: previousExpires,
+          emailVerificationSentAt: previousSentAt,
+        },
+      })
+      .catch(() => {});
+
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "EMAIL_SEND_FAILED",
+        error: "We could not send the welcome email right now. Please try again in a moment.",
+      },
+      { status: 502 }
+    );
+  }
 
   const sentAt = new Date();
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      emailVerificationToken: verifyToken,
-      emailVerificationExpires: verifyExpires,
-      emailVerificationSentAt: sentAt,
-    },
-  });
+  await prisma.user
+    .update({
+      where: { id: user.id },
+      data: {
+        emailVerificationSentAt: sentAt,
+      },
+    })
+    .catch((updateError) => {
+      console.warn("Admin welcome resend sent but sentAt update failed:", {
+        userId: user.id,
+        email: user.email,
+        error: updateError?.message || String(updateError),
+      });
+    });
 
   await audit({
     actorId: guard.me.id,

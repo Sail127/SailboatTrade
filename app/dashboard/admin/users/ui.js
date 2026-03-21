@@ -170,6 +170,8 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
         ...prev,
         [email]: {
           loadedAt: Date.now(),
+          warning: data?.warning || "",
+          user: data?.user || null,
           events: Array.isArray(data.events) ? data.events : [],
         },
       }));
@@ -321,16 +323,30 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="text-[12px] font-extrabold tracking-[0.14em] text-slate-500">
-                          RECENT RESEND EVENTS
+                          RECENT EMAIL EVENTS
                         </div>
                         <div className="text-[11px] text-slate-500">
                           Refreshed {fmtDate(eventState.loadedAt)}
                         </div>
                       </div>
 
+                      {eventState.warning ? (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                          {eventState.warning}
+                        </div>
+                      ) : null}
+
+                      {eventState.user ? (
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
+                          <span>Account created: {fmtDate(eventState.user.createdAt) || "Unknown"}</span>
+                          <span>Verification recorded: {fmtDate(eventState.user.emailVerificationSentAt) || "Not recorded"}</span>
+                          <span>Verified: {fmtDate(eventState.user.emailVerifiedAt) || "Not yet"}</span>
+                        </div>
+                      ) : null}
+
                       {eventState.events.length === 0 ? (
                         <div className="mt-3 text-sm text-slate-600">
-                          No recent Resend events found for this recipient in the latest provider window.
+                          No recent email events were found for this recipient.
                         </div>
                       ) : (
                         <div className="mt-3 space-y-2">
@@ -341,6 +357,11 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                                 <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
                                   {event.lastEvent || "unknown"}
                                 </span>
+                                {event.source ? (
+                                  <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                                    {event.source}
+                                  </span>
+                                ) : null}
                               </div>
                               <div className="mt-1 break-all text-[12px] text-slate-600">
                                 Message ID: {event.id}

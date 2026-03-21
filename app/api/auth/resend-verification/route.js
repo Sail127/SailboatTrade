@@ -98,9 +98,20 @@ export async function POST(req) {
 
   const verifyToken = newToken();
   const verifyExpires = new Date(Date.now() + 1000 * 60 * 60 * 24 * 3);
+  const previousToken = user.emailVerificationToken;
+  const previousExpires = user.emailVerificationExpires;
+  const previousSentAt = user.emailVerificationSentAt;
+  let emailResult = null;
 
-  // Send and only start cooldown if the provider call succeeds.
   try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken: verifyToken,
+        emailVerificationExpires: verifyExpires,
+      },
+    });
+
     const appUrl = getAppUrl(req);
     const displayName =
       (user.firstName && user.lastName
@@ -114,27 +125,12 @@ export async function POST(req) {
       reason: "resend",
     });
 
-    const emailResult = await sendEmailWithRetry({
+    emailResult = await sendEmailWithRetry({
       to: user.email,
       subject,
       html,
       text,
       tags: [{ name: "type", value: "verify_email_resend" }],
-    });
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerificationToken: verifyToken,
-        emailVerificationExpires: verifyExpires,
-        emailVerificationSentAt: new Date(),
-      },
-    });
-
-    console.info("Verification email resent", {
-      userId: user.id,
-      email: user.email,
-      emailId: emailResult?.id ?? null,
     });
   } catch (e) {
     console.error("Resend verification email failed:", {
@@ -147,9 +143,9 @@ export async function POST(req) {
       .update({
         where: { id: user.id },
         data: {
-          emailVerificationToken: user.emailVerificationToken,
-          emailVerificationExpires: user.emailVerificationExpires,
-          emailVerificationSentAt: user.emailVerificationSentAt,
+          emailVerificationToken: previousToken,
+          emailVerificationExpires: previousExpires,
+          emailVerificationSentAt: previousSentAt,
         },
       })
       .catch(() => {});
@@ -163,6 +159,27 @@ export async function POST(req) {
       { status: 502 },
     );
   }
+
+  await prisma.user
+    .update({
+      where: { id: user.id },
+      data: {
+        emailVerificationSentAt: new Date(),
+      },
+    })
+    .catch((updateError) => {
+      console.warn("Verification email resent but sentAt update failed:", {
+        userId: user.id,
+        email: user.email,
+        error: updateError?.message || String(updateError),
+      });
+    });
+
+  console.info("Verification email resent", {
+    userId: user.id,
+    email: user.email,
+    emailId: emailResult?.id ?? null,
+  });
 
   return NextResponse.json({ ok: true, retryAfterSeconds: COOLDOWN_SECONDS });
 }

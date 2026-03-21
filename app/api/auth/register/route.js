@@ -213,20 +213,10 @@ export async function POST(req) {
     },
   });
 
-  const token = await signSession({
-    uid: user.id,
-    email: user.email,
-    name: user.name,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    sellerRole: user.sellerRole || undefined,
-  });
-
-  setSessionCookie(token);
-
   let emailVerificationSent = false;
+  let emailResult = null;
 
-  // ✅ Send verification email (do not fail registration if this fails)
+  // Registration should only succeed if the welcome email is actually accepted.
   try {
     const appUrl = getAppUrl(req);
     const displayName =
@@ -240,32 +230,72 @@ export async function POST(req) {
       reason: "signup",
     });
 
-    const emailResult = await sendEmailWithRetry({
+    emailResult = await sendEmailWithRetry({
       to: user.email,
       subject,
       html,
       text,
       tags: [{ name: "type", value: "verify_email" }],
     });
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { emailVerificationSentAt: new Date() },
-    });
-
-    console.info("Verification email queued", {
-      userId: user.id,
-      email: user.email,
-      emailId: emailResult?.id ?? null,
-    });
-    emailVerificationSent = true;
   } catch (e) {
     console.error("Verification email failed:", {
       userId: user.id,
       email: user.email,
       error: e?.message || String(e),
     });
+
+    await prisma.user
+      .delete({
+        where: { id: user.id },
+      })
+      .catch((cleanupError) => {
+        console.error("Failed to roll back user after welcome email failure:", {
+          userId: user.id,
+          email: user.email,
+        error: cleanupError?.message || String(cleanupError),
+        });
+      });
+
+    return Response.json(
+      {
+        ok: false,
+        code: "WELCOME_EMAIL_SEND_FAILED",
+        error: "We could not send your welcome email right now. Please try registering again in a moment.",
+      },
+      { status: 502 }
+    );
   }
+
+  await prisma.user
+    .update({
+      where: { id: user.id },
+      data: { emailVerificationSentAt: new Date() },
+    })
+    .catch((updateError) => {
+      console.warn("Welcome email sent but sentAt update failed:", {
+        userId: user.id,
+        email: user.email,
+        error: updateError?.message || String(updateError),
+      });
+    });
+
+  const token = await signSession({
+    uid: user.id,
+    email: user.email,
+    name: user.name,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    sellerRole: user.sellerRole || undefined,
+  });
+
+  setSessionCookie(token);
+
+  console.info("Verification email queued", {
+    userId: user.id,
+    email: user.email,
+    emailId: emailResult?.id ?? null,
+  });
+  emailVerificationSent = true;
 
   return Response.json({
     ok: true,

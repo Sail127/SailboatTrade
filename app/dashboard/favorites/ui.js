@@ -337,7 +337,7 @@ export default function FavoritesUI({ initialItems = [] }) {
                     disabled={heartBusy}
                     className={`absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border text-[16px] ${
                       heartBusy
-                        ? "cursor-not-allowed border-slate-300 bg-white/80 text-slate-400"
+                        ? "cursor-not-allowed border-slate-300 bg-white/80 text-slate-500"
                         : "border-red-200 bg-white text-red-600 hover:bg-red-50"
                     }`}
                     title="Remove from favorites"

@@ -28,6 +28,9 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [composeUserId, setComposeUserId] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeMessage, setComposeMessage] = useState("");
   const [eventsByEmail, setEventsByEmail] = useState({});
   const [eventsLoadingEmail, setEventsLoadingEmail] = useState("");
 
@@ -182,6 +185,55 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     }
   }
 
+  function openComposer(user) {
+    if (!user?.id) return;
+    setComposeUserId(user.id);
+    setComposeSubject(`Message from SailboatTrade`);
+    setComposeMessage("");
+    setMsg("");
+  }
+
+  function closeComposer() {
+    setComposeUserId("");
+    setComposeSubject("");
+    setComposeMessage("");
+  }
+
+  async function sendMessage(user) {
+    if (!user?.id) return;
+    const subject = String(composeSubject || "").trim();
+    const message = String(composeMessage || "").trim();
+    if (!subject) {
+      setMsg("Please enter a subject.");
+      return;
+    }
+    if (!message) {
+      setMsg("Please enter a message.");
+      return;
+    }
+
+    setBusyId(user.id);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/send-message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, message }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not send message.");
+      }
+
+      setMsg(`Message sent to ${data?.email || user.email}.`);
+      closeComposer();
+    } catch (err) {
+      setMsg(err?.message || "Could not send message.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   return (
     <div className="rounded-3xl border border-[#e7d7a6] bg-[linear-gradient(180deg,#fffdf7_0%,#fff7df_100%)] shadow-[0_16px_35px_rgba(2,6,23,0.08)]">
       <div className="border-b border-[#eadba9] px-6 py-5">
@@ -228,6 +280,7 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
             {filtered.map((user) => {
               const busy = busyId === user.id;
               const isSelf = user.id === currentAdminId;
+              const composerOpen = composeUserId === user.id;
               const eventState = eventsByEmail[String(user.email || "").toLowerCase()] || null;
               const eventBusy = eventsLoadingEmail === String(user.email || "").toLowerCase();
               return (
@@ -301,6 +354,15 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
 
                       <button
                         type="button"
+                        onClick={() => (composerOpen ? closeComposer() : openComposer(user))}
+                        disabled={busy}
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {composerOpen ? "Close Message" : "Email User"}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => loadEmailEvents(user)}
                         disabled={busy || eventBusy}
                         className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -318,6 +380,51 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                       </button>
                     </div>
                   </div>
+
+                  {composerOpen ? (
+                    <div className="mt-4 rounded-2xl border border-[#eadba9] bg-[#fffaf0] p-4">
+                      <div className="text-[12px] font-extrabold tracking-[0.14em] text-[#8a6a12]">
+                        SEND EMAIL
+                      </div>
+                      <div className="mt-1 text-[12px] text-slate-600">
+                        Send a direct message to {user.email}.
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        <input
+                          value={composeSubject}
+                          onChange={(e) => setComposeSubject(e.target.value)}
+                          placeholder="Subject"
+                          className="h-10 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                        />
+                        <textarea
+                          value={composeMessage}
+                          onChange={(e) => setComposeMessage(e.target.value)}
+                          placeholder="Write your message here..."
+                          rows={5}
+                          className="w-full rounded-xl border border-[#d9c486] bg-white px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => sendMessage(user)}
+                            disabled={busy}
+                            className="inline-flex h-10 items-center justify-center rounded-xl bg-[#0a2230] px-4 text-sm font-semibold text-white hover:bg-[#0f2a3b] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {busy ? "Sending…" : "Send Email"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={closeComposer}
+                            disabled={busy}
+                            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {eventState ? (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">

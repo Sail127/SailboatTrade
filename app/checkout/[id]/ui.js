@@ -46,7 +46,7 @@ function Pill({ active, disabled, children, onClick }) {
       onClick={onClick}
       className={`h-9 rounded-full px-4 text-[13px] font-semibold border transition ${
         disabled
-          ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+          ? "bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed"
           : active
           ? "bg-[#0a2230] text-white border-[#0a2230]"
           : "bg-white text-[#0a2230] border-slate-300 hover:bg-slate-50"
@@ -65,7 +65,7 @@ function UpgradeCheck({ active, disabled, mandatory, label, priceLabel, onClick 
       onClick={onClick}
       className={`w-full rounded-xl border px-3 py-2 text-left transition ${
         disabled
-          ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+          ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500"
           : active
           ? "border-[#0a2230] bg-[#0a2230]/5 text-[#0a2230]"
           : "border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50"

@@ -102,7 +102,7 @@ function SectionCard({ title, subtitle, children }) {
         <h2 className="text-[15px] sm:text-[18px] font-extrabold tracking-wide text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]">
           {title}
         </h2>
-        {subtitle ? <p className="mt-1 text-xs sm:text-sm text-white/80">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-1 text-xs sm:text-sm font-medium text-white/95">{subtitle}</p> : null}
       </div>
       <div className="p-4 sm:p-5">{children}</div>
     </div>
@@ -1199,7 +1199,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
                 <Field label="Price">
                   <div className="relative">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-500">
                       {curSymbol}
                     </span>
                     <input
@@ -1415,7 +1415,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                       className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-[#0a2230] hover:bg-slate-50"
                       title="Click to remove"
                     >
-                      {name} <span className="text-slate-400">×</span>
+                      {name} <span className="text-slate-500">×</span>
                     </button>
                   ))
                 ) : (

@@ -37,7 +37,7 @@ export default function Footer() {
               </div>
 
               {/* Row 2 (links) */}
-              <nav className="mt-1 flex items-center justify-center gap-4 text-[12px] text-white/80 leading-none">
+              <nav className="mt-1 flex items-center justify-center gap-4 text-[12px] text-white/90 leading-none">
                 <a href="/why-list" className="hover:text-white transition">
                   Why List with ST.com?
                 </a>
@@ -50,7 +50,7 @@ export default function Footer() {
               </nav>
 
               {/* ✅ More spacing between links and copyright */}
-              <div className="mt-3 text-[11px] text-white/60 leading-none">
+              <div className="mt-3 text-[11px] text-white/90 leading-none">
                 © {new Date().getFullYear()} Sailboat Trade LLC.
               </div>
             </div>

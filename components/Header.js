@@ -507,7 +507,7 @@ export default function Header({ initialUser = null }) {
               tone="dark"
               className="text-xl sm:text-2xl font-bold text-white leading-none whitespace-nowrap"
             />
-            <div className="text-[11px] text-slate-300">All Sailboats- All the Time!</div>
+            <div className="text-[11px] font-semibold text-slate-100">All Sailboats- All the Time!</div>
           </Link>
 
           <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">

@@ -182,11 +182,11 @@ export default function AdminReviewClient({ initialItems }) {
                           </div>
                           <div className="mt-1 text-[12px] text-slate-600">
                             <span className="font-semibold">Plan:</span> {planLabel(x.plan)}{" "}
-                            <span className="text-slate-400">•</span>{" "}
+                            <span className="text-slate-500">•</span>{" "}
                             <span className="font-semibold">Submitted:</span> {fmt(x.submittedForReviewAt)}{" "}
                             {x.ownerEmail ? (
                               <>
-                                <span className="text-slate-400">•</span>{" "}
+                                <span className="text-slate-500">•</span>{" "}
                                 <span className="font-semibold">Owner:</span> {x.ownerEmail}
                               </>
                             ) : null}

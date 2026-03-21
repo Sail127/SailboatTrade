@@ -258,11 +258,11 @@ function Pill({ active, children, onClick }) {
 function UnitSystemToggle({ value, onChange }) {
   const base = "h-8 px-3 rounded-full text-[12px] font-semibold transition inline-flex items-center justify-center";
   const active = "bg-white text-[#0a2230] border border-white";
-  const inactive = "bg-transparent text-white/80 border border-transparent hover:bg-white/10";
+  const inactive = "bg-transparent text-white/95 border border-transparent hover:bg-white/10";
 
   return (
     <div className="inline-flex items-center gap-2">
-      <div className="text-[11px] font-semibold text-white/80 mr-1">Units</div>
+      <div className="mr-1 text-[11px] font-semibold text-white/95">Units</div>
       <div className="inline-flex items-center rounded-full border border-white/25 p-1">
         <button type="button" className={`${base} ${value === "US" ? active : inactive}`} onClick={() => onChange("US")}>
           U.S.
@@ -330,7 +330,7 @@ function SectionCard({ title, subtitle, headerRight, children }) {
             <h2 className="text-base sm:text-lg font-semibold tracking-tight" style={{ color: GOLD }}>
               {title}
             </h2>
-            {subtitle ? <p className="mt-1 text-xs sm:text-sm text-white/80">{subtitle}</p> : null}
+            {subtitle ? <p className="mt-1 text-xs sm:text-sm font-medium text-white/95">{subtitle}</p> : null}
           </div>
           {headerRight ? <div className="pt-0.5">{headerRight}</div> : null}
         </div>
@@ -1593,7 +1593,7 @@ export default function NewListingForm() {
           ) : (
             <>Draft not saved yet</>
           )}
-          <span className="mx-2 text-slate-300">•</span>
+          <span className="mx-2 text-slate-500">•</span>
           <span>Autosaves every 3 minutes while you edit. Expires after 30 minutes of inactivity.</span>
         </div>
 
@@ -1809,7 +1809,7 @@ export default function NewListingForm() {
             </div>
 
             <div className="relative">
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">{curSymbol}</span>
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-500">{curSymbol}</span>
               <input
                 className={input("price") + " pl-8"}
                 value={priceDisplay}

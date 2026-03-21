@@ -261,7 +261,7 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
           <div className="text-[15px] font-extrabold tracking-wide" style={{ color: GOLD }}>
             Manual Cleanup Routines
           </div>
-          <div className="mt-1 text-[12px] text-white/80">
+          <div className="mt-1 text-[12px] font-medium text-white/95">
             Run the new retention cleanups manually from admin controls until you’re ready to automate them.
           </div>
         </div>
@@ -353,7 +353,7 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
             <div className="text-[15px] font-extrabold tracking-wide" style={{ color: GOLD }}>
               Storage Report
             </div>
-            <div className="mt-1 text-[12px] text-white/80">
+            <div className="mt-1 text-[12px] font-medium text-white/95">
               Snapshot of referenced assets, orphaned bytes, and the biggest users and listings by storage footprint.
             </div>
           </div>
@@ -435,7 +435,7 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
               <div className="text-[15px] font-extrabold tracking-wide" style={{ color: GOLD }}>
                 Draft Storage Cleanup
               </div>
-              <div className="mt-1 text-[12px] text-white/80">
+              <div className="mt-1 text-[12px] font-medium text-white/95">
                 Deletes unreferenced objects in <span className="font-semibold">drafts/</span> older than N days.
               </div>
             </div>
@@ -525,7 +525,7 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
           <div className="text-[15px] font-extrabold tracking-wide" style={{ color: GOLD }}>
             Non-Live Listing Cleanup
           </div>
-          <div className="mt-1 text-[12px] text-white/80">
+          <div className="mt-1 text-[12px] font-medium text-white/95">
             Review every non-live listing on the site and permanently remove the ones you no longer need to keep.
           </div>
         </div>

@@ -46,7 +46,7 @@ function SimpleLink({ href, label, right }) {
       className="flex items-center justify-between py-3 border-b border-slate-200 hover:bg-slate-50 px-2 -mx-2 rounded-lg transition"
     >
       <span className="text-sm font-semibold text-[#0a2230]">{label}</span>
-      {right ? <span className="text-xs text-slate-500">{right}</span> : <span className="text-slate-300 text-lg leading-none">›</span>}
+      {right ? <span className="text-xs font-medium text-slate-700">{right}</span> : <span className="text-slate-500 text-lg leading-none">›</span>}
     </Link>
   );
 }
@@ -138,7 +138,7 @@ export default async function DashboardHome() {
                 <span className="font-semibold text-slate-900">{who}</span>
                 {company ? (
                   <>
-                    <span className="mx-2 text-slate-300">•</span>
+                    <span className="mx-2 text-slate-500">•</span>
                     <span className="font-semibold text-slate-900">{company}</span>
                   </>
                 ) : null}

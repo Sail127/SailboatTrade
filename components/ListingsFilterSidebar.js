@@ -351,7 +351,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
 
   const input =
     "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
-    "placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#c8a44d]/35";
+    "placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-[#c8a44d]/35";
 
   const select =
     "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
@@ -361,16 +361,16 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     Array.isArray(value)
       ? value.length
         ? "text-[#0a2230]"
-        : "text-slate-400"
+        : "text-slate-500"
       : String(value || "").trim()
       ? "text-[#0a2230]"
-      : "text-slate-400";
+      : "text-slate-500";
 
-  const drawerLabel = "block text-[12px] font-bold tracking-wide text-white/80";
+  const drawerLabel = "block text-[12px] font-bold tracking-wide text-white/95";
   const drawerSection = "space-y-2 border-t border-white/15 pt-3";
   const drawerInput =
     "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
-    "!bg-white !text-[#0a2230] placeholder:!text-slate-400 focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+    "!bg-white !text-[#0a2230] placeholder:!text-slate-500 focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
   const drawerSelect =
     "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
     "!bg-white !text-[#0a2230] focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
@@ -378,10 +378,10 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     Array.isArray(value)
       ? value.length
         ? "!text-[#0a2230]"
-        : "!text-slate-400"
+        : "!text-slate-500"
       : String(value || "").trim()
       ? "!text-[#0a2230]"
-      : "!text-slate-400";
+      : "!text-slate-500";
   const pickerRowClass = (active) =>
     [
       "w-full rounded-md px-2 py-1.5 text-left text-[13px] transition",
@@ -554,7 +554,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                 type="button"
                 onClick={clearFilters}
                 disabled={!activeFilterCount}
-                className="text-xs font-semibold text-white/80 underline underline-offset-2 hover:text-white disabled:opacity-40 disabled:no-underline"
+                className="text-xs font-semibold text-white/95 underline underline-offset-2 hover:text-white disabled:opacity-40 disabled:no-underline"
               >
                 Clear all filters
               </button>
@@ -819,7 +819,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="text-[12px] font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+                  className="text-[12px] font-semibold text-white/95 underline underline-offset-2 hover:text-white"
                 >
                   Clear all filters
                 </button>

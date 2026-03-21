@@ -51,7 +51,7 @@ function SendTestButton({ item, recipient, onRecipientChange }) {
           type="email"
           value={recipient}
           onChange={(e) => onRecipientChange(e.target.value)}
-          className="h-10 min-w-[260px] flex-1 rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-400"
+          className="h-10 min-w-[260px] flex-1 rounded-full border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none ring-0 placeholder:text-slate-500"
           placeholder="admin@example.com"
         />
         <button

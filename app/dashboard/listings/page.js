@@ -321,11 +321,11 @@ export default async function MyListings() {
 
               <div className="text-sm text-slate-600 mt-2">
                 Plan: <span className="font-semibold">{plan}</span>
-                <span className="mx-2 text-slate-300">•</span>
+                <span className="mx-2 text-slate-500">•</span>
                 Billing: <span className="font-semibold">{billing}</span>
                 {monthly ? (
                   <>
-                    <span className="mx-2 text-slate-300">•</span>
+                    <span className="mx-2 text-slate-500">•</span>
                     <span className="font-semibold">{monthly}</span>
                   </>
                 ) : null}

@@ -325,12 +325,12 @@ export default function ListingCard({
         ) : null}
 
         {loc ? (
-          <div className="mt-0.5 flex items-center gap-1.5 text-[13px] leading-tight text-slate-600">
-            <span className="text-slate-400"><PinIcon /></span>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[13px] leading-tight text-slate-700">
+            <span className="text-slate-500"><PinIcon /></span>
             <span className="line-clamp-1">{loc}</span>
           </div>
         ) : (
-          <div className="mt-0.5 text-[13px] text-slate-400"> </div>
+          <div className="mt-0.5 text-[13px] text-slate-500"> </div>
         )}
       </div>
     </>

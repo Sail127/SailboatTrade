@@ -52,7 +52,7 @@ function SectionCard({ title, subtitle, children }) {
           {title}
         </h2>
         {subtitle ? (
-          <p className="mt-1 text-xs sm:text-sm text-white/80">{subtitle}</p>
+          <p className="mt-1 text-xs sm:text-sm font-medium text-white/95">{subtitle}</p>
         ) : null}
       </div>
       <div className="p-4 sm:p-5">{children}</div>

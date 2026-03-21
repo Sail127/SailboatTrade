@@ -28,6 +28,8 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [eventsByEmail, setEventsByEmail] = useState({});
+  const [eventsLoadingEmail, setEventsLoadingEmail] = useState("");
 
   const filtered = useMemo(() => {
     const search = q.trim().toLowerCase();
@@ -117,6 +119,35 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     }
   }
 
+  async function loadEmailEvents(user) {
+    const email = String(user?.email || "").trim().toLowerCase();
+    if (!email) return;
+
+    setEventsLoadingEmail(email);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/email-events?email=${encodeURIComponent(email)}`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not load email events.");
+      }
+
+      setEventsByEmail((prev) => ({
+        ...prev,
+        [email]: {
+          loadedAt: Date.now(),
+          events: Array.isArray(data.events) ? data.events : [],
+        },
+      }));
+    } catch (err) {
+      setMsg(err?.message || "Could not load email events.");
+    } finally {
+      setEventsLoadingEmail("");
+    }
+  }
+
   return (
     <div className="rounded-3xl border border-[#e7d7a6] bg-[linear-gradient(180deg,#fffdf7_0%,#fff7df_100%)] shadow-[0_16px_35px_rgba(2,6,23,0.08)]">
       <div className="border-b border-[#eadba9] px-6 py-5">
@@ -163,6 +194,8 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
             {filtered.map((user) => {
               const busy = busyId === user.id;
               const isSelf = user.id === currentAdminId;
+              const eventState = eventsByEmail[String(user.email || "").toLowerCase()] || null;
+              const eventBusy = eventsLoadingEmail === String(user.email || "").toLowerCase();
               return (
                 <div
                   key={user.id}
@@ -198,6 +231,7 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                         <span>Listings: {user.listingsCount || 0}</span>
                         <span>Favorites: {user.favoritesCount || 0}</span>
                         <span>Joined: {fmtDate(user.createdAt)}</span>
+                        <span>Verification send attempt: {fmtDate(user.emailVerificationSentAt) || "Not recorded"}</span>
                         <span>Updated: {fmtDate(user.updatedAt)}</span>
                       </div>
                     </div>
@@ -222,6 +256,15 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
 
                       <button
                         type="button"
+                        onClick={() => loadEmailEvents(user)}
+                        disabled={busy || eventBusy}
+                        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {eventBusy ? "Loading events…" : "View Email Events"}
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => deleteUser(user)}
                         disabled={busy || isSelf}
                         className="inline-flex h-10 items-center justify-center rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -230,6 +273,44 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                       </button>
                     </div>
                   </div>
+
+                  {eventState ? (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[12px] font-extrabold tracking-[0.14em] text-slate-500">
+                          RECENT RESEND EVENTS
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Refreshed {fmtDate(eventState.loadedAt)}
+                        </div>
+                      </div>
+
+                      {eventState.events.length === 0 ? (
+                        <div className="mt-3 text-sm text-slate-600">
+                          No recent Resend events found for this recipient in the latest provider window.
+                        </div>
+                      ) : (
+                        <div className="mt-3 space-y-2">
+                          {eventState.events.map((event) => (
+                            <div key={event.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-[#0a2230]">{event.subject || "(No subject)"}</span>
+                                <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                                  {event.lastEvent || "unknown"}
+                                </span>
+                              </div>
+                              <div className="mt-1 break-all text-[12px] text-slate-600">
+                                Message ID: {event.id}
+                              </div>
+                              <div className="mt-1 text-[12px] text-slate-600">
+                                Sent: {fmtDate(event.createdAt)} | From: {event.from || "Unknown sender"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

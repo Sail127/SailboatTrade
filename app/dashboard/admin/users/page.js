@@ -21,6 +21,7 @@ export default async function AdminUsersPage() {
       businessName: true,
       role: true,
       emailVerifiedAt: true,
+      emailVerificationSentAt: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -44,6 +45,7 @@ export default async function AdminUsersPage() {
     role: user.role,
     emailVerified: Boolean(user.emailVerifiedAt),
     emailVerifiedAt: user.emailVerifiedAt,
+    emailVerificationSentAt: user.emailVerificationSentAt,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     listingsCount: user._count?.listings || 0,
@@ -63,6 +65,12 @@ export default async function AdminUsersPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/admin/email-health"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
+          >
+            Email Health
+          </Link>
           <Link
             href="/dashboard/admin/email-previews"
             className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,24 @@ function timingSafeEqual(a, b) {
   const bb = Buffer.from(b);
   if (ba.length !== bb.length) return false;
   return crypto.timingSafeEqual(ba, bb);
+}
+
+function normalizeString(value) {
+  const s = String(value || "").trim();
+  return s || null;
+}
+
+function normalizeRecipient(value) {
+  if (Array.isArray(value)) {
+    return normalizeString(value[0]);
+  }
+  return normalizeString(value);
+}
+
+function toDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export async function POST(req) {
@@ -70,12 +89,53 @@ export async function POST(req) {
   }
 
   // 5) Log minimal useful info
+  const eventType = body?.type ?? body?.event ?? "unknown";
+  const eventId = body?.data?.id ?? body?.id ?? null;
+  const messageId = body?.data?.email_id ?? body?.data?.emailId ?? body?.email_id ?? null;
+  const recipient = normalizeRecipient(body?.data?.to);
+  const sender = normalizeString(body?.data?.from);
+  const subject = normalizeString(body?.data?.subject);
+  const occurredAt = toDate(body?.created_at ?? body?.createdAt ?? body?.data?.created_at);
+
   console.log("RESEND WEBHOOK EVENT:", {
-    type: body?.type ?? body?.event ?? "unknown",
-    id: body?.data?.id ?? body?.id ?? null,
-    email_id: body?.data?.email_id ?? null,
+    type: eventType,
+    id: eventId,
+    email_id: messageId,
     to: body?.data?.to ?? null,
   });
+
+  try {
+    const eventData = {
+      provider: "resend",
+      providerEventId: normalizeString(eventId),
+      providerMessageId: normalizeString(messageId),
+      eventType: String(eventType),
+      sender,
+      recipient,
+      subject,
+      occurredAt,
+      payload: body,
+    };
+
+    if (eventData.providerEventId) {
+      await prisma.emailDeliveryEvent.upsert({
+        where: { providerEventId: eventData.providerEventId },
+        update: eventData,
+        create: eventData,
+      });
+    } else {
+      await prisma.emailDeliveryEvent.create({
+        data: eventData,
+      });
+    }
+  } catch (error) {
+    console.error("Failed to persist Resend webhook event:", {
+      type: eventType,
+      id: eventId,
+      emailId: messageId,
+      error: error?.message || String(error),
+    });
+  }
 
   return Response.json({ ok: true });
 }

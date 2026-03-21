@@ -315,6 +315,11 @@ function RegisterInner() {
                   Tip: Use a strong password (8+ characters). You can update your profile later.
                 </div>
 
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                  After signup, look for a welcome email from <span className="font-semibold">notifications@notify.sailboattrade.com</span>.
+                  If it lands in spam or junk, mark it as <span className="font-semibold">Not Spam</span> and add the sender to your contacts so future verification and account emails reach your inbox.
+                </div>
+
                 <div className="mt-5 text-xs text-slate-500">
                   Providing your <span className="font-semibold">Homeport</span> helps us prioritize the most relevant listings to you.
                 </div>

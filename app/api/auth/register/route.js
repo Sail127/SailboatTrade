@@ -240,7 +240,7 @@ export async function POST(req) {
       reason: "signup",
     });
 
-    await sendEmail({
+    const emailResult = await sendEmail({
       to: user.email,
       subject,
       html,
@@ -253,9 +253,18 @@ export async function POST(req) {
       data: { emailVerificationSentAt: new Date() },
     });
 
+    console.info("Verification email queued", {
+      userId: user.id,
+      email: user.email,
+      emailId: emailResult?.id ?? null,
+    });
     emailVerificationSent = true;
   } catch (e) {
-    console.error("Verification email failed:", e?.message || e);
+    console.error("Verification email failed:", {
+      userId: user.id,
+      email: user.email,
+      error: e?.message || String(e),
+    });
   }
 
   return Response.json({

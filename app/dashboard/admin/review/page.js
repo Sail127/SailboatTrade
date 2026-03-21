@@ -170,6 +170,13 @@ export default async function AdminReviewPage() {
             </Link>
 
             <Link
+              href="/dashboard/admin/email-health"
+              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+            >
+              Email Health
+            </Link>
+
+            <Link
               href="/dashboard/admin/email-previews"
               className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
             >

@@ -114,7 +114,7 @@ export async function POST(req) {
       reason: "resend",
     });
 
-    await sendEmail({
+    const emailResult = await sendEmail({
       to: user.email,
       subject,
       html,
@@ -130,8 +130,18 @@ export async function POST(req) {
         emailVerificationSentAt: new Date(),
       },
     });
+
+    console.info("Verification email resent", {
+      userId: user.id,
+      email: user.email,
+      emailId: emailResult?.id ?? null,
+    });
   } catch (e) {
-    console.error("Resend verification email failed:", e?.message || e);
+    console.error("Resend verification email failed:", {
+      userId: user.id,
+      email: user.email,
+      error: e?.message || String(e),
+    });
 
     await prisma.user
       .update({

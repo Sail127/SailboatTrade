@@ -140,6 +140,30 @@ model User {
   auditLogs               AdminAuditLog[]
 }
 
+model EmailDeliveryEvent {
+  id String @id @default(cuid())
+
+  provider          String
+  providerEventId   String? @unique
+  providerMessageId String?
+  eventType         String
+
+  sender    String?
+  recipient String?
+  subject   String?
+
+  occurredAt DateTime?
+  payload    Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provider, createdAt])
+  @@index([providerMessageId])
+  @@index([recipient, createdAt])
+  @@index([eventType, createdAt])
+}
+
 model Listing {
   id      String @id @default(cuid())
   ownerId String

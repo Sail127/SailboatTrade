@@ -649,6 +649,9 @@ export default function AccountPage() {
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
                 <div className="font-semibold">Verify your email</div>
                 <div className="mt-1 text-amber-900/80">You must verify your email to post listings.</div>
+                <div className="mt-2 text-[13px] text-amber-900/80">
+                  Look for messages from <span className="font-semibold">notifications@notify.sailboattrade.com</span>. If they land in spam or junk, mark them as not spam and add the sender to your contacts.
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"

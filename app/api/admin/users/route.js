@@ -29,6 +29,7 @@ export async function GET() {
       businessName: true,
       role: true,
       emailVerifiedAt: true,
+      emailVerificationSentAt: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -53,6 +54,7 @@ export async function GET() {
       role: user.role,
       emailVerified: Boolean(user.emailVerifiedAt),
       emailVerifiedAt: user.emailVerifiedAt,
+      emailVerificationSentAt: user.emailVerificationSentAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
       listingsCount: user._count?.listings || 0,

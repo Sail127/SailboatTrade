@@ -153,6 +153,7 @@ export default async function DashboardHome() {
               >
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
                 {isAdmin ? <SimpleLink href="/dashboard/admin/users" label="User Management" right="All site users" /> : null}
+                {isAdmin ? <SimpleLink href="/dashboard/admin/email-health" label="Email Health" right="Deliverability" /> : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/email-previews" label="Email Previews" right="Transactional mail" /> : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Draft uploads" /> : null}
               </SectionCard>

@@ -1,7 +1,7 @@
 // app/api/auth/resend-verification/route.js
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { sendEmail, getAppUrl } from "@/lib/email";
+import { sendEmailWithRetry, getAppUrl } from "@/lib/email";
 import { buildVerifyEmailMessage } from "@/lib/email/templates";
 import crypto from "crypto";
 import { NextResponse } from "next/server";
@@ -114,7 +114,7 @@ export async function POST(req) {
       reason: "resend",
     });
 
-    const emailResult = await sendEmail({
+    const emailResult = await sendEmailWithRetry({
       to: user.email,
       subject,
       html,

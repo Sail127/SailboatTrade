@@ -1,7 +1,7 @@
 // app/api/auth/register/route.js
 import prisma from "@/lib/prisma";
 import { hashPassword, signSession, setSessionCookie } from "@/lib/auth";
-import { sendEmail, getAppUrl } from "@/lib/email";
+import { sendEmailWithRetry, getAppUrl } from "@/lib/email";
 import { buildVerifyEmailMessage } from "@/lib/email/templates";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 import { isTrustedOrigin } from "@/lib/requestSecurity";
@@ -240,7 +240,7 @@ export async function POST(req) {
       reason: "signup",
     });
 
-    const emailResult = await sendEmail({
+    const emailResult = await sendEmailWithRetry({
       to: user.email,
       subject,
       html,

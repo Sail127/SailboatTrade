@@ -9,6 +9,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2, getR2Bucket, makeObjectKey } from "@/lib/r2";
 import { requireUser } from "@/lib/auth";
+import { hasMinRole } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,7 +122,17 @@ export async function GET(req) {
         return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
       }
 
-      const allowed = await canUserAccessDraftKey(s.uid, key);
+      const currentUser = await prisma.user.findUnique({
+        where: { id: String(s.uid) },
+        select: { id: true, role: true, isDisabled: true, deletedAt: true },
+      });
+
+      if (!currentUser || currentUser.deletedAt || currentUser.isDisabled) {
+        return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+      }
+
+      const isReviewer = hasMinRole(currentUser.role, "MODERATOR");
+      const allowed = isReviewer ? true : await canUserAccessDraftKey(currentUser.id, key);
       if (!allowed) {
         return NextResponse.json({ error: "Not authorized to access this draft image." }, { status: 403 });
       }

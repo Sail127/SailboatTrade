@@ -102,6 +102,21 @@ export default async function DashboardHome() {
 
   const isStaff = user.role === "ADMIN" || user.role === "MODERATOR";
   const isAdmin = user.role === "ADMIN";
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const [totalUsers, newUsersLast7Days, totalActiveListings] = isAdmin
+    ? await Promise.all([
+        prisma.user.count(),
+        prisma.user.count({
+          where: {
+            createdAt: { gte: sevenDaysAgo },
+          },
+        }),
+        prisma.listing.count({
+          where: { status: "PUBLISHED" },
+        }),
+      ])
+    : [0, 0, 0];
 
   return (
     <div className="bg-white">
@@ -152,9 +167,21 @@ export default async function DashboardHome() {
                 tone="admin"
               >
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
-                {isAdmin ? <SimpleLink href="/dashboard/admin/active-listings" label="Active Listings" right="All live listings" /> : null}
+                {isAdmin ? (
+                  <SimpleLink
+                    href="/dashboard/admin/active-listings"
+                    label="Active Listings"
+                    right={`${totalActiveListings} live`}
+                  />
+                ) : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup / Site Inactive Listings" right="Drafts and storage" /> : null}
-                {isAdmin ? <SimpleLink href="/dashboard/admin/users" label="User Management" right="All site users" /> : null}
+                {isAdmin ? (
+                  <SimpleLink
+                    href="/dashboard/admin/users"
+                    label="User Management"
+                    right={`${totalUsers} total • ${newUsersLast7Days} new in 7d`}
+                  />
+                ) : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/email-health" label="Email Health" right="Deliverability" /> : null}
                 {isAdmin ? <SimpleLink href="/dashboard/admin/email-previews" label="Email Previews" right="Transactional mail" /> : null}
               </SectionCard>

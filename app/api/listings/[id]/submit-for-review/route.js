@@ -2,7 +2,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
-import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+import {
+  notifyAdminListingPendingReview,
+  notifyOwnerListingPendingReviewAfterPurchase,
+} from "@/lib/adminReviewNotifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +95,18 @@ export async function POST(req, { params }) {
     console.warn("[submit-for-review] admin review email not sent", {
       listingId: id,
       reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+    });
+  }
+
+  const ownerNotice = await notifyOwnerListingPendingReviewAfterPurchase({
+    req,
+    listingId: id,
+    source: "api/listings/[id]/submit-for-review",
+  });
+  if (!ownerNotice?.ok) {
+    console.warn("[submit-for-review] owner pending-review email not sent", {
+      listingId: id,
+      reason: ownerNotice?.skipped || ownerNotice?.error || "unknown",
     });
   }
 

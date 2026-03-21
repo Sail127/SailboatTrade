@@ -150,7 +150,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <div className="relative z-[60] isolate mx-auto max-w-7xl px-5 md:px-8 pt-5">
+      <div className="relative z-10 isolate mx-auto max-w-7xl px-5 md:px-8 pt-5">
         <AdvancedSearchBar variant="dark" />
       </div>
 

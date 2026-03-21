@@ -119,6 +119,38 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     }
   }
 
+  async function resendWelcomeEmail(user) {
+    if (!user?.id || user?.emailVerified) return;
+
+    setBusyId(user.id);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/resend-welcome`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not resend welcome email.");
+      }
+
+      setUsers((prev) =>
+        prev.map((item) =>
+          item.id === user.id
+            ? {
+                ...item,
+                emailVerificationSentAt: data?.sentAt || new Date().toISOString(),
+              }
+            : item
+        )
+      );
+      setMsg(`Welcome email resent to ${data?.email || user.email}.`);
+    } catch (err) {
+      setMsg(err?.message || "Could not resend welcome email.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
   async function loadEmailEvents(user) {
     const email = String(user?.email || "").trim().toLowerCase();
     if (!email) return;
@@ -253,6 +285,17 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                       <div className="text-[11px] text-slate-500">
                         {isSelf ? "Your own role can’t be changed here." : "Change role to promote or demote this user."}
                       </div>
+
+                      {!user.emailVerified ? (
+                        <button
+                          type="button"
+                          onClick={() => resendWelcomeEmail(user)}
+                          disabled={busy}
+                          className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {busy ? "Working…" : "Resend welcome email"}
+                        </button>
+                      ) : null}
 
                       <button
                         type="button"

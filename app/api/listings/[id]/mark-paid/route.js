@@ -89,11 +89,17 @@ export async function POST(req, { params }) {
     },
   });
   if (isPending) {
-    await notifyAdminListingPendingReview({
+    const adminNotice = await notifyAdminListingPendingReview({
       req,
       listingId: listing.id,
       source: "api/listings/[id]/mark-paid",
     });
+    if (!adminNotice?.ok) {
+      console.warn("[mark-paid] admin review email not sent", {
+        listingId: listing.id,
+        reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+      });
+    }
   }
 
   await audit({

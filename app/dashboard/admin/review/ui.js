@@ -48,6 +48,7 @@ export default function AdminReviewClient({ initialItems }) {
   const [items, setItems] = useState(Array.isArray(initialItems) ? initialItems : []);
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
+  const [busyId, setBusyId] = useState("");
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -70,6 +71,28 @@ export default function AdminReviewClient({ initialItems }) {
       return;
     }
     setItems(Array.isArray(data.items) ? data.items : []);
+  }
+
+  async function resendReviewAlert(listingId) {
+    const id = String(listingId || "").trim();
+    if (!id) return;
+
+    setBusyId(id);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/listings/${encodeURIComponent(id)}/resend-review-alert`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not resend review alert.");
+      }
+      setMsg("Admin review alert resent.");
+    } catch (err) {
+      setMsg(err?.message || "Could not resend review alert.");
+    } finally {
+      setBusyId("");
+    }
   }
 
   return (
@@ -119,6 +142,7 @@ export default function AdminReviewClient({ initialItems }) {
                   const thumbSrc = listingThumbSrc(x);
                   const isChangeApproval = String(x.reviewType || "").toUpperCase() === "CHANGE_APPROVAL";
                   const changedSections = Array.isArray(x.changedSections) ? x.changedSections : [];
+                  const busy = busyId === x.id;
                   return (
                     <div
                       key={x.id}
@@ -176,6 +200,14 @@ export default function AdminReviewClient({ initialItems }) {
                         </div>
 
                         <div className="flex gap-2 sm:items-end">
+                          <button
+                            type="button"
+                            onClick={() => resendReviewAlert(x.id)}
+                            disabled={busy}
+                            className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 disabled:opacity-60"
+                          >
+                            {busy ? "Sending..." : "Resend alert"}
+                          </button>
                           <a
                             href={`/dashboard/admin/review/${encodeURIComponent(x.id)}`}
                             className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-6 text-[13px] font-semibold text-[#e7b34a] hover:bg-[#0f2a3b]"

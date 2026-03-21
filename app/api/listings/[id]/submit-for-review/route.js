@@ -83,11 +83,17 @@ export async function POST(req, { params }) {
     });
   } catch {}
 
-  await notifyAdminListingPendingReview({
+  const adminNotice = await notifyAdminListingPendingReview({
     req,
     listingId: id,
     source: "api/listings/[id]/submit-for-review",
   });
+  if (!adminNotice?.ok) {
+    console.warn("[submit-for-review] admin review email not sent", {
+      listingId: id,
+      reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

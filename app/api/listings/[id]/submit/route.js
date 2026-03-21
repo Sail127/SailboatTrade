@@ -147,11 +147,17 @@ export async function POST(req, { params }) {
           },
         });
       } catch {}
-      await notifyAdminListingPendingReview({
+      const adminNotice = await notifyAdminListingPendingReview({
         req,
         listingId: id,
         source: "api/listings/[id]/submit FREE",
       });
+      if (!adminNotice?.ok) {
+        console.warn("[submit FREE] admin review email not sent", {
+          listingId: id,
+          reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+        });
+      }
 
       return NextResponse.json({ ok: true, redirect: `/listings/${id}` });
     }
@@ -205,11 +211,17 @@ export async function POST(req, { params }) {
           },
         });
       } catch {}
-      await notifyAdminListingPendingReview({
+      const adminNotice = await notifyAdminListingPendingReview({
         req,
         listingId: id,
         source: "api/listings/[id]/submit PAID",
       });
+      if (!adminNotice?.ok) {
+        console.warn("[submit PAID] admin review email not sent", {
+          listingId: id,
+          reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+        });
+      }
 
       return NextResponse.json({ ok: true, redirect: `/listings/${id}` });
     }

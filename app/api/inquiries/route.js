@@ -1,7 +1,7 @@
 // app/api/inquiries/route.js
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { getAppUrl, sendEmail } from "@/lib/email";
+import { getAppUrl, sendEmailWithRetry } from "@/lib/email";
 import {
   buildBuyerInquiryConfirmationMessage,
   buildSellerInquiryMessage,
@@ -127,36 +127,53 @@ export async function POST(req) {
       listingUrl,
     });
 
-    await Promise.all([
-      sendEmail({
-        to: sellerEmail,
-        subject: sellerMessage.subject,
-        replyTo: email,
-        html: sellerMessage.html,
-        text: sellerMessage.text,
-        headers: {
-          Importance: "high",
-          "X-Priority": "1",
-          Priority: "urgent",
-          "X-MSMail-Priority": "High",
-        },
-        tags: [{ name: "type", value: "listing_inquiry_seller" }],
-      }),
-      sendEmail({
-        to: email,
-        subject: buyerConfirmation.subject,
-        html: buyerConfirmation.html,
-        text: buyerConfirmation.text,
-        tags: [{ name: "type", value: "listing_inquiry_buyer_confirmation" }],
-      }),
-    ]);
+    const sellerEmailResult = await sendEmailWithRetry({
+      to: sellerEmail,
+      subject: sellerMessage.subject,
+      replyTo: email,
+      html: sellerMessage.html,
+      text: sellerMessage.text,
+      tags: [{ name: "type", value: "listing_inquiry_seller" }],
+    });
+
+    console.info("Seller inquiry email sent", {
+      listingId: listing.id,
+      sellerEmail,
+      buyerEmail: email,
+      emailId: sellerEmailResult?.id ?? null,
+    });
+
+    sendEmailWithRetry({
+      to: email,
+      subject: buyerConfirmation.subject,
+      html: buyerConfirmation.html,
+      text: buyerConfirmation.text,
+      tags: [{ name: "type", value: "listing_inquiry_buyer_confirmation" }],
+    })
+      .then((result) => {
+        console.info("Buyer inquiry confirmation sent", {
+          listingId: listing.id,
+          buyerEmail: email,
+          emailId: result?.id ?? null,
+        });
+      })
+      .catch((error) => {
+        console.error("Buyer inquiry confirmation failed:", {
+          listingId: listing.id,
+          buyerEmail: email,
+          error: error?.message || String(error),
+        });
+      });
 
     return NextResponse.json({
       ok: true,
       message: "Thank you for your interest. The seller has been notified.",
     });
   } catch (e) {
-    console.error("POST /api/inquiries error:", e);
+    console.error("POST /api/inquiries error:", {
+      error: e?.message || String(e),
+      stack: e?.stack || null,
+    });
     return NextResponse.json(
       { ok: false, error: "Internal Server Error" },
       { status: 500 }

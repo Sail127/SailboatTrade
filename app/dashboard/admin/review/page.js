@@ -163,6 +163,13 @@ export default async function AdminReviewPage() {
 
           <div className="flex items-center gap-2">
             <Link
+              href="/dashboard/admin/active-listings"
+              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+            >
+              Active Listings
+            </Link>
+
+            <Link
               href="/dashboard/admin/users"
               className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
             >

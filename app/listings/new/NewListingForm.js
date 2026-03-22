@@ -321,7 +321,7 @@ function CurrencyPill({ value, onChange }) {
   );
 }
 
-function SectionCard({ title, subtitle, headerRight, children }) {
+function SectionCard({ title, subtitle, headerRight, showRequiredNote = false, children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-visible">
       <div className="px-5 py-3 bg-[#0a2230] border-b border-black/10">
@@ -332,7 +332,12 @@ function SectionCard({ title, subtitle, headerRight, children }) {
             </h2>
             {subtitle ? <p className="mt-1 text-xs sm:text-sm font-medium text-white/95">{subtitle}</p> : null}
           </div>
-          {headerRight ? <div className="pt-0.5">{headerRight}</div> : null}
+          <div className="flex items-start gap-3 pl-3">
+            {showRequiredNote ? (
+              <div className="pt-0.5 text-[11px] font-medium whitespace-nowrap text-white/75">* required items</div>
+            ) : null}
+            {headerRight ? <div className="pt-0.5">{headerRight}</div> : null}
+          </div>
         </div>
       </div>
       <div className="p-4 sm:p-5">{children}</div>
@@ -1640,7 +1645,7 @@ export default function NewListingForm() {
     );
   }
 
-  // Big promo (kept as-is)
+  // Compact promo
   function FreeListingPromo() {
     return (
       <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-[0_16px_48px_rgba(2,6,23,0.16)] bg-white">
@@ -1648,41 +1653,24 @@ export default function NewListingForm() {
           FREE LISTING
         </div>
 
-        <div className="p-5 sm:p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <div className="p-4 sm:p-5">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[12px] font-extrabold tracking-wide text-slate-500">SAILBOAT-ONLY MARKETPLACE</div>
-              <div className="mt-2 text-[24px] sm:text-[34px] font-extrabold tracking-tight text-[#0a2230] leading-tight">
+              <div className="mt-1.5 text-[24px] sm:text-[31px] font-extrabold tracking-tight text-[#0a2230] leading-tight">
                 Get your boat in front of buyers —{" "}
                 <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list*</span>.
               </div>
-              <div className="mt-2 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
+              <div className="mt-1.5 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
                 *Free Basic Listing includeds up to {FREE_PHOTO_LIMIT} high quality photos!
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-2">
               </div>
             </div>
 
-            <div className="w-full lg:w-[360px] rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="w-full lg:w-[320px] rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
               <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Please help support or site by upgrading your listing with:</div>
-              <div className="mt-2 space-y-1.5 text-[12px] text-slate-700">
+              <div className="mt-1.5 space-y-1 text-[12px] text-slate-700">
                 <div>• Photo Plus (up to {MAX_PHOTO_LIMIT})</div>
                 <div>• Featured Home placement</div>
-              </div>
-              <div className="mt-3 text-[11px] text-slate-500"></div>
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[12px] font-extrabold bg-[#f3b23f] text-[#0a2230] hover:bg-[#e6a62f]"
-                  onClick={() => {
-                    const el = document.getElementById("photos-section");
-                    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                  }}
-                >
-                  List now →
-                </button>
               </div>
             </div>
           </div>
@@ -1724,7 +1712,7 @@ export default function NewListingForm() {
       {/* =====================================================
           1) BOAT BASICS
       ====================================================== */}
-      <SectionCard title="Boat Basics">
+      <SectionCard title="Boat Basics" showRequiredNote>
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
           <div className="sm:col-span-4">
             <label className={label("boatCondition")}>
@@ -1826,7 +1814,7 @@ export default function NewListingForm() {
       {/* =====================================================
           2) BOAT LOCATION
       ====================================================== */}
-      <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located.">
+      <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located." showRequiredNote>
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
           <div className="sm:col-span-6">
             <label className={label("country")}>
@@ -1905,6 +1893,7 @@ export default function NewListingForm() {
       <SectionCard
         title="Specifications"
         subtitle="Dimensions, accommodations, and capacities."
+        showRequiredNote
         headerRight={<UnitSystemToggle value={unitSystem} onChange={changeUnitSystem} />}
       >
         <div className="columns-1 sm:columns-2 lg:columns-3 gap-6">
@@ -1957,7 +1946,7 @@ export default function NewListingForm() {
       {/* =====================================================
           4) DESCRIPTION
       ====================================================== */}
-      <SectionCard title="Description">
+      <SectionCard title="Description" showRequiredNote>
         <label className={label("description")}>
           Description <Asterisk />
         </label>
@@ -2330,7 +2319,7 @@ export default function NewListingForm() {
       {/* =====================================================
           9) LISTING CONTACT
       ====================================================== */}
-      <SectionCard title="Listing Contact">
+      <SectionCard title="Listing Contact" showRequiredNote>
         <div className="space-y-5">
           <div>
             <label className={label("sellerRole")}>
@@ -2577,14 +2566,15 @@ export default function NewListingForm() {
                   </div>
 
                   <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                    <div className="relative aspect-[3/2] bg-slate-50">
+                    <div className="bg-slate-50 px-4 py-4">
+                      <div className="relative mx-auto aspect-[4/3] max-w-[220px] overflow-hidden rounded-xl border border-slate-200 bg-white">
                       {heroPreviewUrl ? (
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={heroPreviewUrl}
                             alt="Broker hero preview"
-                            className="absolute inset-0 h-full w-full object-contain bg-white"
+                            className="absolute inset-0 h-full w-full object-contain bg-white p-3"
                             loading="lazy"
                           />
                         </>
@@ -2604,6 +2594,7 @@ export default function NewListingForm() {
                           </div>
                         </div>
                       )}
+                      </div>
                     </div>
 
                     <div className="p-3 text-[12px] text-slate-600 border-t border-slate-200 bg-slate-50">

@@ -179,6 +179,8 @@ export async function POST(req) {
         contentSubmittedAt: isPending ? now : null,
 
         expiresAt: nextStatus === "PUBLISHED" ? periodEnd : null,
+        renewalReminderLastSentAt: null,
+        expiredEmailSentAt: null,
         archivedAt: nextStatus === "PUBLISHED" ? null : undefined,
         archivedImagesPrunedAt: nextStatus === "PUBLISHED" ? null : undefined,
       },

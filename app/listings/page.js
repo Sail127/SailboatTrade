@@ -325,8 +325,14 @@ export default async function Browse({ searchParams }) {
       model: true,
       loa: true, // ✅ replaces length
       loaUnit: true,
+      cabins: true,
+      heads: true,
+      type: true,
       locationCity: true,
+      locationState: true,
       locationCountry: true,
+      locationUsRegion: true,
+      featuredHome: true,
       heroImageUrl: true,
       updatedAt: true,
     },
@@ -404,7 +410,7 @@ export default async function Browse({ searchParams }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {listings.map((l) => (
-              <ListingCard key={l.id} listing={l} imageFit="contain" showFavorite />
+              <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showFavorite />
             ))}
           </div>
 

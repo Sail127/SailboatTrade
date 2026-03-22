@@ -147,6 +147,7 @@ export default function ListingCard({
     locationCountry,
     locationUsRegion,
     location,
+    featuredHome,
     viewerFavorited,
     viewerLoggedIn,
   } = listing || {};
@@ -273,6 +274,14 @@ export default function ListingCard({
           <div className="absolute top-2 inset-x-0 text-center px-3">
             <span className="text-xs font-extrabold tracking-wide text-white drop-shadow-[0_2px_6px_rgba(2,6,23,0.75)]">
               {imageTopLabel}
+            </span>
+          </div>
+        ) : null}
+
+        {featuredHome && !isSamplePlaceholder ? (
+          <div className="absolute left-3 top-3 z-20">
+            <span className="inline-flex items-center rounded-full border border-[#f3b23f] bg-[#f3b23f]/95 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wide text-[#0a2230] shadow-[0_6px_18px_rgba(2,6,23,0.18)]">
+              Featured
             </span>
           </div>
         ) : null}

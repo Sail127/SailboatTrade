@@ -84,6 +84,8 @@ export async function POST(req, { params }) {
       contentReviewStatus: isPending ? "PENDING" : "NONE",
       contentSubmittedAt: isPending ? now : null,
       expiresAt: nextStatus === "PUBLISHED" ? expiresAt : null,
+      renewalReminderLastSentAt: null,
+      expiredEmailSentAt: null,
       archivedAt: nextStatus === "PUBLISHED" ? null : undefined,
       archivedImagesPrunedAt: nextStatus === "PUBLISHED" ? null : undefined,
     },

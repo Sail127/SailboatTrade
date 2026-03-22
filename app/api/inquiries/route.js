@@ -6,6 +6,7 @@ import {
   buildBuyerInquiryConfirmationMessage,
   buildSellerInquiryMessage,
 } from "@/lib/email/templates";
+import { isDialCodeOnlyPhone } from "@/lib/phone";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 import { clampStr, hasFilledHoneypot, isTrustedOrigin } from "@/lib/requestSecurity";
 
@@ -47,7 +48,8 @@ export async function POST(req) {
     const email = String(body?.email || "")
       .trim()
       .toLowerCase();
-    const phone = clampStr(body?.phone || "", 40).trim();
+    const rawPhone = clampStr(body?.phone || "", 40).trim();
+    const phone = isDialCodeOnlyPhone(rawPhone) ? "" : rawPhone;
     const message = clampStr(body?.message || "", 2000).trim();
 
     if (!listingId || !name || !email || !message) {

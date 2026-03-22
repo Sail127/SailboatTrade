@@ -53,6 +53,8 @@ export async function POST(req, { params }) {
       status: nextStatus,
       featuredHome: false, // safe: free renew never auto-features
       expiresAt: newExpiresAt, // only used for FREE listings
+      renewalReminderLastSentAt: null,
+      expiredEmailSentAt: null,
       archivedAt: null,
       archivedImagesPrunedAt: null,
     },

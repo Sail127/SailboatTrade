@@ -294,6 +294,8 @@ model Listing {
   updatedAt DateTime @updatedAt
     // ✅ Listing expiration
   expiresAt DateTime?
+  renewalReminderLastSentAt DateTime?
+  expiredEmailSentAt        DateTime?
   archivedAt DateTime?
   archivedImagesPrunedAt DateTime?
 

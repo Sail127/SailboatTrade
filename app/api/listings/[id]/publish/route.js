@@ -64,6 +64,8 @@ export async function POST(req, { params }) {
     data: {
       status: "PUBLISHED",
       expiresAt,
+      renewalReminderLastSentAt: null,
+      expiredEmailSentAt: null,
       archivedAt: null,
       archivedImagesPrunedAt: null,
     },

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
+import { isDialCodeOnlyPhone } from "@/lib/phone";
 
 const NAVY = "#0a2230";
 const GOLD = "#c8a44d";
@@ -1499,6 +1500,7 @@ export default function ListingDetailClient({
     const last = buyerLast.trim();
     const email = buyerEmail.trim();
     const message = buyerMsg.trim();
+    const buyerPhone = String(buyerPhoneRaw || "").trim();
 
     if (!first || !last || !email || !message) {
       setSentErr("Please complete the required fields.");
@@ -1514,7 +1516,8 @@ export default function ListingDetailClient({
           listingId: listing?.id,
           name: `${first} ${last}`.trim(),
           email,
-          phone: buyerPhoneRaw?.trim() ? buyerPhoneRaw.trim() : null,
+          phone:
+            buyerPhone && !isDialCodeOnlyPhone(buyerPhone) ? buyerPhone : null,
           message,
           website: buyerWebsite,
         }),
@@ -1528,7 +1531,6 @@ export default function ListingDetailClient({
           "Thank you for your interest. The seller has been notified."
       );
       setBuyerMsg(defaultBuyerMsg);
-      setTimeout(() => setSentOk(""), 3000);
     } catch (err) {
       setSentErr(err?.message || "Could not send message.");
     } finally {

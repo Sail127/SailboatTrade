@@ -179,6 +179,13 @@ function buildHref(searchParams, pageNum) {
 export default async function Browse({ searchParams }) {
   const session = await readSession().catch(() => null);
   const viewerId = session?.uid ? String(session.uid) : "";
+  const initialSavedSearches = viewerId
+    ? await prisma.savedSearch.findMany({
+        where: { userId: viewerId },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+        select: { id: true, name: true, path: true },
+      })
+    : [];
 
   const now = new Date();
   const publishedFilter = { status: "PUBLISHED", AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }] };
@@ -291,7 +298,7 @@ export default async function Browse({ searchParams }) {
   }
 
   const sort = (searchParams?.sort || "updated_desc").toString();
-  const orderBy =
+  const secondaryOrderBy =
     {
       updated_desc: [{ updatedAt: "desc" }],
       updated_asc: [{ updatedAt: "asc" }],
@@ -303,6 +310,7 @@ export default async function Browse({ searchParams }) {
       year_asc: [{ year: "asc" }, { updatedAt: "desc" }],
       builder_asc: [{ builder: "asc" }, { updatedAt: "desc" }],
     }[sort] || [{ updatedAt: "desc" }];
+  const orderBy = [{ featuredHome: "desc" }, ...secondaryOrderBy];
 
   const total = await prisma.listing.count({ where });
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -359,6 +367,20 @@ export default async function Browse({ searchParams }) {
     viewerFavorited: favoritedIds.has(String(l.id || "")),
     viewerLoggedIn: Boolean(viewerId),
   }));
+  const featuredListings = listings.filter((listing) => Boolean(listing.featuredHome));
+  const standardListings = listings.filter((listing) => !listing.featuredHome);
+  const hasActiveFilters =
+    Boolean(q) ||
+    type !== "both" ||
+    builders.length > 0 ||
+    countries.length > 0 ||
+    Boolean(usRegion) ||
+    yearMin != null ||
+    yearMax != null ||
+    priceMin != null ||
+    priceMax != null ||
+    loaMin != null ||
+    loaMax != null;
 
   const initial = {
     q,
@@ -384,7 +406,12 @@ export default async function Browse({ searchParams }) {
 
       <div className="lg:grid lg:grid-cols-[221px_minmax(0,1fr)] lg:gap-4 lg:items-start">
         <div className="sticky top-16 z-40 lg:sticky lg:top-24 lg:z-auto self-start">
-          <ListingsFilterSidebar initialValues={initial} submitPath="/listings" />
+          <ListingsFilterSidebar
+            initialValues={initial}
+            submitPath="/listings"
+            viewerLoggedIn={Boolean(viewerId)}
+            initialSavedSearches={initialSavedSearches}
+          />
         </div>
 
         <section className="pt-1 lg:pt-0">
@@ -408,10 +435,32 @@ export default async function Browse({ searchParams }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            {listings.map((l) => (
-              <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showFavorite />
-            ))}
+          <div className="space-y-6">
+            {featuredListings.length ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {featuredListings.map((l) => (
+                  <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showPrice showFavorite />
+                ))}
+              </div>
+            ) : null}
+
+            {featuredListings.length && standardListings.length ? (
+              <div className="flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200" />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  {hasActiveFilters ? "Filtered Listings" : "All Listings"}
+                </span>
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+            ) : null}
+
+            {standardListings.length ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {standardListings.map((l) => (
+                  <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showPrice showFavorite />
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {totalPages > 1 && (

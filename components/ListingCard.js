@@ -103,8 +103,8 @@ function HeartIcon({ filled }) {
     <svg
       viewBox="0 0 24 24"
       className="h-5 w-5 drop-shadow-[0_1px_2px_rgba(2,6,23,0.6)]"
-      fill={filled ? "rgba(255,255,255,0.9)" : "none"}
-      stroke="#ffffff"
+      fill={filled ? "#dc2626" : "none"}
+      stroke={filled ? "#fecaca" : "#ffffff"}
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -119,6 +119,7 @@ export default function ListingCard({
   listing,
   variant = "default",
   imageFit = "cover",
+  showPrice = variant !== "featured",
   showFavorite = false,
   hrefOverride = null,
   hardNavigate = false,
@@ -180,7 +181,7 @@ export default function ListingCard({
     null;
 
   const hull = hullLabel(type);
-  const hasMetaPills = Boolean(hull || cabins != null || heads != null);
+  const hasMetaPills = Boolean(hull);
   const isFeatured = variant === "featured";
   const isSamplePlaceholder =
     Boolean(samplePlaceholder) ||
@@ -313,11 +314,15 @@ export default function ListingCard({
             >
               {featuredTitleText}
             </h3>
-            {!isSamplePlaceholder && lengthText ? <Pill>{lengthText}</Pill> : null}
+            {showPrice ? (
+              <div className="shrink-0 text-[15px] font-bold leading-none text-[#0a2230]">
+                {priceText}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
-        {!isFeatured ? (
+        {!isFeatured && showPrice ? (
           <div className="mt-0.5 flex items-center justify-between gap-3">
             <div className="text-[17px] font-bold leading-none text-[#0a2230]">
               {priceText}
@@ -326,20 +331,19 @@ export default function ListingCard({
         ) : null}
 
         {hasMetaPills ? (
-          <div className={`${isFeatured ? "mt-1" : "mt-1"} flex flex-wrap gap-2`}>
+          <div className="mt-2 flex flex-wrap gap-2">
             {hull ? <Pill>{hull}</Pill> : null}
-            {cabins != null ? <Pill>{cabins} cabins</Pill> : null}
-            {heads != null ? <Pill>{heads} heads</Pill> : null}
+            {!isSamplePlaceholder && lengthText ? <Pill>{lengthText}</Pill> : null}
           </div>
         ) : null}
 
         {loc ? (
-          <div className="mt-0.5 flex items-center gap-1.5 text-[13px] leading-tight text-slate-700">
+          <div className="mt-2 flex items-center gap-1.5 text-[13px] leading-tight text-slate-700">
             <span className="text-slate-500"><PinIcon /></span>
             <span className="line-clamp-1">{loc}</span>
           </div>
         ) : (
-          <div className="mt-0.5 text-[13px] text-slate-500"> </div>
+          <div className="mt-2 text-[13px] text-slate-500"> </div>
         )}
       </div>
     </>

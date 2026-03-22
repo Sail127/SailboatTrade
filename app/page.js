@@ -4,6 +4,17 @@ import Image from "next/image";
 import ListingCard from "../components/ListingCard.js";
 import AdvancedSearchBar from "../components/AdvancedSearchBar.js";
 
+function DollarIcon({ className = "h-6 w-6" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <path
+        fill="#f3b23f"
+        d="M12 2c.6 0 1 .4 1 1v1.1c2.3.3 4 1.6 4.6 3.6.2.5-.1 1.1-.7 1.3-.5.2-1.1-.1-1.3-.7-.4-1.3-1.5-2.1-3.1-2.3V12c2.9.6 4.8 2 4.8 4.7 0 2.4-1.8 3.9-4.8 4.2V22c0 .6-.4 1-1 1s-1-.4-1-1v-1.1c-2.6-.3-4.5-1.7-5.1-4-.2-.5.2-1.1.7-1.3.5-.2 1.1.2 1.3.7.5 1.6 1.8 2.5 3.1 2.7v-5.6c-2.7-.6-4.6-1.9-4.6-4.6 0-2.3 1.7-3.8 4.6-4.1V3c0-.6.4-1 1-1Zm-1 5.2c-1.6.2-2.6 1-2.6 2.3 0 1.4 1 2 2.6 2.4V7.2Zm2 12.6c1.9-.2 2.9-1 2.9-2.5 0-1.6-1.2-2.2-2.9-2.6v5.1Z"
+      />
+    </svg>
+  );
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -140,8 +151,9 @@ export default async function Home() {
             <div className="flex items-center px-4 pb-4 sm:px-5 sm:pb-5 md:justify-end md:px-6 md:py-5">
               <a
                 href="/listings/new"
-                className="inline-flex h-11 items-center justify-center rounded-full border-2 border-[#c9972e] bg-[#0a2230] px-6 text-sm font-extrabold text-white transition hover:bg-[#12364a]"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-[#c9972e] bg-[#0a2230] px-6 text-sm font-extrabold text-white transition hover:bg-[#12364a]"
               >
+                <DollarIcon className="h-6 w-6" />
                 Create Free Listing
               </a>
             </div>
@@ -158,13 +170,7 @@ export default async function Home() {
         <div className="mb-6 flex items-end justify-between">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-[#0a2230]">Featured Sailboats</h2>
-            <p className="text-sm text-slate-600">
-              {totalReal > 0
-                ? totalReal > GRID_SIZE
-                  ? "Showing a rotating selection — refresh to see more listings."
-                  : "All current listings are shown here."
-                : "No featured listings yet — placeholders will be replaced as featured boats are published."}
-            </p>
+            <p className="text-sm text-slate-600">Upgraded listings shown on homepage.</p>
           </div>
 
           <a href="/listings" className="text-sm font-semibold text-[#0a2230] hover:underline">

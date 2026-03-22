@@ -144,6 +144,23 @@ function FunnelIcon({ className = "h-4 w-4" }) {
   );
 }
 
+function BinocularsIcon({ className = "h-6 w-6" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M7.4 6.2c.2-.7.9-1.2 1.6-1.2h.7c.7 0 1.3.5 1.5 1.1l.8 2.6h.9l.8-2.6c.2-.6.8-1.1 1.5-1.1h.7c.7 0 1.4.5 1.6 1.2l1.3 4.5c.1.2.1.5.1.8v6.3c0 .7-.6 1.3-1.3 1.3H16c-1.8 0-3.3-1.5-3.3-3.3v-2.2h-1.4v2.2c0 1.8-1.5 3.3-3.3 3.3H5.3c-.7 0-1.3-.6-1.3-1.3v-6.3c0-.3 0-.5.1-.8l1.3-4.5Zm1.7 3.9-1.6 0c-1.5 0-2.8 1.2-2.8 2.8v2c0 1.5 1.2 2.8 2.8 2.8h.6c1.5 0 2.8-1.2 2.8-2.8v-2c0-1.3-.9-2.5-2.2-2.8Zm7.4 0-1.6 0c-1.3.3-2.2 1.5-2.2 2.8v2c0 1.5 1.2 2.8 2.8 2.8h.6c1.5 0 2.8-1.2 2.8-2.8v-2c0-1.5-1.2-2.8-2.8-2.8Z"
+      />
+      <circle cx="8.2" cy="14.9" r="1.8" fill="rgba(255,255,255,0.22)" />
+      <circle cx="15.8" cy="14.9" r="1.8" fill="rgba(255,255,255,0.22)" />
+    </svg>
+  );
+}
+
 function normalizeInitialValues(initialValues = {}) {
   const nextType = String(initialValues?.type || "both").toLowerCase();
   const safeType = ["both", "monohull", "catamaran", "trimaran"].includes(nextType) ? nextType : "both";
@@ -629,27 +646,28 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   return (
     <section className="w-full">
       <div className="min-[901px]:hidden pb-2">
-        <div className="rounded-2xl bg-[#0a2230]/95 p-3 shadow-lg ring-1 ring-white/15 backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-extrabold text-white">Advanced Search</p>
-              <button
-                type="button"
-                onClick={clearFilters}
-                disabled={!activeFilterCount}
-                className="text-xs font-semibold text-white/95 underline underline-offset-2 hover:text-white disabled:opacity-40 disabled:no-underline"
-              >
-                Clear all filters
-              </button>
-            </div>
+        <div className="mx-auto max-w-[420px] rounded-full border-2 border-[#0a2230] bg-slate-100 p-1.5 shadow-[0_10px_24px_rgba(2,6,23,0.12)]">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                clearFilters();
+                router.push("/listings");
+              }}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-4 text-sm font-extrabold text-[#0a2230] hover:bg-[#f9c860]"
+            >
+              <BinocularsIcon className="h-6 w-6" />
+              Browse All
+            </button>
             <button
               type="button"
               onClick={() => setMobileDrawerOpen(true)}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-full bg-[#f3b23f] px-4 text-sm font-bold text-[#0a2230] hover:bg-[#f9c860]"
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-[#f3b23f] bg-[#0a2230] px-4 text-sm font-extrabold text-white hover:bg-[#12364a]"
             >
-              <span>Open Filters</span>
+              <FunnelIcon className="h-6 w-6" />
+              <span>Search Filters</span>
               {activeFilterCount ? (
-                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#0a2230] px-1.5 text-[11px] font-extrabold text-white">
+                <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#f3b23f] px-1.5 text-[11px] font-extrabold text-[#0a2230]">
                   {activeFilterCount}
                 </span>
               ) : null}

@@ -2399,10 +2399,10 @@ export default function ListingDetailClient({
 
           {showBrokerageCard ? (
             <SectionCard title="Brokerage">
-              <div className="flex flex-col items-center text-center">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                 {brokerHero ? (
-                  <div className="w-full max-w-[360px] rounded-2xl overflow-hidden border border-slate-200 bg-white">
-                    <div className="aspect-[3/2] bg-white">
+                  <div className="shrink-0 sm:w-[132px]">
+                    <div className="aspect-[3/2] w-full">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={brokerHero}
@@ -2414,54 +2414,48 @@ export default function ListingDetailClient({
                   </div>
                 ) : null}
 
-                <div className="mt-2 text-[14px] font-extrabold text-[#0a2230]">
-                  {listing?.brokerageName || "Brokerage"}
-                </div>
-
-                {brokerageAddressLines.length ? (
-                  <div className="mt-1 text-[12px] text-slate-600 space-y-0.5">
-                    {brokerageAddressLines.map((ln, i) => (
-                      <div key={ln + i} className="leading-snug">
-                        {ln}
-                      </div>
-                    ))}
+                <div className="min-w-0 flex-1 text-center sm:text-left">
+                  <div className="text-[14px] font-extrabold text-[#0a2230]">
+                    {listing?.brokerageName || "Brokerage"}
                   </div>
-                ) : null}
 
-                {viewerLoggedIn ? (
-                  <>
-                    <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
-                      {sellerPhoneDisplay}
+                  {brokerageAddressLines.length ? (
+                    <div className="mt-1 space-y-0.5 text-[12px] text-slate-600">
+                      {brokerageAddressLines.map((ln, i) => (
+                        <div key={ln + i} className="leading-snug">
+                          {ln}
+                        </div>
+                      ))}
                     </div>
-                    <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
-                      {emailRaw ? (
-                        <a
-                          href={`mailto:${emailRaw}`}
-                          className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
-                        >
-                          {emailRaw}
-                        </a>
-                      ) : (
-                        sellerEmailDisplay
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <a
-                    href={contactInfoLoginHref}
-                    className="mt-2 inline-flex h-9 items-center justify-center rounded-full bg-[#0a2230] px-4 text-[12px] font-semibold text-white hover:bg-[#0f2a3b]"
-                  >
-                    Get contact info
-                  </a>
-                )}
+                  ) : null}
 
-                <button
-                  type="button"
-                  onClick={focusMessageSellerForm}
-                  className="mt-2 text-[12px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
-                >
-                  Contact Broker
-                </button>
+                  {viewerLoggedIn ? (
+                    <>
+                      <div className="mt-2 text-[12px] font-semibold text-[#0a2230]">
+                        {sellerPhoneDisplay}
+                      </div>
+                      <div className="mt-1 text-[12px] font-semibold text-[#0a2230]">
+                        {emailRaw ? (
+                          <a
+                            href={`mailto:${emailRaw}`}
+                            className="text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                          >
+                            {emailRaw}
+                          </a>
+                        ) : (
+                          sellerEmailDisplay
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <a
+                      href={contactInfoLoginHref}
+                      className="mt-2 inline-flex h-9 items-center justify-center rounded-full bg-[#0a2230] px-4 text-[12px] font-semibold text-white hover:bg-[#0f2a3b]"
+                    >
+                      Get contact info
+                    </a>
+                  )}
+                </div>
               </div>
             </SectionCard>
           ) : null}

@@ -23,11 +23,24 @@ function roleTone(role) {
   return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
+const USERS_PER_PAGE = 30;
+const SORT_OPTIONS = [
+  { value: "created_desc", label: "Newest Registered" },
+  { value: "created_asc", label: "Oldest Registered" },
+  { value: "name_asc", label: "Name A-Z" },
+  { value: "name_desc", label: "Name Z-A" },
+  { value: "listings_desc", label: "Most Listings" },
+  { value: "listings_asc", label: "Fewest Listings" },
+];
+
 export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) {
   const [users, setUsers] = useState(Array.isArray(initialUsers) ? initialUsers : []);
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [expandedUserIds, setExpandedUserIds] = useState([]);
+  const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState("created_desc");
   const [composeUserId, setComposeUserId] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeMessage, setComposeMessage] = useState("");
@@ -48,6 +61,36 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     });
   }, [q, users]);
 
+  const sortedUsers = useMemo(() => {
+    const next = [...filtered];
+    next.sort((a, b) => {
+      if (sortBy === "name_asc") {
+        return displayName(a).localeCompare(displayName(b), undefined, { sensitivity: "base" });
+      }
+      if (sortBy === "name_desc") {
+        return displayName(b).localeCompare(displayName(a), undefined, { sensitivity: "base" });
+      }
+      if (sortBy === "created_asc") {
+        return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
+      }
+      if (sortBy === "listings_desc") {
+        return (b?.listingsCount || 0) - (a?.listingsCount || 0) || new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
+      }
+      if (sortBy === "listings_asc") {
+        return (a?.listingsCount || 0) - (b?.listingsCount || 0) || new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
+      }
+      return new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime();
+    });
+    return next;
+  }, [filtered, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedUsers.length / USERS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pagedUsers = useMemo(() => {
+    const start = (safePage - 1) * USERS_PER_PAGE;
+    return sortedUsers.slice(start, start + USERS_PER_PAGE);
+  }, [sortedUsers, safePage]);
+
   async function refreshUsers() {
     setMsg("");
     const res = await fetch("/api/admin/users", { cache: "no-store" });
@@ -57,6 +100,7 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
       return;
     }
     setUsers(Array.isArray(data.users) ? data.users : []);
+    setPage(1);
   }
 
   async function deleteUser(user) {
@@ -158,6 +202,7 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     const email = String(user?.email || "").trim().toLowerCase();
     if (!email) return;
 
+    setExpandedUserIds((prev) => (prev.includes(user.id) ? prev : [...prev, user.id]));
     setEventsLoadingEmail(email);
     setMsg("");
     try {
@@ -187,6 +232,7 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
 
   function openComposer(user) {
     if (!user?.id) return;
+    setExpandedUserIds((prev) => (prev.includes(user.id) ? prev : [...prev, user.id]));
     setComposeUserId(user.id);
     setComposeSubject(`Message from SailboatTrade`);
     setComposeMessage("");
@@ -197,6 +243,10 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
     setComposeUserId("");
     setComposeSubject("");
     setComposeMessage("");
+  }
+
+  function toggleExpanded(userId) {
+    setExpandedUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
   }
 
   async function sendMessage(user) {
@@ -246,13 +296,31 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by name, email, role, or ID…"
-              className="h-11 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 sm:w-[320px]"
-            />
+	          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+	            <input
+	              value={q}
+	              onChange={(e) => {
+	                setQ(e.target.value);
+	                setPage(1);
+	              }}
+	              placeholder="Search by name, email, role, or ID…"
+	              className="h-11 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40 sm:w-[320px]"
+	            />
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                setPage(1);
+              }}
+              className="h-11 rounded-xl border border-[#d9c486] bg-white px-3 text-sm font-semibold text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40"
+              aria-label="Sort users"
+            >
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={refreshUsers}
@@ -270,119 +338,182 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
         ) : null}
       </div>
 
-      <div className="p-6">
-        {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-[#d9c486] bg-white/70 p-5 text-sm text-slate-600">
-            No users match your current search.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {filtered.map((user) => {
-              const busy = busyId === user.id;
-              const isSelf = user.id === currentAdminId;
-              const composerOpen = composeUserId === user.id;
-              const eventState = eventsByEmail[String(user.email || "").toLowerCase()] || null;
-              const eventBusy = eventsLoadingEmail === String(user.email || "").toLowerCase();
-              return (
-                <div
-                  key={user.id}
-                  className="rounded-2xl border border-[#eadba9] bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
-                >
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-[15px] font-extrabold text-[#0a2230]">{displayName(user)}</div>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roleTone(
-                            user.role
-                          )}`}
-                        >
-                          {user.role}
-                        </span>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-                            user.emailVerified
-                              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                              : "border-amber-300 bg-amber-50 text-amber-900"
-                          }`}
-                        >
-                          {user.emailVerified ? "Email verified" : "Email unverified"}
-                        </span>
-                      </div>
+	      <div className="p-6">
+	        {filtered.length === 0 ? (
+	          <div className="rounded-2xl border border-dashed border-[#d9c486] bg-white/70 p-5 text-sm text-slate-600">
+	            No users match your current search.
+	          </div>
+	        ) : (
+	          <div className="space-y-3">
+	            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#eadba9] bg-white/70 px-4 py-3 text-sm text-slate-600">
+	              <span>
+		                Showing {Math.min(sortedUsers.length, (safePage - 1) * USERS_PER_PAGE + 1)}-
+		                {Math.min(sortedUsers.length, safePage * USERS_PER_PAGE)} of {sortedUsers.length} users
+		              </span>
+	              <span>{USERS_PER_PAGE} per page</span>
+	            </div>
 
-                      <div className="mt-1 break-all text-[13px] text-slate-700">{user.email}</div>
+	            {pagedUsers.map((user) => {
+	              const busy = busyId === user.id;
+	              const isSelf = user.id === currentAdminId;
+	              const composerOpen = composeUserId === user.id;
+	              const eventState = eventsByEmail[String(user.email || "").toLowerCase()] || null;
+	              const eventBusy = eventsLoadingEmail === String(user.email || "").toLowerCase();
+	              const expanded = expandedUserIds.includes(user.id) || composerOpen || Boolean(eventState);
 
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
-                        <span>User ID: {user.id}</span>
-                        {user.businessName ? <span>Business: {user.businessName}</span> : null}
-                        <span>Listings: {user.listingsCount || 0}</span>
-                        <span>Favorites: {user.favoritesCount || 0}</span>
-                        <span>Joined: {fmtDate(user.createdAt)}</span>
-                        <span>Verification send attempt: {fmtDate(user.emailVerificationSentAt) || "Not recorded"}</span>
-                        <span>Updated: {fmtDate(user.updatedAt)}</span>
-                      </div>
-                    </div>
+	              return (
+	                <div
+	                  key={user.id}
+	                  className="rounded-2xl border border-[#eadba9] bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
+	                >
+	                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+	                    <div className="min-w-0 flex-1">
+	                      <div className="flex flex-wrap items-center gap-2">
+	                        <div className="text-[15px] font-extrabold text-[#0a2230]">{displayName(user)}</div>
+	                        <span
+	                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roleTone(
+	                            user.role
+	                          )}`}
+	                        >
+	                          {user.role}
+	                        </span>
+	                        <span
+	                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+	                            user.emailVerified
+	                              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+	                              : "border-amber-300 bg-amber-50 text-amber-900"
+	                          }`}
+	                        >
+	                          {user.emailVerified ? "Email verified" : "Email unverified"}
+	                        </span>
+	                        {user.businessName ? (
+	                          <span className="inline-flex items-center rounded-full border border-[#d9c486] bg-[#fffaf0] px-2.5 py-1 text-[11px] font-semibold text-[#8a6a12]">
+	                            {user.businessName}
+	                          </span>
+	                        ) : null}
+	                      </div>
+	                      <div className="mt-1 break-all text-[13px] text-slate-700">{user.email}</div>
+	                    </div>
 
-                    <div className="flex shrink-0 flex-col items-stretch gap-2 sm:min-w-[220px]">
-                      <label className="text-[11px] font-extrabold tracking-[0.14em] text-slate-500">
-                        ROLE
-                      </label>
-                      <select
-                        value={user.role}
-                        disabled={busy || isSelf}
-                        onChange={(e) => updateRole(user, e.target.value)}
-                        className="h-10 rounded-xl border border-[#d9c486] bg-white px-3 text-sm font-semibold text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40 disabled:cursor-not-allowed disabled:bg-slate-100"
-                      >
-                        <option value="USER">USER</option>
-                        <option value="MODERATOR">MODERATOR</option>
-                        <option value="ADMIN">ADMIN</option>
-                      </select>
-                      <div className="text-[11px] text-slate-500">
-                        {isSelf ? "Your own role can’t be changed here." : "Change role to promote or demote this user."}
-                      </div>
+	                    <div className="flex shrink-0 items-start sm:pl-3">
+	                      <button
+	                        type="button"
+	                        onClick={() => toggleExpanded(user.id)}
+	                        className="inline-flex h-10 items-center justify-center rounded-xl border border-[#d9c486] bg-[#fffaf0] px-4 text-sm font-semibold text-[#8a6a12] hover:bg-[#fff5dc]"
+	                      >
+	                        {expanded ? "Hide Details" : "More Details"}
+	                      </button>
+	                    </div>
+	                  </div>
 
-                      {!user.emailVerified ? (
-                        <button
-                          type="button"
-                          onClick={() => resendWelcomeEmail(user)}
-                          disabled={busy}
-                          className="inline-flex h-10 items-center justify-center rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {busy ? "Working…" : "Resend welcome email"}
-                        </button>
-                      ) : null}
+	                  {expanded ? (
+	                    <div className="mt-4 rounded-2xl border border-[#eadba9] bg-[#fffaf0] p-4">
+	                      <div className="grid gap-3 text-[12px] text-slate-600 md:grid-cols-2 xl:grid-cols-4">
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">User ID</div>
+	                          <div className="mt-1 break-all font-medium text-[#0a2230]">{user.id}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Verification Attempt</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">
+	                            {fmtDate(user.emailVerificationSentAt) || "Not recorded"}
+	                          </div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Business</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{user.businessName || "None"}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Email Status</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">
+	                            {user.emailVerified ? "Verified" : "Awaiting verification"}
+	                          </div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Listings</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{user.listingsCount || 0}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Favorites</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{user.favoritesCount || 0}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Audit Logs</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{user.auditLogsCount || 0}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Joined</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{fmtDate(user.createdAt)}</div>
+	                        </div>
+	                        <div>
+	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Updated</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">{fmtDate(user.updatedAt)}</div>
+	                        </div>
+	                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => (composerOpen ? closeComposer() : openComposer(user))}
-                        disabled={busy}
-                        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {composerOpen ? "Close Message" : "Email User"}
-                      </button>
+	                      <div className="mt-4">
+	                        <label className="text-[11px] font-extrabold tracking-[0.14em] text-slate-500">
+	                          ROLE
+	                        </label>
+	                        <select
+	                          value={user.role}
+	                          disabled={busy || isSelf}
+	                          onChange={(e) => updateRole(user, e.target.value)}
+	                          className="mt-1 h-10 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm font-semibold text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40 disabled:cursor-not-allowed disabled:bg-slate-100"
+	                        >
+	                          <option value="USER">USER</option>
+	                          <option value="MODERATOR">MODERATOR</option>
+	                          <option value="ADMIN">ADMIN</option>
+	                        </select>
+	                        <div className="mt-1 text-[11px] text-slate-500">
+	                          {isSelf ? "Your own role can’t be changed here." : "Promote or demote this user."}
+	                        </div>
+	                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => loadEmailEvents(user)}
-                        disabled={busy || eventBusy}
-                        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {eventBusy ? "Loading events…" : "View Email Events"}
-                      </button>
+	                      <div className="mt-4 flex flex-wrap gap-2">
+	                        {!user.emailVerified ? (
+	                          <button
+	                            type="button"
+	                            onClick={() => resendWelcomeEmail(user)}
+	                            disabled={busy}
+	                            className="inline-flex h-9 items-center justify-center rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+	                          >
+	                            {busy ? "Working…" : "Resend welcome"}
+	                          </button>
+	                        ) : null}
 
-                      <button
-                        type="button"
-                        onClick={() => deleteUser(user)}
-                        disabled={busy || isSelf}
-                        className="inline-flex h-10 items-center justify-center rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busy ? "Working…" : "Delete User"}
-                      </button>
-                    </div>
-                  </div>
+	                        <button
+	                          type="button"
+	                          onClick={() => (composerOpen ? closeComposer() : openComposer(user))}
+	                          disabled={busy}
+	                          className="inline-flex h-9 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+	                        >
+	                          {composerOpen ? "Close Message" : "Email User"}
+	                        </button>
 
-                  {composerOpen ? (
-                    <div className="mt-4 rounded-2xl border border-[#eadba9] bg-[#fffaf0] p-4">
+	                        <button
+	                          type="button"
+	                          onClick={() => loadEmailEvents(user)}
+	                          disabled={busy || eventBusy}
+	                          className="inline-flex h-9 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-sm font-semibold text-[#0a2230] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+	                        >
+	                          {eventBusy ? "Loading…" : "Email Events"}
+	                        </button>
+
+	                        <button
+	                          type="button"
+	                          onClick={() => deleteUser(user)}
+	                          disabled={busy || isSelf}
+	                          className="inline-flex h-9 items-center justify-center rounded-full border border-red-300 bg-red-50 px-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+	                        >
+	                          {busy ? "Working…" : "Delete"}
+	                        </button>
+	                      </div>
+	                    </div>
+	                  ) : null}
+
+	                  {composerOpen ? (
+	                    <div className="mt-4 rounded-2xl border border-[#eadba9] bg-[#fffaf0] p-4">
                       <div className="text-[12px] font-extrabold tracking-[0.14em] text-[#8a6a12]">
                         SEND EMAIL
                       </div>
@@ -426,68 +557,92 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
                     </div>
                   ) : null}
 
-                  {eventState ? (
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-[12px] font-extrabold tracking-[0.14em] text-slate-500">
-                          RECENT EMAIL EVENTS
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          Refreshed {fmtDate(eventState.loadedAt)}
-                        </div>
-                      </div>
+		                  {eventState ? (
+		                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+		                      <div className="flex flex-wrap items-center justify-between gap-2">
+	                        <div className="text-[12px] font-extrabold tracking-[0.14em] text-slate-500">
+	                          RECENT EMAIL EVENTS
+	                        </div>
+	                        <div className="text-[11px] text-slate-500">
+	                          Refreshed {fmtDate(eventState.loadedAt)}
+	                        </div>
+	                      </div>
 
-                      {eventState.warning ? (
-                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                          {eventState.warning}
-                        </div>
-                      ) : null}
+	                      {eventState.warning ? (
+	                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+	                          {eventState.warning}
+	                        </div>
+	                      ) : null}
 
-                      {eventState.user ? (
-                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
-                          <span>Account created: {fmtDate(eventState.user.createdAt) || "Unknown"}</span>
-                          <span>Verification recorded: {fmtDate(eventState.user.emailVerificationSentAt) || "Not recorded"}</span>
-                          <span>Verified: {fmtDate(eventState.user.emailVerifiedAt) || "Not yet"}</span>
-                        </div>
-                      ) : null}
+	                      {eventState.user ? (
+	                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
+	                          <span>Account created: {fmtDate(eventState.user.createdAt) || "Unknown"}</span>
+	                          <span>Verification recorded: {fmtDate(eventState.user.emailVerificationSentAt) || "Not recorded"}</span>
+	                          <span>Verified: {fmtDate(eventState.user.emailVerifiedAt) || "Not yet"}</span>
+	                        </div>
+	                      ) : null}
 
-                      {eventState.events.length === 0 ? (
-                        <div className="mt-3 text-sm text-slate-600">
-                          No recent email events were found for this recipient.
-                        </div>
-                      ) : (
-                        <div className="mt-3 space-y-2">
-                          {eventState.events.map((event) => (
-                            <div key={event.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-[#0a2230]">{event.subject || "(No subject)"}</span>
-                                <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                                  {event.lastEvent || "unknown"}
-                                </span>
-                                {event.source ? (
-                                  <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                                    {event.source}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="mt-1 break-all text-[12px] text-slate-600">
-                                Message ID: {event.id}
-                              </div>
-                              <div className="mt-1 text-[12px] text-slate-600">
-                                Sent: {fmtDate(event.createdAt)} | From: {event.from || "Unknown sender"}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+	                      {eventState.events.length === 0 ? (
+	                        <div className="mt-3 text-sm text-slate-600">
+	                          No recent email events were found for this recipient.
+	                        </div>
+	                      ) : (
+	                        <div className="mt-3 space-y-2">
+	                          {eventState.events.map((event) => (
+	                            <div key={event.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+	                              <div className="flex flex-wrap items-center gap-2">
+	                                <span className="font-semibold text-[#0a2230]">{event.subject || "(No subject)"}</span>
+	                                <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+	                                  {event.lastEvent || "unknown"}
+	                                </span>
+	                                {event.source ? (
+	                                  <span className="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+	                                    {event.source}
+	                                  </span>
+	                                ) : null}
+	                              </div>
+	                              <div className="mt-1 break-all text-[12px] text-slate-600">
+	                                Message ID: {event.id}
+	                              </div>
+	                              <div className="mt-1 text-[12px] text-slate-600">
+	                                Sent: {fmtDate(event.createdAt)} | From: {event.from || "Unknown sender"}
+	                              </div>
+	                            </div>
+	                          ))}
+	                        </div>
+	                      )}
+	                    </div>
+	                  ) : null}
+	                </div>
+	              );
+	            })}
+
+	            {totalPages > 1 ? (
+	              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+	                <button
+	                  type="button"
+	                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+	                  disabled={safePage <= 1}
+	                  className="inline-flex h-10 items-center justify-center rounded-xl border border-[#d9c486] bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-[#fffaf0] disabled:cursor-not-allowed disabled:opacity-50"
+	                >
+	                  Prev
+	                </button>
+	                <div className="px-2 text-sm text-slate-600">
+	                  Page {safePage} of {totalPages}
+	                </div>
+	                <button
+	                  type="button"
+	                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+	                  disabled={safePage >= totalPages}
+	                  className="inline-flex h-10 items-center justify-center rounded-xl border border-[#d9c486] bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-[#fffaf0] disabled:cursor-not-allowed disabled:opacity-50"
+	                >
+	                  Next
+	                </button>
+	              </div>
+	            ) : null}
+	          </div>
+	        )}
+	      </div>
     </div>
   );
 }

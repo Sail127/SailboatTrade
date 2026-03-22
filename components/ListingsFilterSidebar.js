@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
@@ -16,7 +15,6 @@ const US_REGION_OPTIONS = [
   { label: "Other Inland waters", value: "OTHER_INLAND_WATERS" },
   { label: "Other U.S. Territorial waters", value: "OTHER_US_TERRITORIAL" },
 ];
-
 function buildYearOptions() {
   const nowYear = new Date().getFullYear();
   const max = nowYear + 1;
@@ -30,6 +28,33 @@ function buildCountryOptionsForSearch() {
   const opts = getCountryOptions("en") || [];
   const rest = opts.filter((o) => o?.value);
   return [{ value: "", label: "All" }, ...rest];
+}
+
+function buildSavedSearchSuggestion({
+  q,
+  type,
+  builder,
+  country,
+  usRegion,
+  yearMin,
+  yearMax,
+  priceMin,
+  priceMax,
+  loaMin,
+  loaMax,
+  loaUnit,
+}) {
+  if (String(q || "").trim()) return `Keyword: ${String(q).trim()}`;
+
+  const parts = [];
+  if (type && type !== "both") parts.push(type[0].toUpperCase() + type.slice(1));
+  if (builder?.length) parts.push(builder[0]);
+  if (country?.length) parts.push(country[0]);
+  if (usRegion) parts.push(usRegion.replaceAll("_", " "));
+  if (yearMin || yearMax) parts.push(`Year ${yearMin || "Any"}-${yearMax || "Any"}`);
+  if (priceMin || priceMax) parts.push(`Price ${formatPriceInput(priceMin) || "Any"}-${formatPriceInput(priceMax) || "Any"}`);
+  if (loaMin || loaMax) parts.push(`Length ${loaMin || "Any"}-${loaMax || "Any"} ${loaUnit}`);
+  return parts.slice(0, 3).join(" • ") || "All Listings";
 }
 
 function buildLoaOptions(unit) {
@@ -51,6 +76,10 @@ function formatPriceInput(value) {
   const digits = digitsOnly(value);
   if (!digits) return "";
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+function numericText(value, maxLength = 4) {
+  return digitsOnly(value).slice(0, maxLength);
 }
 
 function normalizeMultiSelectValues(value, { upper = false } = {}) {
@@ -195,7 +224,147 @@ function HullButton({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-export default function ListingsFilterSidebar({ submitPath = "/listings", initialValues = {} }) {
+function ValuePicker({
+  detailsRef,
+  value,
+  onChange,
+  options,
+  placeholder,
+  ariaLabel,
+  summaryClassName,
+  panelClassName,
+  inputClassName,
+  rowClassName,
+  anchorValue,
+  maxLength = 4,
+  optionLabel = (option) => option,
+}) {
+  const scrollBoxRef = useRef(null);
+  const inputRef = useRef(null);
+  const optionRefs = useRef(new Map());
+
+  const centerOnValue = (targetValue) => {
+    const key = String(targetValue || "").trim();
+    if (!key) return;
+    const container = scrollBoxRef.current;
+    const node = optionRefs.current.get(key);
+    if (!container || !node) return;
+    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
+    container.scrollTop = Math.max(0, nextTop);
+  };
+
+  const handleToggle = (e) => {
+    if (!e.currentTarget.open) return;
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      centerOnValue(value || anchorValue);
+    });
+  };
+
+  const chooseValue = (nextValue) => {
+    onChange(String(nextValue || ""));
+    detailsRef?.current?.removeAttribute?.("open");
+  };
+
+  return (
+    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+      <summary
+        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+        aria-label={ariaLabel}
+      >
+        <span>{value || placeholder}</span>
+        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className={panelClassName}>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={value}
+          onChange={(e) => onChange(numericText(e.target.value, maxLength))}
+          placeholder={placeholder}
+          className={inputClassName}
+          aria-label={`${ariaLabel} value`}
+        />
+        <div ref={scrollBoxRef} className="mt-2 max-h-44 overflow-y-auto space-y-1">
+          <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
+            {placeholder}
+          </button>
+          {options.map((option) => (
+            <button
+              key={`${ariaLabel}-${option}`}
+              type="button"
+              ref={(node) => {
+                if (node) optionRefs.current.set(String(option), node);
+                else optionRefs.current.delete(String(option));
+              }}
+              onClick={() => chooseValue(option)}
+              className={rowClassName(String(value) === String(option))}
+            >
+              {optionLabel(option)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function SavedSearchList({
+  items,
+  emptyLabel,
+  panelClassName,
+  rowButtonClassName,
+  deleteButtonClassName,
+  onApply,
+  onDelete,
+}) {
+  if (!items.length) {
+    return (
+      <div className={panelClassName}>
+        <p className="text-[12px] text-slate-500">{emptyLabel}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${panelClassName} max-h-44 overflow-y-auto`}>
+      <div className="space-y-1">
+        {items.map((item) => (
+          <div key={item.id} className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onApply(item.path)}
+              className={rowButtonClassName}
+              title={item.name}
+            >
+              <span className="truncate">{item.name}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onDelete(item.id)}
+              className={deleteButtonClassName}
+              aria-label={`Delete saved search ${item.name}`}
+              title={`Delete ${item.name}`}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function ListingsFilterSidebar({
+  submitPath = "/listings",
+  initialValues = {},
+  viewerLoggedIn = false,
+  initialSavedSearches = [],
+}) {
   const router = useRouter();
 
   const { popular: popularBuilders, rest: otherBuilders } = useMemo(getBuilderGroups, []);
@@ -216,11 +385,16 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
   const [country, setCountry] = useState(initial.country);
   const [usRegion, setUsRegion] = useState(initial.usRegion);
   const [saveMsg, setSaveMsg] = useState("");
+  const [savedSearches, setSavedSearches] = useState(initialSavedSearches);
   const [showHullPicker, setShowHullPicker] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const readyRef = useRef(false);
   const syncingRef = useRef(false);
   const applyTimerRef = useRef(null);
+  const mobileLoaMinDetailsRef = useRef(null);
+  const mobileLoaMaxDetailsRef = useRef(null);
+  const desktopLoaMinDetailsRef = useRef(null);
+  const desktopLoaMaxDetailsRef = useRef(null);
 
   useEffect(() => {
     syncingRef.current = true;
@@ -257,6 +431,10 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     initial.country,
     initial.usRegion,
   ]);
+
+  useEffect(() => {
+    setSavedSearches(Array.isArray(initialSavedSearches) ? initialSavedSearches : []);
+  }, [initialSavedSearches]);
 
   const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
@@ -430,13 +608,36 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     setCountry([]);
     setUsRegion("");
     setShowHullPicker(false);
-    router.push(submitPath);
+    router.push(submitPath, { scroll: false });
   }
 
   function applyNow() {
     const params = buildParams();
     const qs = params.toString();
-    router.push(qs ? `${submitPath}?${qs}` : submitPath);
+    router.push(qs ? `${submitPath}?${qs}` : submitPath, { scroll: false });
+  }
+
+  function currentSearchPath() {
+    const params = buildParams();
+    const qs = params.toString();
+    return qs ? `${submitPath}?${qs}` : submitPath;
+  }
+
+  function redirectToLogin() {
+    if (typeof window === "undefined") return;
+    const next = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+  }
+
+  function requireLogin() {
+    if (viewerLoggedIn) return true;
+    redirectToLogin();
+    return false;
+  }
+
+  function showSaveMessage(message) {
+    setSaveMsg(message);
+    window.setTimeout(() => setSaveMsg(""), 2200);
   }
 
   function toggleHullPicker() {
@@ -480,7 +681,7 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
       const qs = params.toString();
       const target = qs ? `${submitPath}?${qs}` : submitPath;
       const current = `${window.location.pathname}${window.location.search}`;
-      if (current !== target) router.push(target);
+      if (current !== target) router.push(target, { scroll: false });
     }, 220);
 
     return () => {
@@ -507,19 +708,112 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileDrawerOpen]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const detailRefs = [
+      mobileLoaMinDetailsRef,
+      mobileLoaMaxDetailsRef,
+      desktopLoaMinDetailsRef,
+      desktopLoaMaxDetailsRef,
+    ];
+
+    const onMouseDown = (e) => {
+      for (const ref of detailRefs) {
+        const node = ref.current;
+        if (!node?.hasAttribute?.("open")) continue;
+        if (node.contains(e.target)) continue;
+        node.removeAttribute("open");
+      }
+    };
+
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      for (const ref of detailRefs) {
+        ref.current?.removeAttribute?.("open");
+      }
+    };
+
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   async function saveSearch() {
-    const params = buildParams();
-    const qs = params.toString();
-    const path = qs ? `${submitPath}?${qs}` : submitPath;
-    const absolute = typeof window !== "undefined" ? `${window.location.origin}${path}` : path;
+    if (!requireLogin()) return;
+
+    const defaultName = buildSavedSearchSuggestion({
+      q,
+      type,
+      builder,
+      country,
+      usRegion,
+      yearMin,
+      yearMax,
+      priceMin,
+      priceMax,
+      loaMin,
+      loaMax,
+      loaUnit,
+    });
+    const proposed = typeof window !== "undefined" ? window.prompt("Name this saved search:", defaultName) : defaultName;
+    const name = String(proposed || "").trim().slice(0, 60);
+    if (!name) return;
 
     try {
-      if (navigator?.clipboard?.writeText) await navigator.clipboard.writeText(absolute);
-      setSaveMsg("Search link copied.");
-      setTimeout(() => setSaveMsg(""), 1800);
+      const res = await fetch("/api/saved-searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ name, path: currentSearchPath() }),
+      });
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data?.savedSearch) throw new Error(data?.error || "Unable to save search.");
+
+      setSavedSearches((prev) => [data.savedSearch, ...prev.filter((item) => item.id !== data.savedSearch.id)]);
+      showSaveMessage("Saved to your account.");
     } catch {
-      setSaveMsg("Could not copy link.");
-      setTimeout(() => setSaveMsg(""), 1800);
+      showSaveMessage("Unable to save this search right now.");
+    }
+  }
+
+  function applySavedSearch(path) {
+    const nextPath = String(path || "").trim();
+    if (!nextPath) return;
+    if (!requireLogin()) return;
+    router.push(nextPath, { scroll: false });
+  }
+
+  async function deleteSavedSearch(id) {
+    if (!requireLogin()) return;
+    const targetId = String(id || "").trim();
+    if (!targetId) return;
+
+    try {
+      const res = await fetch(`/api/saved-searches/${encodeURIComponent(targetId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.status === 401) {
+        redirectToLogin();
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Unable to delete saved search.");
+
+      setSavedSearches((prev) => prev.filter((item) => item.id !== targetId));
+      showSaveMessage("Saved search deleted.");
+    } catch {
+      showSaveMessage("Unable to delete saved search.");
     }
   }
 
@@ -542,6 +836,11 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
   }, [type]);
 
   const activeFilterCount = activeFilterPills.length;
+  const savedSearchPanelClass = "rounded-xl border border-slate-300 bg-white p-2";
+  const savedSearchRowClass =
+    "min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-[#0a2230] transition hover:bg-slate-50";
+  const savedSearchDeleteClass =
+    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600";
 
   return (
     <>
@@ -631,16 +930,53 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
                 </div>
               </div>
 
-              <div className={drawerSection}>
-                <label className={drawerLabel}>KEYWORD SEARCH</label>
-                <input
+	              <div className={drawerSection}>
+	                <label className={drawerLabel}>KEYWORD SEARCH</label>
+	                <input
                   type="text"
                   placeholder="Search..."
                   className={drawerInput}
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-              </div>
+	                  value={q}
+	                  onChange={(e) => setQ(e.target.value)}
+	                />
+                  <div className="border-t border-white/15 pt-3">
+                    <label className={drawerLabel}>SAVED SEARCHES</label>
+                    {viewerLoggedIn ? (
+                      <details className="group mt-2">
+                        <summary
+                          className={`${drawerSelect} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                        >
+                          <span>{savedSearches.length ? `${savedSearches.length} saved searches` : "Saved Searches"}</span>
+                          <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                            ▼
+                          </span>
+                        </summary>
+                        <div className="mt-2">
+                          <SavedSearchList
+                            items={savedSearches}
+                            emptyLabel="No saved searches yet."
+                            panelClassName="rounded-xl border border-white/15 bg-white p-2"
+                            rowButtonClassName="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-[#0a2230] transition hover:bg-slate-50"
+                            deleteButtonClassName="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                            onApply={applySavedSearch}
+                            onDelete={deleteSavedSearch}
+                          />
+                        </div>
+                      </details>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={redirectToLogin}
+                        className={`${drawerSelect} mt-2 flex items-center justify-between`}
+                      >
+                        <span>Saved Searches</span>
+                        <span aria-hidden="true" className="text-xs text-slate-500">
+                          ▼
+                        </span>
+                      </button>
+                    )}
+                  </div>
+	              </div>
 
               <div className={drawerSection}>
                 <label className={drawerLabel}>BUILDER</label>
@@ -720,26 +1056,40 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
 
               <div className={drawerSection}>
                 <div className="flex items-center justify-between gap-2">
-                  <label className={drawerLabel}>LOA</label>
+                  <label className={drawerLabel}>LENGTH (LOA)</label>
                   <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <select className={`${drawerSelect} ${drawerSelectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
-                    <option value="">Min</option>
-                    {loaOptions.map((v) => (
-                      <option key={`mobile-loa-min-${loaUnit}-${v}`} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                  <select className={`${drawerSelect} ${drawerSelectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
-                    <option value="">Max</option>
-                    {loaOptions.map((v) => (
-                      <option key={`mobile-loa-max-${loaUnit}-${v}`} value={v}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
+                  <ValuePicker
+                    detailsRef={mobileLoaMinDetailsRef}
+                    value={loaMin}
+                    onChange={setLoaMin}
+                    options={loaOptions}
+                    placeholder={`${loaUnit.toUpperCase()} Min`}
+                    ariaLabel={`Minimum LOA (${loaUnit})`}
+                    summaryClassName={`${drawerSelect} ${drawerSelectTextClass(loaMin)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    inputClassName={drawerInput}
+                    rowClassName={pickerRowClass}
+                    anchorValue={loaUnit === "m" ? "6" : "20"}
+                    maxLength={3}
+                    optionLabel={(option) => `${option} ${loaUnit}`}
+                  />
+                  <ValuePicker
+                    detailsRef={mobileLoaMaxDetailsRef}
+                    value={loaMax}
+                    onChange={setLoaMax}
+                    options={loaOptions}
+                    placeholder={`${loaUnit.toUpperCase()} Max`}
+                    ariaLabel={`Maximum LOA (${loaUnit})`}
+                    summaryClassName={`${drawerSelect} ${drawerSelectTextClass(loaMax)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    inputClassName={drawerInput}
+                    rowClassName={pickerRowClass}
+                    anchorValue={loaUnit === "m" ? "18" : "60"}
+                    maxLength={3}
+                    optionLabel={(option) => `${option} ${loaUnit}`}
+                  />
                 </div>
               </div>
 
@@ -869,19 +1219,39 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
         </div>
 
         <div className="mt-3 space-y-1.5">
-          <Link href="/dashboard/favorites" className="block rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+          <button
+            type="button"
+            onClick={() => {
+              if (!viewerLoggedIn) {
+                redirectToLogin();
+                return;
+              }
+              router.push("/dashboard/favorites");
+            }}
+            className="block w-full rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+          >
             MY FAVORITES
-          </Link>
+          </button>
           <button
             type="button"
             onClick={saveSearch}
-            className="w-full rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+            className="block w-full rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
           >
             SAVE SEARCH
           </button>
-          <a href={emailHref} className="block rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]">
+          <button
+            type="button"
+            onClick={() => {
+              if (!viewerLoggedIn) {
+                redirectToLogin();
+                return;
+              }
+              if (typeof window !== "undefined") window.location.href = emailHref;
+            }}
+            className="block w-full rounded-md bg-[#f3b23f] px-4 py-[7px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+          >
             EMAIL ALERT
-          </a>
+          </button>
           {saveMsg ? <div className="text-[12px] font-semibold text-slate-600">{saveMsg}</div> : null}
         </div>
 
@@ -928,16 +1298,53 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
             </div>
           </div>
 
-          <div className="space-y-2 border-t border-slate-300 pt-3">
-            <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
-            <input
+	          <div className="space-y-2 border-t border-slate-300 pt-3">
+	            <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
+	            <input
               type="text"
               placeholder="Search..."
               className={input}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
+	              value={q}
+	              onChange={(e) => setQ(e.target.value)}
+	            />
+              <div className="border-t border-slate-300 pt-3">
+                <label className="block text-[12px] font-bold tracking-wide text-slate-700">SAVED SEARCHES</label>
+                {viewerLoggedIn ? (
+                  <details className="group mt-2">
+                    <summary
+                      className={`${select} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                    >
+                      <span>{savedSearches.length ? `${savedSearches.length} saved searches` : "Saved Searches"}</span>
+                      <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+                        ▼
+                      </span>
+                    </summary>
+                    <div className="mt-2">
+                      <SavedSearchList
+                        items={savedSearches}
+                        emptyLabel="No saved searches yet."
+                        panelClassName={savedSearchPanelClass}
+                        rowButtonClassName={savedSearchRowClass}
+                        deleteButtonClassName={savedSearchDeleteClass}
+                        onApply={applySavedSearch}
+                        onDelete={deleteSavedSearch}
+                      />
+                    </div>
+                  </details>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={redirectToLogin}
+                    className={`${select} mt-2 flex items-center justify-between`}
+                  >
+                    <span>Saved Searches</span>
+                    <span aria-hidden="true" className="text-xs text-slate-500">
+                      ▼
+                    </span>
+                  </button>
+                )}
+              </div>
+	          </div>
 
           <div className="space-y-2 border-t border-slate-300 pt-3">
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">BUILDER</label>
@@ -1017,26 +1424,40 @@ export default function ListingsFilterSidebar({ submitPath = "/listings", initia
 
           <div className="space-y-2 border-t border-slate-300 pt-3">
             <div className="flex items-center justify-between gap-2">
-              <label className="block text-[12px] font-bold tracking-wide text-slate-700">LOA</label>
-              <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
+              <label className="block text-[12px] font-bold tracking-wide text-slate-700">LENGTH (LOA)</label>
+                  <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <select className={`${select} ${selectTextClass(loaMin)}`} value={loaMin} onChange={(e) => setLoaMin(e.target.value)} aria-label={`Minimum LOA (${loaUnit})`}>
-                <option value="">Min</option>
-                {loaOptions.map((v) => (
-                  <option key={`loa-min-${loaUnit}-${v}`} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-              <select className={`${select} ${selectTextClass(loaMax)}`} value={loaMax} onChange={(e) => setLoaMax(e.target.value)} aria-label={`Maximum LOA (${loaUnit})`}>
-                <option value="">Max</option>
-                {loaOptions.map((v) => (
-                  <option key={`loa-max-${loaUnit}-${v}`} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              <ValuePicker
+                detailsRef={desktopLoaMinDetailsRef}
+                value={loaMin}
+                onChange={setLoaMin}
+                options={loaOptions}
+                placeholder={`${loaUnit.toUpperCase()} Min`}
+                ariaLabel={`Minimum LOA (${loaUnit})`}
+                summaryClassName={`${select} ${selectTextClass(loaMin)}`}
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+                anchorValue={loaUnit === "m" ? "6" : "20"}
+                maxLength={3}
+                optionLabel={(option) => `${option} ${loaUnit}`}
+              />
+              <ValuePicker
+                detailsRef={desktopLoaMaxDetailsRef}
+                value={loaMax}
+                onChange={setLoaMax}
+                options={loaOptions}
+                placeholder={`${loaUnit.toUpperCase()} Max`}
+                ariaLabel={`Maximum LOA (${loaUnit})`}
+                summaryClassName={`${select} ${selectTextClass(loaMax)}`}
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+                anchorValue={loaUnit === "m" ? "18" : "60"}
+                maxLength={3}
+                optionLabel={(option) => `${option} ${loaUnit}`}
+              />
             </div>
           </div>
 

@@ -240,10 +240,8 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav, closeKey }) {
     <div ref={ref} className="relative shrink-0">
       <button
         type="button"
-        aria-label="Account menu"
-        title="Account"
-        aria-haspopup="menu"
-        aria-expanded={open}
+        aria-label="My dashboard"
+        title="My Dashboard"
         className={[
           "h-10 w-10 aspect-square flex-none p-0 rounded-full overflow-hidden",
           "inline-flex items-center justify-center leading-none",
@@ -252,7 +250,10 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav, closeKey }) {
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(243,178,63,0.45)]",
         ].join(" ")}
         style={{ background: SEARCH_GOLD }}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          onBeforeNav?.();
+          hardNav("/dashboard");
+        }}
       >
         {loading ? (
           <span className="h-4 w-4 rounded-full bg-black/15 animate-pulse" />
@@ -262,65 +263,6 @@ function AccountMenu({ user, loading, onLogout, onBeforeNav, closeKey }) {
           </span>
         )}
       </button>
-
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden="true" />
-
-          <div
-            className="absolute right-0 mt-2 w-60 rounded-xl border border-white/15 bg-[#0f2a3b]/98 backdrop-blur shadow-2xl shadow-black/25 z-50 overflow-hidden text-white"
-            role="menu"
-          >
-            <div className="py-1">
-              {/* ✅ My Dashboard with SAME icon style as hamburger */}
-              <MenuItemLink
-                href="/dashboard"
-                onPick={() => setOpen(false)}
-                icon={<DashboardChip user={user} />}
-              >
-                My Dashboard
-              </MenuItemLink>
-
-              <MenuItemLink href="/dashboard/listings" onPick={() => setOpen(false)}>
-                My Listings
-              </MenuItemLink>
-
-              <MenuItemLink href="/listings/new" onPick={() => setOpen(false)}>
-                Create listing
-              </MenuItemLink>
-
-              <MenuItemLink href="/dashboard/favorites" onPick={() => setOpen(false)}>
-                Favorite Boats
-              </MenuItemLink>
-
-              <MenuItemLink href="/dashboard/alerts" onPick={() => setOpen(false)}>
-                Email Alerts
-              </MenuItemLink>
-            </div>
-
-            <div className="border-t border-white/15 p-1">
-              <button
-                type="button"
-                onClick={async () => {
-                  setOpen(false);
-                  onBeforeNav?.();
-                  await onLogout?.();
-                }}
-                className="w-full text-left px-3 py-2 text-[13px] font-semibold text-white hover:bg-white/10 rounded-lg transition"
-                role="menuitem"
-              >
-                <span className="flex items-center gap-3">
-                  {/* ✅ Log Out icon SAME as hamburger */}
-                  <span className="inline-flex h-6 w-6 items-center justify-center shrink-0">
-                    <LogoutIcon />
-                  </span>
-                  <span>Log Out</span>
-                </span>
-              </button>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }

@@ -1,0 +1,29 @@
+name: Cleanup Draft Uploads
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  cleanup-drafts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger draft cleanup endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "Missing APP_URL GitHub Actions secret."
+            exit 1
+          fi
+
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing CRON_SECRET GitHub Actions secret."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --header "x-cron-secret: $CRON_SECRET" \
+            "$APP_URL/api/cron/cleanup-drafts"

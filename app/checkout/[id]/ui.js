@@ -58,7 +58,7 @@ function Pill({ active, disabled, children, onClick }) {
   );
 }
 
-function UpgradeCheck({ active, disabled, mandatory, label, priceLabel, onClick }) {
+function UpgradeCheck({ active, disabled, mandatory, label, description = "", priceLabel, onClick }) {
   return (
     <button
       type="button"
@@ -86,6 +86,7 @@ function UpgradeCheck({ active, disabled, mandatory, label, priceLabel, onClick 
         </div>
         <span className="text-[13px] font-semibold">{priceLabel}/mo</span>
       </div>
+      {description ? <div className="mt-1 pl-7 text-[12px] text-slate-600">{description}</div> : null}
       {mandatory ? (
         <div className="mt-1 pl-7 text-[12px] text-amber-900">
           Required: this listing has more than the free photo limit.
@@ -157,6 +158,7 @@ export default function CheckoutUI({
     photoPlus !== initialPhotoPlusActive || featuredHome !== initialFeaturedHomeActive;
   const paymentDisabled = overMax || (hasActiveBilling && !hasUpgradeChange);
   const canChooseAutoRenew = needsPaymentUI && !hasActiveBilling;
+  const featuredListingActive = featuredHome;
 
   async function submitFree() {
     setErr("");
@@ -236,23 +238,28 @@ export default function CheckoutUI({
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-        <div className="text-[12px] font-extrabold tracking-wide text-slate-600">Upgrades</div>
+        <div className="text-[12px] font-extrabold tracking-wide text-slate-600">Choose upgrades</div>
+        <div className="mt-1 text-[13px] text-slate-600">
+          Pick the visibility options you want for this listing. Free listings stay standard and allow up to {freePhotoLimit} photos.
+        </div>
 
         <div className="mt-3 grid grid-cols-1 gap-2">
           <UpgradeCheck
             active={photoPlus}
             disabled={requirePhotoPlusByPhotos || disableChanges}
             mandatory={requirePhotoPlusByPhotos}
-            label={`Photo Plus (up to ${maxPhotos})`}
+            label={`Photo Plus (${maxPhotos} photos)`}
+            description={`Expand the gallery from ${freePhotoLimit} photos to up to ${maxPhotos} photos.`}
             priceLabel={photoPlusPrice}
             onClick={() => setPhotoPlus((v) => !v)}
           />
 
           <UpgradeCheck
-            active={featuredHome}
+            active={featuredListingActive}
             disabled={disableChanges}
             mandatory={false}
-            label="Featured Home"
+            label="Featured listing"
+            description="Enables homepage and premium listing placement."
             priceLabel={featuredPrice}
             onClick={() => setFeaturedHome((v) => !v)}
           />
@@ -288,8 +295,8 @@ export default function CheckoutUI({
             </div>
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] text-slate-600">
               {autoRenew
-                ? "Auto-renew charges this same term repeatedly until the customer cancels in PayPal."
-                : "Billing is fixed-term only. Choose 1, 3, or 6 months."}
+                ? "Auto-renew repeats this same term until the customer turns it off."
+                : "One-time billing only. Choose 1, 3, or 6 months."}
             </div>
             <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3 text-[12px] text-slate-700">
               <div className="font-extrabold text-[#0a2230]">Renewal preference</div>
@@ -339,6 +346,12 @@ export default function CheckoutUI({
           <div className="text-[13px] font-extrabold text-[#0a2230]">Pricing summary</div>
           <div className="mt-2 text-[12px] text-slate-700 space-y-1">
             <div>
+              Upgrades:{" "}
+              <span className="font-semibold">
+                {[photoPlus ? "Photo Plus" : null, featuredListingActive ? "Featured listing" : null].filter(Boolean).join(" + ") || "None"}
+              </span>
+            </div>
+            <div>
               Monthly (after discount):{" "}
               <span className="font-semibold">{formatMoneyFromCents(discountedMonthlyCents)}</span>
             </div>
@@ -368,6 +381,9 @@ export default function CheckoutUI({
       {needsPaymentUI ? (
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
           <div className="text-[13px] font-extrabold text-[#0a2230]">Payment</div>
+          <div className="mt-1 text-[12px] text-slate-600">
+            Pay with PayPal, Venmo, or card. Your listing goes to admin review after successful payment.
+          </div>
           <div className="mt-3">
             {autoRenew ? (
               <PayPalSubscriptionCheckout

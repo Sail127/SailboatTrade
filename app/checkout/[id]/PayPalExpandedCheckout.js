@@ -221,14 +221,14 @@ export default function PayPalExpandedCheckout({
   return (
     <PayPalScriptProvider options={scriptOptions}>
       <div className="space-y-3">
-        <div className="mx-auto w-full sm:max-w-[64%]">
+        <div className="w-full">
           <PayPalButtons
             style={{
               shape: "pill",
-              layout: "horizontal",
+              layout: "vertical",
               color: "gold",
               label: "checkout",
-              height: 32,
+              height: 42,
               tagline: false,
             }}
             createOrder={createOrderCallback}
@@ -277,7 +277,7 @@ export default function PayPalExpandedCheckout({
             ".invalid": { color: "#7f1d1d" },
           }}
         >
-          <div className="mx-auto w-full sm:max-w-[80%]">
+          <div className="w-full">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.07)]">
               <div className="border-b border-slate-200 bg-[linear-gradient(180deg,#f8fbff_0%,#eef4fb_100%)] px-4 py-3">
                 <div className="text-[12px] font-extrabold uppercase tracking-[0.18em] text-slate-500">Card Checkout</div>
@@ -288,25 +288,25 @@ export default function PayPalExpandedCheckout({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <BillingField label="Cardholder name" hint="Enter the name as it appears on the card." span="sm:col-span-2">
                     <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
-                      <PayPalNameField />
+                      <PayPalNameField placeholder="Cardholder name" />
                     </div>
                   </BillingField>
 
                   <BillingField label="Card number" span="sm:col-span-2">
                     <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
-                      <PayPalNumberField />
+                      <PayPalNumberField placeholder="1234 1234 1234 1234" />
                     </div>
                   </BillingField>
 
                   <BillingField label="Expiry date">
                     <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
-                      <PayPalExpiryField />
+                      <PayPalExpiryField placeholder="MM / YY" />
                     </div>
                   </BillingField>
 
                   <BillingField label="Security code" hint="3 or 4 digits, depending on the card.">
                     <div className="rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm focus-within:border-[#c8a44d] focus-within:ring-2 focus-within:ring-[#c8a44d]/25">
-                      <PayPalCVVField />
+                      <PayPalCVVField placeholder="CVV" />
                     </div>
                   </BillingField>
                 </div>
@@ -325,7 +325,7 @@ export default function PayPalExpandedCheckout({
                         onChange={(e) => handleBillingAddressChange("countryCode", e.target.value.toUpperCase())}
                       >
                         {countryOptions.map((option) => (
-                          <option key={option.value || "blank"} value={option.value || "US"}>
+                          <option key={option.value || "blank"} value={option.value}>
                             {option.label}
                           </option>
                         ))}

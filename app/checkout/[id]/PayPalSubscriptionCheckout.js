@@ -62,14 +62,14 @@ export default function PayPalSubscriptionCheckout({
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] text-slate-700">
           Auto-renew uses a PayPal subscription. Future renewals are billed automatically through your PayPal account.
         </div>
-        <div className="mx-auto w-full sm:max-w-[64%]">
+        <div className="w-full">
           <PayPalButtons
             style={{
               shape: "pill",
-              layout: "horizontal",
+              layout: "vertical",
               color: "gold",
               label: "subscribe",
-              height: 32,
+              height: 42,
               tagline: false,
             }}
             createSubscription={async (_data, actions) => {

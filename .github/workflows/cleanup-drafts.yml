@@ -24,6 +24,6 @@ jobs:
             exit 1
           fi
 
-          curl --fail --silent --show-error \
+          curl --fail --silent --show-error --location \
             --header "x-cron-secret: $CRON_SECRET" \
             "$APP_URL/api/cron/cleanup-drafts"

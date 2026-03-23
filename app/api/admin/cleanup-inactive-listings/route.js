@@ -13,7 +13,7 @@ function cutoff(days) {
 }
 
 export async function POST(req) {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) {
     return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status || 403 });
   }

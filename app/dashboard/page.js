@@ -104,7 +104,7 @@ export default async function DashboardHome() {
   const isAdmin = user.role === "ADMIN";
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalUsers, newUsersLast7Days, totalActiveListings, soldOnSiteCount] = isAdmin
+  const [totalUsers, newUsersLast7Days, totalActiveListings, soldOnSiteCount] = isStaff
     ? await Promise.all([
         prisma.user.count(),
         prisma.user.count({
@@ -169,7 +169,7 @@ export default async function DashboardHome() {
                 description="Moderation and back-office tools are separated here so they’re easy to find and harder to confuse with standard user actions."
                 tone="admin"
               >
-                {isAdmin ? (
+                {isStaff ? (
                   <div className="mb-4 rounded-2xl border border-[#e6d49a] bg-white/80 px-4 py-3">
                     <div className="text-[11px] font-extrabold tracking-[0.16em] text-[#8a6a12]">BOATS SOLD ON ST.COM</div>
                     <div className="mt-1 text-2xl font-extrabold text-[#0a2230]">{soldOnSiteCount}</div>
@@ -179,23 +179,23 @@ export default async function DashboardHome() {
                   </div>
                 ) : null}
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
-                {isAdmin ? (
+                {isStaff ? (
                   <SimpleLink
                     href="/dashboard/admin/active-listings"
                     label="All Listings"
                     right={`${totalActiveListings} live`}
                   />
                 ) : null}
-                {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Drafts and storage" /> : null}
-                {isAdmin ? (
+                {isStaff ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Drafts and storage" /> : null}
+                {isStaff ? (
                   <SimpleLink
                     href="/dashboard/admin/users"
                     label="User Management"
                     right={`${totalUsers} total • ${newUsersLast7Days} new in 7d`}
                   />
                 ) : null}
-                {isAdmin ? <SimpleLink href="/dashboard/admin/email-health" label="Email Health" right="Deliverability" /> : null}
-                {isAdmin ? <SimpleLink href="/dashboard/admin/email-previews" label="Email Previews" right="Transactional mail" /> : null}
+                {isStaff ? <SimpleLink href="/dashboard/admin/email-health" label="Email Health" right="Deliverability" /> : null}
+                {isStaff ? <SimpleLink href="/dashboard/admin/email-previews" label="Email Previews" right="Transactional mail" /> : null}
               </SectionCard>
             ) : null}
           </div>

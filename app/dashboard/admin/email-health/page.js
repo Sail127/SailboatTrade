@@ -34,7 +34,7 @@ function recordOk(records, matcher) {
 }
 
 export default async function AdminEmailHealthPage() {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
 
   const snapshot = await getEmailHealthSnapshot().catch(() => null);

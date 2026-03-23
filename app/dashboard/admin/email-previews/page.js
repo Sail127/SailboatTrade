@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function AdminEmailPreviewsPage() {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
 
   const me = await prisma.user.findUnique({

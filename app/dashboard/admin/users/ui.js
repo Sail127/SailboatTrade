@@ -37,6 +37,7 @@ const SORT_OPTIONS = [
 export default function AdminUsersClient({
   initialUsers,
   currentAdminId = "",
+  canManageUserAccess = false,
   initialQuery = "",
   initialExpandedUserId = "",
 }) {
@@ -519,19 +520,32 @@ export default function AdminUsersClient({
 	                        <label className="text-[11px] font-extrabold tracking-[0.14em] text-slate-500">
 	                          ROLE
 	                        </label>
-	                        <select
-	                          value={user.role}
-	                          disabled={busy || isSelf}
-	                          onChange={(e) => updateRole(user, e.target.value)}
-	                          className="mt-1 h-10 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm font-semibold text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40 disabled:cursor-not-allowed disabled:bg-slate-100"
-	                        >
-	                          <option value="USER">USER</option>
-	                          <option value="MODERATOR">MODERATOR</option>
-	                          <option value="ADMIN">ADMIN</option>
-	                        </select>
-	                        <div className="mt-1 text-[11px] text-slate-500">
-	                          {isSelf ? "Your own role can’t be changed here." : "Promote or demote this user."}
-	                        </div>
+                          {canManageUserAccess ? (
+	                          <>
+	                            <select
+	                              value={user.role}
+	                              disabled={busy || isSelf}
+	                              onChange={(e) => updateRole(user, e.target.value)}
+	                              className="mt-1 h-10 w-full rounded-xl border border-[#d9c486] bg-white px-3 text-sm font-semibold text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40 disabled:cursor-not-allowed disabled:bg-slate-100"
+	                            >
+	                              <option value="USER">USER</option>
+	                              <option value="MODERATOR">MODERATOR</option>
+	                              <option value="ADMIN">ADMIN</option>
+	                            </select>
+	                            <div className="mt-1 text-[11px] text-slate-500">
+	                              {isSelf ? "Your own role can’t be changed here." : "Promote or demote this user."}
+	                            </div>
+	                          </>
+                          ) : (
+                            <>
+                              <div className="mt-1 flex h-10 items-center rounded-xl border border-[#d9c486] bg-slate-100 px-3 text-sm font-semibold text-[#0a2230]">
+                                {user.role}
+                              </div>
+                              <div className="mt-1 text-[11px] text-slate-500">
+                                Moderators can review users here, but only admins can change roles.
+                              </div>
+                            </>
+                          )}
 	                      </div>
 
 	                      <div className="mt-4 flex flex-wrap gap-2">
@@ -564,14 +578,16 @@ export default function AdminUsersClient({
 	                          {eventBusy ? "Loading…" : "Email Events"}
 	                        </button>
 
-	                        <button
-	                          type="button"
-	                          onClick={() => deleteUser(user)}
-	                          disabled={busy || isSelf}
-	                          className="inline-flex h-9 items-center justify-center rounded-full border border-red-300 bg-red-50 px-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-	                        >
-	                          {busy ? "Working…" : "Delete"}
-	                        </button>
+                          {canManageUserAccess ? (
+	                          <button
+	                            type="button"
+	                            onClick={() => deleteUser(user)}
+	                            disabled={busy || isSelf}
+	                            className="inline-flex h-9 items-center justify-center rounded-full border border-red-300 bg-red-50 px-3 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+	                          >
+	                            {busy ? "Working…" : "Delete"}
+	                          </button>
+                          ) : null}
 	                      </div>
 	                    </div>
 	                  ) : null}

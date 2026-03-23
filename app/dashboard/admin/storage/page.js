@@ -8,7 +8,7 @@ import DraftCleanupPanel from "./DraftCleanupPanel";
 export const dynamic = "force-dynamic";
 
 export default async function AdminStoragePage() {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
 
   const storageReport = await getStorageReport();

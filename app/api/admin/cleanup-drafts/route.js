@@ -81,7 +81,7 @@ async function deleteR2Keys(keys) {
 export async function POST(req) {
   try {
     // ✅ ADMIN only (destructive tool)
-    const guard = await requireAdminApi("ADMIN");
+    const guard = await requireAdminApi("MODERATOR");
     if (!guard.ok) {
       return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status || 403 });
     }

@@ -22,7 +22,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   }
 
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) {
     return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status || 403 });
   }

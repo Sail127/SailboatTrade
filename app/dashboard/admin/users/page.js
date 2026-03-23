@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage({ searchParams }) {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
 
   const users = await prisma.user.findMany({
@@ -101,6 +101,7 @@ export default async function AdminUsersPage({ searchParams }) {
       <AdminUsersClient
         initialUsers={initialUsers}
         currentAdminId={guard.me.id}
+        canManageUserAccess={guard.me.role === "ADMIN"}
         initialQuery={String(searchParams?.userId || searchParams?.q || "")}
         initialExpandedUserId={String(searchParams?.userId || "")}
       />

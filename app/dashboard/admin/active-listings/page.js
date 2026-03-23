@@ -16,7 +16,7 @@ function displayTitle(listing) {
 }
 
 export default async function AdminActiveListingsPage({ searchParams }) {
-  const guard = await requireAdminApi("ADMIN");
+  const guard = await requireAdminApi("MODERATOR");
   if (!guard.ok) redirect("/dashboard");
 
   const listings = await prisma.listing.findMany({

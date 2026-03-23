@@ -679,7 +679,7 @@ export default function EditListingForm({ listing }) {
             {imageUrls.length === 0 ? (
               <div className="mt-3 h-44 w-full rounded-xl border bg-slate-50 flex items-center justify-center text-xs text-slate-500">No photos yet</div>
             ) : (
-              <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {imageUrls.map((k, idx) => (
                   <div
                     key={`${k}-${idx}`}
@@ -698,9 +698,9 @@ export default function EditListingForm({ listing }) {
                       </div>
                     ) : null}
 
-                    <div className="p-2 flex items-center justify-between gap-2">
+                    <div className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-[12px] text-slate-600">{idx === 0 ? "Hero" : `Photo ${idx + 1}`}</div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex flex-wrap items-center gap-1 sm:justify-end">
                         <div className="sm:hidden flex items-center gap-1">
                           <button
                             type="button"

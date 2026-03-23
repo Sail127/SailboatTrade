@@ -1065,7 +1065,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
               ) : null}
 
               {photoItems.length ? (
-                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {photoItems.map((item, i) => (
                     <div
                       key={item.id}
@@ -1091,12 +1091,12 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                         </div>
                       ) : null}
 
-                      <div className="p-2 flex items-center justify-between gap-2">
+                      <div className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="text-[12px] text-slate-600">
                           {photoLabel(i)}
                           {item.status !== "uploaded" ? " (Local)" : ""}
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex flex-wrap items-center gap-1 sm:justify-end">
                           <div className="sm:hidden flex items-center gap-1">
                             <button
                               type="button"

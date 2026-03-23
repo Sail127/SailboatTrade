@@ -973,7 +973,7 @@ export default function NewListingForm() {
         void touchDraftUploadKeys(getUploadedDraftKeys(photoItemsRef.current || []));
       } catch {}
     },
-    [buildDraftSnapshot, draftLoaded, draftSessionReady, getUploadedDraftKeys, touchDraftUploads]
+    [buildDraftSnapshot, draftLoaded, draftSessionReady, getUploadedDraftKeys]
   );
 
   const resetAllFields = useCallback(() => {
@@ -1088,7 +1088,7 @@ export default function NewListingForm() {
     setTimeout(() => {
       suppressAutosaveRef.current = false;
     }, 0);
-  }, [deleteDraftUploadsByKeys, getUploadedDraftKeys]);
+  }, [getUploadedDraftKeys]);
 
   const resetFormAndDraft = useCallback(() => {
     clearDraftStorageOnly();
@@ -1204,7 +1204,7 @@ export default function NewListingForm() {
         restoringDraftRef.current = false;
       }, 0);
     }
-  }, [touchDraftUploads]);
+  }, []);
 
   /* -------------------------
      Draft load (auto-restore) on mount

@@ -4,6 +4,8 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { getCountryOptions } from "@/lib/countries";
 
 function resolveImage(listing) {
   const candidates = [listing?.heroImageUrl, listing?.imageUrl, listing?.image].filter(Boolean);
@@ -72,6 +74,22 @@ function usRegionLabel(v) {
   return "";
 }
 
+const COUNTRY_LABEL_BY_CODE = new Map(
+  (getCountryOptions("en") || [])
+    .filter((option) => option?.value)
+    .map((option) => [String(option.value).toUpperCase(), String(option.label || "").trim()])
+);
+
+function countryFooterLabel(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const upper = raw.toUpperCase();
+  if (upper === "US" || upper === "USA") return "USA";
+
+  return COUNTRY_LABEL_BY_CODE.get(upper) || raw;
+}
+
 function Pill({ children }) {
   return (
     <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium leading-none text-slate-700">
@@ -127,6 +145,8 @@ export default function ListingCard({
   sampleStampLines = [],
   samplePlaceholder = false,
 }) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const {
     id,
     title,
@@ -172,12 +192,13 @@ export default function ListingCard({
   const countryUpper = String(locationCountry || "").toUpperCase();
   const regionText = countryUpper === "US" ? usRegionLabel(locationUsRegion) : "";
   const cityState = [locationCity, locationState].map((x) => String(x || "").trim()).filter(Boolean).join(", ");
+  const countryText = countryFooterLabel(locationCountry);
 
   const loc =
     location ||
     (countryUpper === "US"
-      ? [cityState, [regionText, "US"].filter(Boolean).join(", ")].filter(Boolean).join(" · ")
-      : [locationCity, locationState, locationCountry].map((x) => String(x || "").trim()).filter(Boolean).join(", ")) ||
+      ? [cityState, [regionText, "USA"].filter(Boolean).join(", ")].filter(Boolean).join(" · ")
+      : [locationCity, locationState, countryText].map((x) => String(x || "").trim()).filter(Boolean).join(", ")) ||
     null;
 
   const hull = hullLabel(type);
@@ -192,7 +213,20 @@ export default function ListingCard({
     ? "object-contain object-center bg-slate-100"
     : "object-cover object-center transition-transform duration-300 group-hover:scale-105";
   const featuredTitleText = isSamplePlaceholder ? "Sample Feature Listing" : topTitle;
-  const href = hrefOverride || (id ? `/listings/${id}` : "/listings/new");
+  const currentSearch = searchParams?.toString() || "";
+  const currentPath = pathname ? `${pathname}${currentSearch ? `?${currentSearch}` : ""}` : "";
+  const shouldPreserveReturnTo =
+    !hrefOverride &&
+    Boolean(id) &&
+    pathname === "/listings" &&
+    !samplePlaceholder;
+  const href = hrefOverride || (
+    id
+      ? shouldPreserveReturnTo
+        ? `/listings/${id}?returnTo=${encodeURIComponent(currentPath)}`
+        : `/listings/${id}`
+      : "/listings/new"
+  );
   const cardClass = `
     group block h-full overflow-hidden rounded-2xl
     border

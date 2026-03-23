@@ -62,6 +62,25 @@ function numericText(value, maxLength = 4) {
   return digitsOnly(value).slice(0, maxLength);
 }
 
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getSearchScore(label, query) {
+  const haystack = normalizeSearchText(label);
+  const needle = normalizeSearchText(query);
+  if (!needle) return 0;
+  if (haystack === needle) return 3;
+  if (haystack.startsWith(needle)) return 2;
+  if (haystack.includes(needle)) return 1;
+  return -1;
+}
+
+function parseFiniteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeMultiSelectValues(value, { upper = false } = {}) {
   const arr = Array.isArray(value) ? value : value == null ? [] : [value];
   const out = [];
@@ -265,6 +284,22 @@ function ValuePicker({
   const scrollBoxRef = useRef(null);
   const inputRef = useRef(null);
   const optionRefs = useRef(new Map());
+  const typedQuery = normalizeSearchText(value);
+
+  const filteredOptions = useMemo(() => {
+    if (!typedQuery) return options;
+    return options
+      .map((option, index) => ({
+        option,
+        index,
+        score: getSearchScore(optionLabel(option), typedQuery),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.option);
+  }, [optionLabel, options, typedQuery]);
+
+  const bestMatch = typedQuery ? filteredOptions[0] ?? "" : "";
 
   const centerOnValue = (targetValue) => {
     const key = String(targetValue || "").trim();
@@ -289,6 +324,13 @@ function ValuePicker({
     detailsRef?.current?.removeAttribute?.("open");
   };
 
+  const handleInputKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!bestMatch) return;
+    chooseValue(bestMatch);
+  };
+
   return (
     <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
       <summary
@@ -308,6 +350,7 @@ function ValuePicker({
           pattern="[0-9]*"
           value={value}
           onChange={(e) => onChange(numericText(e.target.value, maxLength))}
+          onKeyDown={handleInputKeyDown}
           placeholder={placeholder}
           className={inputClassName}
           aria-label={`${ariaLabel} value`}
@@ -316,7 +359,7 @@ function ValuePicker({
           <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
             {placeholder}
           </button>
-          {options.map((option) => (
+          {filteredOptions.map((option) => (
             <button
               key={`${ariaLabel}-${option}`}
               type="button"
@@ -325,11 +368,135 @@ function ValuePicker({
                 else optionRefs.current.delete(String(option));
               }}
               onClick={() => chooseValue(option)}
-              className={rowClassName(String(value) === String(option))}
+              className={[
+                rowClassName(String(value) === String(option)),
+                String(bestMatch) === String(option) ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
+              ].join(" ")}
             >
               {optionLabel(option)}
             </button>
           ))}
+          {!filteredOptions.length ? (
+            <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p>
+          ) : null}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function SearchableMultiPicker({
+  detailsRef,
+  values,
+  onToggle,
+  options,
+  placeholder,
+  ariaLabel,
+  summaryText,
+  summaryClassName,
+  panelClassName,
+  inputClassName,
+  rowClassName,
+}) {
+  const [query, setQuery] = useState("");
+  const scrollBoxRef = useRef(null);
+  const inputRef = useRef(null);
+  const optionRefs = useRef(new Map());
+
+  const filteredOptions = useMemo(() => {
+    if (!normalizeSearchText(query)) return options;
+    return options
+      .map((option, index) => ({
+        option,
+        index,
+        score: getSearchScore(option.label, query),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.option);
+  }, [options, query]);
+
+  const bestMatch = normalizeSearchText(query) ? filteredOptions[0] ?? null : null;
+
+  const centerOnValue = (targetValue) => {
+    const key = String(targetValue || "").trim();
+    if (!key) return;
+    const container = scrollBoxRef.current;
+    const node = optionRefs.current.get(key);
+    if (!container || !node) return;
+    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
+    container.scrollTop = Math.max(0, nextTop);
+  };
+
+  const handleToggle = (e) => {
+    if (!e.currentTarget.open) {
+      setQuery("");
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const selectedFirst = options.find((option) =>
+        values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value))
+      );
+      centerOnValue(selectedFirst?.value || bestMatch?.value);
+    });
+  };
+
+  const handleInputKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!bestMatch) return;
+    onToggle(bestMatch.value);
+  };
+
+  return (
+    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+      <summary
+        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+        aria-label={ariaLabel}
+      >
+        <span>{summaryText}</span>
+        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className={panelClassName}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder={`Type to search ${placeholder.toLowerCase()}`}
+          className={inputClassName}
+          aria-label={`${ariaLabel} search`}
+        />
+        <div ref={scrollBoxRef} className="mt-2 max-h-52 overflow-y-auto space-y-1">
+          {filteredOptions.map((option) => {
+            const isActive = values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value));
+            const isHighlighted = bestMatch?.value === option.value;
+
+            return (
+              <button
+                key={`${ariaLabel}-${option.value}`}
+                type="button"
+                ref={(node) => {
+                  if (node) optionRefs.current.set(String(option.value), node);
+                  else optionRefs.current.delete(String(option.value));
+                }}
+                onClick={() => onToggle(option.value)}
+                aria-pressed={isActive}
+                className={[
+                  rowClassName(isActive),
+                  isHighlighted ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
         </div>
       </div>
     </details>
@@ -405,6 +572,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
   const countryOptionsNoBlank = useMemo(() => countryOptions.filter((c) => c?.value), [countryOptions]);
+  const builderOptions = useMemo(
+    () => [...popularBuilders, ...otherBuilders, "Other"].map((value) => ({ value, label: value })),
+    [otherBuilders, popularBuilders],
+  );
   const countryLabelMap = useMemo(
     () => new Map(countryOptionsNoBlank.map((option) => [String(option.value).toUpperCase(), option.label])),
     [countryOptionsNoBlank],
@@ -529,6 +700,30 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     setMobileDrawerOpen(false);
     setDesktopHullMenuOpen(false);
   }, [pathname, searchParams]);
+
+  useEffect(() => {
+    const min = parseFiniteNumber(yearMin);
+    const max = parseFiniteNumber(yearMax);
+    if (min == null || max == null || min <= max) return;
+    setYearMin(String(max));
+    setYearMax(String(min));
+  }, [yearMin, yearMax]);
+
+  useEffect(() => {
+    const min = parseFiniteNumber(priceMin);
+    const max = parseFiniteNumber(priceMax);
+    if (min == null || max == null || min <= max) return;
+    setPriceMin(String(max));
+    setPriceMax(String(min));
+  }, [priceMin, priceMax]);
+
+  useEffect(() => {
+    const min = parseFiniteNumber(loaMin);
+    const max = parseFiniteNumber(loaMax);
+    if (min == null || max == null || min <= max) return;
+    setLoaMin(String(max));
+    setLoaMax(String(min));
+  }, [loaMin, loaMax]);
 
   const shell = "w-full rounded-2xl bg-[#0a2230] px-4 pb-3 pt-1 shadow-lg ring-1 ring-white/15";
 
@@ -721,56 +916,19 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>BUILDER</label>
-                <details className="group" ref={mobileBuilderDetailsRef}>
-                  <summary
-                    className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                  >
-                      <span>{builderSummary}</span>
-                    <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                      ▼
-                    </span>
-                  </summary>
-                  <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2">
-                    <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
-                    <div className="space-y-1">
-                      {popularBuilders.map((b) => (
-                        <button
-                          key={`mobile-builder-pop-${b}`}
-                          type="button"
-                          onClick={() => handleBuilderToggle(b)}
-                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
-                    <div className="space-y-1">
-                      {otherBuilders.map((b) => (
-                        <button
-                          key={`mobile-builder-az-${b}`}
-                          type="button"
-                          onClick={() => handleBuilderToggle(b)}
-                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-2 border-t border-slate-200 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => handleBuilderToggle("Other")}
-                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
-                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
-                      >
-                        Other
-                      </button>
-                    </div>
-                  </div>
-                </details>
+                <SearchableMultiPicker
+                  detailsRef={mobileBuilderDetailsRef}
+                  values={builder}
+                  onToggle={handleBuilderToggle}
+                  options={builderOptions}
+                  placeholder="builders"
+                  ariaLabel="Builder"
+                  summaryText={builderSummary}
+                  summaryClassName={`${select} ${selectTextClass(builder)}`}
+                  panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2"
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                />
               </div>
 
               <div className={mobileDrawerSection}>
@@ -876,31 +1034,22 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 <label className={mobileDrawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
 
                 <div className="grid grid-cols-1 gap-2">
-                  <details className="group" ref={mobileCountryDetailsRef}>
-                    <summary
-                      className={`${select} list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                    >
-                      <span>{countrySummary}</span>
-                      <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                        ▼
-                      </span>
-                    </summary>
-                    <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1">
-                      {countryOptionsNoBlank.map((c) => (
-                        <button
-                          key={`mobile-home-country-${c.value}`}
-                          type="button"
-                          onClick={() => handleCountryToggle(c.value)}
-                          aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
-                          className={pickerRowClass(
-                            country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
-                          )}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                  </details>
+                  <SearchableMultiPicker
+                    detailsRef={mobileCountryDetailsRef}
+                    values={country}
+                    onToggle={handleCountryToggle}
+                    options={countryOptionsNoBlank.map((option) => ({
+                      value: String(option.value).toUpperCase(),
+                      label: option.label,
+                    }))}
+                    placeholder="countries"
+                    ariaLabel="Country"
+                    summaryText={countrySummary}
+                    summaryClassName={`${select} ${selectTextClass(country)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2"
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                  />
 
                   {isUSA ? (
                     <select
@@ -1057,57 +1206,19 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 </button>
               </div>
               <label className={label}>Builder</label>
-              <details className="group relative mt-2" ref={desktopBuilderDetailsRef}>
-                <summary
-                  className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                  aria-label="Builder"
-                >
-                  <span>{builderSummary}</span>
-                  <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                    ▼
-                  </span>
-                </summary>
-                <div className="absolute left-0 right-0 top-full z-[90] mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 shadow-xl">
-                  <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
-                  <div className="space-y-1">
-                    {popularBuilders.map((b) => (
-                      <button
-                        key={`desktop-builder-pop-${b}`}
-                        type="button"
-                        onClick={() => handleBuilderToggle(b)}
-                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                      >
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
-                  <div className="space-y-1">
-                    {otherBuilders.map((b) => (
-                      <button
-                        key={`desktop-builder-az-${b}`}
-                        type="button"
-                        onClick={() => handleBuilderToggle(b)}
-                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                      >
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-2 border-t border-slate-200 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => handleBuilderToggle("Other")}
-                      aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
-                      className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
-                    >
-                      Other
-                    </button>
-                  </div>
-                </div>
-              </details>
+              <SearchableMultiPicker
+                detailsRef={desktopBuilderDetailsRef}
+                values={builder}
+                onToggle={handleBuilderToggle}
+                options={builderOptions}
+                placeholder="builders"
+                ariaLabel="Builder"
+                summaryText={builderSummary}
+                summaryClassName={`${select} mt-2 ${selectTextClass(builder)}`}
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+              />
             </div>
           </div>
 
@@ -1219,31 +1330,22 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <div className="min-w-0">
               <label className={label}>Country</label>
               <div className="mt-2">
-                <details className="group relative" ref={desktopCountryDetailsRef}>
-                  <summary
-                    className={`${select} w-full list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                  >
-                    <span>{countrySummary}</span>
-                    <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                      ▼
-                    </span>
-                  </summary>
-                  <div className="absolute left-0 right-0 top-full z-[90] mt-2 max-h-56 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1 shadow-xl">
-                    {countryOptionsNoBlank.map((c) => (
-                      <button
-                        key={`desktop-home-country-${c.value}`}
-                        type="button"
-                        onClick={() => handleCountryToggle(c.value)}
-                        aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
-                        className={pickerRowClass(
-                          country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
-                        )}
-                      >
-                        {c.label}
-                      </button>
-                    ))}
-                  </div>
-                </details>
+                <SearchableMultiPicker
+                  detailsRef={desktopCountryDetailsRef}
+                  values={country}
+                  onToggle={handleCountryToggle}
+                  options={countryOptionsNoBlank.map((option) => ({
+                    value: String(option.value).toUpperCase(),
+                    label: option.label,
+                  }))}
+                  placeholder="countries"
+                  ariaLabel="Country"
+                  summaryText={countrySummary}
+                  summaryClassName={`${select} w-full ${selectTextClass(country)}`}
+                  panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                />
               </div>
             </div>
 

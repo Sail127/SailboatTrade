@@ -82,6 +82,38 @@ function numericText(value, maxLength = 4) {
   return digitsOnly(value).slice(0, maxLength);
 }
 
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getSearchScore(label, query) {
+  const haystack = normalizeSearchText(label);
+  const needle = normalizeSearchText(query);
+  if (!needle) return 0;
+  if (haystack === needle) return 3;
+  if (haystack.startsWith(needle)) return 2;
+  if (haystack.includes(needle)) return 1;
+  return -1;
+}
+
+function parseFiniteNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function truncateWithEllipsis(value, maxLength = 18) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function formatSelectionSummary(values, { fallback, maxLength = 18 } = {}) {
+  const list = Array.isArray(values) ? values.filter(Boolean) : [];
+  if (!list.length) return fallback;
+  return `${list.length} (${truncateWithEllipsis(list.join(", "), maxLength)})`;
+}
+
 function normalizeMultiSelectValues(value, { upper = false } = {}) {
   const arr = Array.isArray(value) ? value : value == null ? [] : [value];
   const out = [];
@@ -242,6 +274,22 @@ function ValuePicker({
   const scrollBoxRef = useRef(null);
   const inputRef = useRef(null);
   const optionRefs = useRef(new Map());
+  const typedQuery = normalizeSearchText(value);
+
+  const filteredOptions = useMemo(() => {
+    if (!typedQuery) return options;
+    return options
+      .map((option, index) => ({
+        option,
+        index,
+        score: getSearchScore(optionLabel(option), typedQuery),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.option);
+  }, [optionLabel, options, typedQuery]);
+
+  const bestMatch = typedQuery ? filteredOptions[0] ?? "" : "";
 
   const centerOnValue = (targetValue) => {
     const key = String(targetValue || "").trim();
@@ -266,6 +314,13 @@ function ValuePicker({
     detailsRef?.current?.removeAttribute?.("open");
   };
 
+  const handleInputKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!bestMatch) return;
+    chooseValue(bestMatch);
+  };
+
   return (
     <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
       <summary
@@ -285,6 +340,7 @@ function ValuePicker({
           pattern="[0-9]*"
           value={value}
           onChange={(e) => onChange(numericText(e.target.value, maxLength))}
+          onKeyDown={handleInputKeyDown}
           placeholder={placeholder}
           className={inputClassName}
           aria-label={`${ariaLabel} value`}
@@ -293,7 +349,7 @@ function ValuePicker({
           <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
             {placeholder}
           </button>
-          {options.map((option) => (
+          {filteredOptions.map((option) => (
             <button
               key={`${ariaLabel}-${option}`}
               type="button"
@@ -302,11 +358,133 @@ function ValuePicker({
                 else optionRefs.current.delete(String(option));
               }}
               onClick={() => chooseValue(option)}
-              className={rowClassName(String(value) === String(option))}
+              className={[
+                rowClassName(String(value) === String(option)),
+                String(bestMatch) === String(option) ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
+              ].join(" ")}
             >
               {optionLabel(option)}
             </button>
           ))}
+          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function SearchableMultiPicker({
+  detailsRef,
+  values,
+  onToggle,
+  options,
+  placeholder,
+  ariaLabel,
+  summaryText,
+  summaryClassName,
+  panelClassName,
+  inputClassName,
+  rowClassName,
+}) {
+  const [query, setQuery] = useState("");
+  const scrollBoxRef = useRef(null);
+  const inputRef = useRef(null);
+  const optionRefs = useRef(new Map());
+
+  const filteredOptions = useMemo(() => {
+    if (!normalizeSearchText(query)) return options;
+    return options
+      .map((option, index) => ({
+        option,
+        index,
+        score: getSearchScore(option.label, query),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.option);
+  }, [options, query]);
+
+  const bestMatch = normalizeSearchText(query) ? filteredOptions[0] ?? null : null;
+
+  const centerOnValue = (targetValue) => {
+    const key = String(targetValue || "").trim();
+    if (!key) return;
+    const container = scrollBoxRef.current;
+    const node = optionRefs.current.get(key);
+    if (!container || !node) return;
+    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
+    container.scrollTop = Math.max(0, nextTop);
+  };
+
+  const handleToggle = (e) => {
+    if (!e.currentTarget.open) {
+      setQuery("");
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      const selectedFirst = options.find((option) =>
+        values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value))
+      );
+      centerOnValue(selectedFirst?.value || bestMatch?.value);
+    });
+  };
+
+  const handleInputKeyDown = (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!bestMatch) return;
+    onToggle(bestMatch.value);
+  };
+
+  return (
+    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+      <summary
+        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+        aria-label={ariaLabel}
+      >
+        <span>{summaryText}</span>
+        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
+          ▼
+        </span>
+      </summary>
+      <div className={panelClassName}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleInputKeyDown}
+          placeholder={`Type to search ${placeholder.toLowerCase()}`}
+          className={inputClassName}
+          aria-label={`${ariaLabel} search`}
+        />
+        <div ref={scrollBoxRef} className="mt-2 max-h-52 overflow-y-auto space-y-1">
+          {filteredOptions.map((option) => {
+            const isActive = values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value));
+            const isHighlighted = bestMatch?.value === option.value;
+
+            return (
+              <button
+                key={`${ariaLabel}-${option.value}`}
+                type="button"
+                ref={(node) => {
+                  if (node) optionRefs.current.set(String(option.value), node);
+                  else optionRefs.current.delete(String(option.value));
+                }}
+                onClick={() => onToggle(option.value)}
+                aria-pressed={isActive}
+                className={[
+                  rowClassName(isActive),
+                  isHighlighted ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
         </div>
       </div>
     </details>
@@ -391,10 +569,20 @@ export default function ListingsFilterSidebar({
   const readyRef = useRef(false);
   const syncingRef = useRef(false);
   const applyTimerRef = useRef(null);
+  const mobileBuilderDetailsRef = useRef(null);
+  const mobileCountryDetailsRef = useRef(null);
+  const mobileYearMinDetailsRef = useRef(null);
+  const mobileYearMaxDetailsRef = useRef(null);
   const mobileLoaMinDetailsRef = useRef(null);
   const mobileLoaMaxDetailsRef = useRef(null);
+  const desktopBuilderDetailsRef = useRef(null);
+  const desktopCountryDetailsRef = useRef(null);
+  const desktopYearMinDetailsRef = useRef(null);
+  const desktopYearMaxDetailsRef = useRef(null);
   const desktopLoaMinDetailsRef = useRef(null);
   const desktopLoaMaxDetailsRef = useRef(null);
+  const yearMinAnchorValue = useMemo(() => String(new Date().getFullYear() - 20), []);
+  const yearMaxAnchorValue = useMemo(() => String(new Date().getFullYear()), []);
 
   useEffect(() => {
     syncingRef.current = true;
@@ -436,9 +624,37 @@ export default function ListingsFilterSidebar({
     setSavedSearches(Array.isArray(initialSavedSearches) ? initialSavedSearches : []);
   }, [initialSavedSearches]);
 
+  useEffect(() => {
+    const min = parseFiniteNumber(yearMin);
+    const max = parseFiniteNumber(yearMax);
+    if (min == null || max == null || min <= max) return;
+    setYearMin(String(max));
+    setYearMax(String(min));
+  }, [yearMin, yearMax]);
+
+  useEffect(() => {
+    const min = parseFiniteNumber(priceMin);
+    const max = parseFiniteNumber(priceMax);
+    if (min == null || max == null || min <= max) return;
+    setPriceMin(String(max));
+    setPriceMax(String(min));
+  }, [priceMin, priceMax]);
+
+  useEffect(() => {
+    const min = parseFiniteNumber(loaMin);
+    const max = parseFiniteNumber(loaMax);
+    if (min == null || max == null || min <= max) return;
+    setLoaMin(String(max));
+    setLoaMax(String(min));
+  }, [loaMin, loaMax]);
+
   const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);
   const countryOptionsNoBlank = useMemo(() => countryOptions.filter((c) => c?.value), [countryOptions]);
+  const builderOptions = useMemo(
+    () => [...popularBuilders, ...otherBuilders, "Other"].map((value) => ({ value, label: value })),
+    [otherBuilders, popularBuilders],
+  );
   const countryLabelByCode = useMemo(() => {
     const map = new Map();
     for (const c of countryOptions) {
@@ -447,6 +663,18 @@ export default function ListingsFilterSidebar({
     }
     return map;
   }, [countryOptions]);
+  const builderSummary = useMemo(
+    () => formatSelectionSummary(builder, { fallback: "Select builders" }),
+    [builder],
+  );
+  const countrySummary = useMemo(
+    () =>
+      formatSelectionSummary(
+        country.map((code) => countryLabelByCode.get(String(code).toUpperCase()) || code),
+        { fallback: "Select countries" },
+      ),
+    [country, countryLabelByCode],
+  );
 
   const activeFilterPills = useMemo(() => {
     const items = [];
@@ -712,8 +940,16 @@ export default function ListingsFilterSidebar({
     if (typeof document === "undefined") return;
 
     const detailRefs = [
+      mobileBuilderDetailsRef,
+      mobileCountryDetailsRef,
+      mobileYearMinDetailsRef,
+      mobileYearMaxDetailsRef,
       mobileLoaMinDetailsRef,
       mobileLoaMaxDetailsRef,
+      desktopBuilderDetailsRef,
+      desktopCountryDetailsRef,
+      desktopYearMinDetailsRef,
+      desktopYearMaxDetailsRef,
       desktopLoaMinDetailsRef,
       desktopLoaMaxDetailsRef,
     ];
@@ -907,29 +1143,44 @@ export default function ListingsFilterSidebar({
               )}
             </div>
 
-            <div className="mt-4 space-y-3 pb-24">
-              <div className={drawerSection}>
-                <label className={drawerLabel}>HULL TYPE</label>
-                <div className="flex flex-wrap gap-2">
-                  {!showHullPicker ? (
-                    <HullButton
-                      active={true}
-                      onClick={toggleHullPicker}
-                      label={selectedHull.label}
-                      imgSrc={selectedHull.imgSrc}
-                      isAll={selectedHull.isAll}
-                    />
-                  ) : (
-                    <>
-                      <HullButton active={type === "both"} onClick={() => chooseHull("both")} label="All" isAll />
-                      <HullButton active={type === "monohull"} onClick={() => chooseHull("monohull")} label="Monohull" imgSrc="/images/hulls/monohull.png" />
-                      <HullButton active={type === "catamaran"} onClick={() => chooseHull("catamaran")} label="Catamaran" imgSrc="/images/hulls/catamaran.png" />
-                      <HullButton active={type === "trimaran"} onClick={() => chooseHull("trimaran")} label="Trimaran" imgSrc="/images/hulls/trimaran.png" />
-                    </>
-                  )}
-                </div>
-              </div>
+            <div className="mt-4 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!viewerLoggedIn) {
+                    redirectToLogin();
+                    return;
+                  }
+                  router.push("/dashboard/favorites");
+                }}
+                className="block w-full rounded-md bg-[#f3b23f] px-4 py-[9px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+              >
+                MY FAVORITES
+              </button>
+              <button
+                type="button"
+                onClick={saveSearch}
+                className="block w-full rounded-md bg-[#f3b23f] px-4 py-[9px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+              >
+                SAVE SEARCH
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!viewerLoggedIn) {
+                    redirectToLogin();
+                    return;
+                  }
+                  if (typeof window !== "undefined") window.location.href = emailHref;
+                }}
+                className="block w-full rounded-md bg-[#f3b23f] px-4 py-[9px] text-center text-[12px] font-extrabold tracking-wide text-[#0a2230] hover:bg-[#f9c860]"
+              >
+                EMAIL ALERT
+              </button>
+              {saveMsg ? <div className="text-[12px] font-semibold text-white/85">{saveMsg}</div> : null}
+            </div>
 
+            <div className="mt-4 space-y-3 pb-24">
 	              <div className={drawerSection}>
 	                <label className={drawerLabel}>KEYWORD SEARCH</label>
 	                <input
@@ -979,78 +1230,73 @@ export default function ListingsFilterSidebar({
 	              </div>
 
               <div className={drawerSection}>
+                <label className={drawerLabel}>HULL TYPE</label>
+                <div className="flex flex-wrap gap-2">
+                  {!showHullPicker ? (
+                    <HullButton
+                      active={true}
+                      onClick={toggleHullPicker}
+                      label={selectedHull.label}
+                      imgSrc={selectedHull.imgSrc}
+                      isAll={selectedHull.isAll}
+                    />
+                  ) : (
+                    <>
+                      <HullButton active={type === "both"} onClick={() => chooseHull("both")} label="All" isAll />
+                      <HullButton active={type === "monohull"} onClick={() => chooseHull("monohull")} label="Monohull" imgSrc="/images/hulls/monohull.png" />
+                      <HullButton active={type === "catamaran"} onClick={() => chooseHull("catamaran")} label="Catamaran" imgSrc="/images/hulls/catamaran.png" />
+                      <HullButton active={type === "trimaran"} onClick={() => chooseHull("trimaran")} label="Trimaran" imgSrc="/images/hulls/trimaran.png" />
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className={drawerSection}>
                 <label className={drawerLabel}>BUILDER</label>
-                <details className="group">
-                  <summary
-                    className={`${drawerSelect} list-none cursor-pointer select-none ${drawerSelectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                  >
-                    <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
-                    <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                      ▼
-                    </span>
-                  </summary>
-                  <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2">
-                    <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
-                    <div className="space-y-1">
-                      {popularBuilders.map((b) => (
-                        <button
-                          key={`mobile-builder-pop-${b}`}
-                          type="button"
-                          onClick={() => handleBuilderToggle(b)}
-                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
-                    <div className="space-y-1">
-                      {otherBuilders.map((b) => (
-                        <button
-                          key={`mobile-builder-az-${b}`}
-                          type="button"
-                          onClick={() => handleBuilderToggle(b)}
-                          aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                          className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-2 border-t border-slate-200 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => handleBuilderToggle("Other")}
-                        aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
-                        className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
-                      >
-                        Other
-                      </button>
-                    </div>
-                  </div>
-                </details>
+                <SearchableMultiPicker
+                  detailsRef={mobileBuilderDetailsRef}
+                  values={builder}
+                  onToggle={handleBuilderToggle}
+                  options={builderOptions}
+                  placeholder="builders"
+                  ariaLabel="Builder"
+                  summaryText={builderSummary}
+                  summaryClassName={`${drawerSelect} ${drawerSelectTextClass(builder)}`}
+                  panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                  inputClassName={drawerInput}
+                  rowClassName={pickerRowClass}
+                />
               </div>
 
               <div className={drawerSection}>
                 <label className={drawerLabel}>YEAR</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <select className={`${drawerSelect} ${drawerSelectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
-                    <option value="">Min</option>
-                    {yearOptions.map((y) => (
-                      <option key={`mobile-year-min-${y}`} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                  <select className={`${drawerSelect} ${drawerSelectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
-                    <option value="">Max</option>
-                    {yearOptions.map((y) => (
-                      <option key={`mobile-year-max-${y}`} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
+                  <ValuePicker
+                    detailsRef={mobileYearMinDetailsRef}
+                    value={yearMin}
+                    onChange={setYearMin}
+                    options={yearOptions}
+                    placeholder="Min"
+                    ariaLabel="Minimum year"
+                    summaryClassName={`${drawerSelect} ${drawerSelectTextClass(yearMin)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    inputClassName={drawerInput}
+                    rowClassName={pickerRowClass}
+                    anchorValue={yearMinAnchorValue}
+                  />
+                  <ValuePicker
+                    detailsRef={mobileYearMaxDetailsRef}
+                    value={yearMax}
+                    onChange={setYearMax}
+                    options={yearOptions}
+                    placeholder="Max"
+                    ariaLabel="Maximum year"
+                    summaryClassName={`${drawerSelect} ${drawerSelectTextClass(yearMax)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    inputClassName={drawerInput}
+                    rowClassName={pickerRowClass}
+                    anchorValue={yearMaxAnchorValue}
+                  />
                 </div>
               </div>
 
@@ -1122,31 +1368,22 @@ export default function ListingsFilterSidebar({
               <div className={drawerSection}>
                 <label className={drawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
                 <div className="grid grid-cols-1 gap-2">
-                  <details className="group">
-                    <summary
-                      className={`${drawerSelect} list-none cursor-pointer select-none ${drawerSelectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                    >
-                      <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
-                      <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                        ▼
-                      </span>
-                    </summary>
-                    <div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-white/20 bg-white p-2 space-y-1">
-                      {countryOptionsNoBlank.map((c) => (
-                        <button
-                          key={`mobile-country-${c.value}`}
-                          type="button"
-                          onClick={() => handleCountryToggle(c.value)}
-                          aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
-                          className={pickerRowClass(
-                            country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
-                          )}
-                        >
-                          {c.label}
-                        </button>
-                      ))}
-                    </div>
-                  </details>
+                  <SearchableMultiPicker
+                    detailsRef={mobileCountryDetailsRef}
+                    values={country}
+                    onToggle={handleCountryToggle}
+                    options={countryOptionsNoBlank.map((option) => ({
+                      value: String(option.value).toUpperCase(),
+                      label: option.label,
+                    }))}
+                    placeholder="countries"
+                    ariaLabel="Country"
+                    summaryText={countrySummary}
+                    summaryClassName={`${drawerSelect} ${drawerSelectTextClass(country)}`}
+                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    inputClassName={drawerInput}
+                    rowClassName={pickerRowClass}
+                  />
 
                   {isUSA ? (
                     <select
@@ -1256,48 +1493,6 @@ export default function ListingsFilterSidebar({
         </div>
 
         <div className="mt-4 space-y-3">
-          <div className="space-y-2 border-t border-slate-300 pt-3">
-            <label className="block text-[12px] font-bold tracking-wide text-slate-700">HULL TYPE</label>
-            <div className="flex flex-wrap gap-2">
-              {!showHullPicker ? (
-                <HullButton
-                  active={true}
-                  onClick={toggleHullPicker}
-                  label={selectedHull.label}
-                  imgSrc={selectedHull.imgSrc}
-                  isAll={selectedHull.isAll}
-                />
-              ) : (
-                <>
-                  <HullButton
-                    active={type === "both"}
-                    onClick={() => chooseHull("both")}
-                    label="All"
-                    isAll
-                  />
-                  <HullButton
-                    active={type === "monohull"}
-                    onClick={() => chooseHull("monohull")}
-                    label="Monohull"
-                    imgSrc="/images/hulls/monohull.png"
-                  />
-                  <HullButton
-                    active={type === "catamaran"}
-                    onClick={() => chooseHull("catamaran")}
-                    label="Catamaran"
-                    imgSrc="/images/hulls/catamaran.png"
-                  />
-                  <HullButton
-                    active={type === "trimaran"}
-                    onClick={() => chooseHull("trimaran")}
-                    label="Trimaran"
-                    imgSrc="/images/hulls/trimaran.png"
-                  />
-                </>
-              )}
-            </div>
-          </div>
-
 	          <div className="space-y-2 border-t border-slate-300 pt-3">
 	            <label className="block text-[12px] font-bold tracking-wide text-slate-700">KEYWORD SEARCH</label>
 	            <input
@@ -1347,78 +1542,93 @@ export default function ListingsFilterSidebar({
 	          </div>
 
           <div className="space-y-2 border-t border-slate-300 pt-3">
+            <label className="block text-[12px] font-bold tracking-wide text-slate-700">HULL TYPE</label>
+            <div className="flex flex-wrap gap-2">
+              {!showHullPicker ? (
+                <HullButton
+                  active={true}
+                  onClick={toggleHullPicker}
+                  label={selectedHull.label}
+                  imgSrc={selectedHull.imgSrc}
+                  isAll={selectedHull.isAll}
+                />
+              ) : (
+                <>
+                  <HullButton
+                    active={type === "both"}
+                    onClick={() => chooseHull("both")}
+                    label="All"
+                    isAll
+                  />
+                  <HullButton
+                    active={type === "monohull"}
+                    onClick={() => chooseHull("monohull")}
+                    label="Monohull"
+                    imgSrc="/images/hulls/monohull.png"
+                  />
+                  <HullButton
+                    active={type === "catamaran"}
+                    onClick={() => chooseHull("catamaran")}
+                    label="Catamaran"
+                    imgSrc="/images/hulls/catamaran.png"
+                  />
+                  <HullButton
+                    active={type === "trimaran"}
+                    onClick={() => chooseHull("trimaran")}
+                    label="Trimaran"
+                    imgSrc="/images/hulls/trimaran.png"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-300 pt-3">
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">BUILDER</label>
-            <details className="group">
-              <summary
-                className={`${select} list-none cursor-pointer select-none ${selectTextClass(builder)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-              >
-                <span>{builder.length ? `${builder.length} selected` : "Select builders"}</span>
-                <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                  ▼
-                </span>
-              </summary>
-              <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2">
-                <p className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Popular</p>
-                <div className="space-y-1">
-                  {popularBuilders.map((b) => (
-                    <button
-                      key={`desktop-builder-pop-${b}`}
-                      type="button"
-                      onClick={() => handleBuilderToggle(b)}
-                      aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                      className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
-                <p className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">A-Z</p>
-                <div className="space-y-1">
-                  {otherBuilders.map((b) => (
-                    <button
-                      key={`desktop-builder-az-${b}`}
-                      type="button"
-                      onClick={() => handleBuilderToggle(b)}
-                      aria-pressed={builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase())}
-                      className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === b.toLowerCase()))}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
-                <div className="mt-2 border-t border-slate-200 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handleBuilderToggle("Other")}
-                    aria-pressed={builder.some((v) => String(v || "").toLowerCase() === "other")}
-                    className={pickerRowClass(builder.some((v) => String(v || "").toLowerCase() === "other"))}
-                  >
-                    Other
-                  </button>
-                </div>
-              </div>
-            </details>
+            <SearchableMultiPicker
+              detailsRef={desktopBuilderDetailsRef}
+              values={builder}
+              onToggle={handleBuilderToggle}
+              options={builderOptions}
+              placeholder="builders"
+              ariaLabel="Builder"
+              summaryText={builderSummary}
+              summaryClassName={`${select} ${selectTextClass(builder)}`}
+              panelClassName="mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+              inputClassName={input}
+              rowClassName={pickerRowClass}
+            />
           </div>
 
           <div className="space-y-2 border-t border-slate-300 pt-3">
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">YEAR</label>
             <div className="grid grid-cols-2 gap-2">
-              <select className={`${select} ${selectTextClass(yearMin)}`} value={yearMin} onChange={(e) => setYearMin(e.target.value)} aria-label="Minimum year">
-                <option value="">Min</option>
-                {yearOptions.map((y) => (
-                  <option key={`year-min-${y}`} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-              <select className={`${select} ${selectTextClass(yearMax)}`} value={yearMax} onChange={(e) => setYearMax(e.target.value)} aria-label="Maximum year">
-                <option value="">Max</option>
-                {yearOptions.map((y) => (
-                  <option key={`year-max-${y}`} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
+              <ValuePicker
+                detailsRef={desktopYearMinDetailsRef}
+                value={yearMin}
+                onChange={setYearMin}
+                options={yearOptions}
+                placeholder="Min"
+                ariaLabel="Minimum year"
+                summaryClassName={`${select} ${selectTextClass(yearMin)}`}
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+                anchorValue={yearMinAnchorValue}
+              />
+              <ValuePicker
+                detailsRef={desktopYearMaxDetailsRef}
+                value={yearMax}
+                onChange={setYearMax}
+                options={yearOptions}
+                placeholder="Max"
+                ariaLabel="Maximum year"
+                summaryClassName={`${select} ${selectTextClass(yearMax)}`}
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+                anchorValue={yearMaxAnchorValue}
+              />
             </div>
           </div>
 
@@ -1493,31 +1703,22 @@ export default function ListingsFilterSidebar({
             </label>
 
             <div className="grid grid-cols-1 gap-2">
-              <details className="group">
-                <summary
-                  className={`${select} list-none cursor-pointer select-none ${selectTextClass(country)} flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-                >
-                  <span>{country.length ? `${country.length} selected` : "Select countries"}</span>
-                  <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                    ▼
-                  </span>
-                </summary>
-                <div className="mt-2 max-h-56 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2 space-y-1">
-                  {countryOptionsNoBlank.map((c) => (
-                    <button
-                      key={c.value}
-                      type="button"
-                      onClick={() => handleCountryToggle(c.value)}
-                      aria-pressed={country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())}
-                      className={pickerRowClass(
-                        country.some((v) => String(v || "").toLowerCase() === String(c.value).toLowerCase())
-                      )}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </details>
+              <SearchableMultiPicker
+                detailsRef={desktopCountryDetailsRef}
+                values={country}
+                onToggle={handleCountryToggle}
+                options={countryOptionsNoBlank.map((option) => ({
+                  value: String(option.value).toUpperCase(),
+                  label: option.label,
+                }))}
+                placeholder="countries"
+                ariaLabel="Country"
+                summaryText={countrySummary}
+                summaryClassName={`${select} ${selectTextClass(country)}`}
+                panelClassName="mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                inputClassName={input}
+                rowClassName={pickerRowClass}
+              />
 
               {isUSA ? (
                 <select

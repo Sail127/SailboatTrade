@@ -78,6 +78,7 @@ export default function RowActions({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [soldFormOpen, setSoldFormOpen] = useState(false);
   const [soldOnSailboatTrade, setSoldOnSailboatTrade] = useState("");
   const [soldFeedback, setSoldFeedback] = useState("");
@@ -113,11 +114,6 @@ export default function RowActions({
     if (busy) return;
     setMsg("");
 
-    const ok = window.confirm(
-      "Archive this listing? It will no longer be public. Photos remain for 30 days, then only the hero image is kept."
-    );
-    if (!ok) return;
-
     setBusy(true);
     try {
       const res = await fetch(`/api/listings/${encodeURIComponent(id)}/archive`, {
@@ -125,6 +121,7 @@ export default function RowActions({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not archive.");
+      setArchiveConfirmOpen(false);
       router.refresh();
     } catch (e) {
       setMsg(e?.message || "Could not archive.");
@@ -176,6 +173,7 @@ export default function RowActions({
   async function reportSold() {
     if (busy) return;
     setMsg("");
+    setArchiveConfirmOpen(false);
 
     if (soldOnSailboatTrade !== "yes" && soldOnSailboatTrade !== "no") {
       setMsg("Please tell us whether the boat sold on SailboatTrade.com.");
@@ -212,8 +210,8 @@ export default function RowActions({
           href={editHref}
           className={
             isRejected
-              ? `inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 ${stackPrimaryActions ? "w-full" : ""}`
-              : `inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 ${stackPrimaryActions ? "w-full" : ""}`
+              ? `inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 ${stackPrimaryActions ? "w-full max-w-[210px] self-end" : ""}`
+              : `inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 ${stackPrimaryActions ? "w-full max-w-[210px] self-end" : ""}`
           }
         >
           <EditIcon />
@@ -225,7 +223,7 @@ export default function RowActions({
         <Link
           href={`/checkout/${encodeURIComponent(id)}`}
           className={`inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-[#f3b23f] bg-[#f3b23f] text-[#0a2230] hover:brightness-95 ${
-            stackPrimaryActions ? "w-full" : ""
+            stackPrimaryActions ? "w-full max-w-[210px] self-end" : ""
           }`}
         >
           <UpgradeIcon />
@@ -238,7 +236,7 @@ export default function RowActions({
           <Link
             href={`/checkout/${encodeURIComponent(id)}`}
             className={`inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 ${
-              stackPrimaryActions ? "w-full" : ""
+              stackPrimaryActions ? "w-full max-w-[210px] self-end" : ""
             }`}
           >
             <RenewIcon />
@@ -250,7 +248,7 @@ export default function RowActions({
             onClick={renewFree}
             disabled={busy}
             className={`inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 ${
-              stackPrimaryActions ? "w-full " : ""
+              stackPrimaryActions ? "w-full max-w-[210px] self-end " : ""
             }${
               busy ? "opacity-70 cursor-not-allowed" : ""
             }`}
@@ -266,11 +264,12 @@ export default function RowActions({
           type="button"
           onClick={() => {
             setMsg("");
+            setArchiveConfirmOpen(false);
             setSoldFormOpen((prev) => !prev);
           }}
           disabled={busy}
           className={`inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 ${
-            stackPrimaryActions ? "w-full " : ""
+            stackPrimaryActions ? "w-full max-w-[210px] self-end " : ""
           }${
             busy ? "opacity-70 cursor-not-allowed" : ""
           }`}
@@ -350,11 +349,46 @@ export default function RowActions({
     </div>
   ) : null;
 
+  const archiveConfirm = archiveConfirmOpen && !isArchived ? (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left">
+      <div className="text-sm font-semibold text-[#0a2230]">
+        Did your boat sell? If it did please use the "Boat is SOLD" button.
+      </div>
+      <div className="mt-2 text-[13px] text-slate-700">
+        Do you really want to archive this listing? It will no longer be public. Photos remain for 30 days, then only the hero image is kept.
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setArchiveConfirmOpen(false)}
+          disabled={busy}
+          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-[#0a2230] hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={archive}
+          disabled={busy}
+          className={`inline-flex h-10 items-center justify-center rounded-xl bg-[#0a2230] px-4 text-sm font-semibold text-white hover:bg-[#0f2a3b] ${
+            busy ? "opacity-70 cursor-not-allowed" : ""
+          }`}
+        >
+          {busy ? "Working..." : "Archive it"}
+        </button>
+      </div>
+    </div>
+  ) : null;
+
   const dangerAction = showDangerAction ? (
     !isArchived ? (
       <button
         type="button"
-        onClick={archive}
+        onClick={() => {
+          setMsg("");
+          setSoldFormOpen(false);
+          setArchiveConfirmOpen(true);
+        }}
         disabled={busy}
         className={`text-[12px] font-semibold text-red-600 underline underline-offset-2 hover:text-red-700 ${
           busy ? "opacity-70 cursor-not-allowed" : ""
@@ -393,6 +427,7 @@ export default function RowActions({
           {adminHint}
           {messageBox}
         </div>
+        {archiveConfirm ? <div className="lg:col-span-3">{archiveConfirm}</div> : null}
         {soldForm ? <div className="lg:col-span-3">{soldForm}</div> : null}
       </>
     );
@@ -401,6 +436,7 @@ export default function RowActions({
   return (
     <div className={containerClasses}>
       {primaryButtons}
+      {archiveConfirm}
       {soldForm}
       {showDangerAction ? <div className={dangerClasses}>{dangerAction}</div> : null}
       {adminHint}

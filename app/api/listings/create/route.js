@@ -2,6 +2,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import {
+  normalizeBuilderName,
+  normalizeBusinessName,
+  normalizeCityName,
+  normalizeListingTitle,
+  normalizeModelName,
+  normalizePersonName,
+  normalizeStateName,
+} from "@/lib/textFormat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +34,11 @@ const isCurrency = (v) => ALLOWED_CURRENCIES.includes(String(v || "").toUpperCas
 const toStringOrNull = (v) => {
   const s = String(v ?? "").trim();
   return s ? s : null;
+};
+
+const normalizeTextOrNull = (value, formatter) => {
+  const next = toStringOrNull(value);
+  return next ? formatter(next) : null;
 };
 
 const toNumberOrNull = (v) => {
@@ -188,20 +202,20 @@ export async function POST(req) {
       data: {
         ownerId,
 
-        title: toStringOrNull(body.title),
+        title: normalizeTextOrNull(body.title, normalizeListingTitle),
         description: toStringOrNull(body.description),
 
         locationCountry: toStringOrNull(body.locationCountry),
-        locationCity: toStringOrNull(body.locationCity),
-        locationState: toStringOrNull(body.locationState),
+        locationCity: normalizeTextOrNull(body.locationCity, normalizeCityName),
+        locationState: normalizeTextOrNull(body.locationState, normalizeStateName),
         locationUsRegion: toStringOrNull(body.locationUsRegion),
 
         price: toIntOrNull(body.price),
         currency,
 
         year: toIntOrNull(body.year),
-        builder: toStringOrNull(body.builder),
-        model: toStringOrNull(body.model),
+        builder: normalizeTextOrNull(body.builder, normalizeBuilderName),
+        model: normalizeTextOrNull(body.model, normalizeModelName),
         boatCondition: normalizeBoatCondition(body.boatCondition),
 
         cabins: toIntOrNull(body.cabins),
@@ -249,11 +263,12 @@ export async function POST(req) {
         additionalInfo: toStringOrNull(body.additionalInfo),
 
         sellerRole,
-        listingContactName: toStringOrNull(body.listingContactName),
+        listingContactName: normalizeTextOrNull(body.listingContactName, normalizePersonName),
         contactEmail: toStringOrNull(body.contactEmail),
         contactPhone: toStringOrNull(body.contactPhone),
 
-        brokerageName: sellerRole === "BROKER" ? toStringOrNull(body.brokerageName) : null,
+        brokerageName:
+          sellerRole === "BROKER" ? normalizeTextOrNull(body.brokerageName, normalizeBusinessName) : null,
         brokerageAddress: sellerRole === "BROKER" ? toStringOrNull(body.brokerageAddress) : null,
         brokerHeroImageUrl,
 

@@ -32,11 +32,11 @@ export default function SortSelect() {
   }
 
   const labelClass =
-    "block text-[11px] font-semibold tracking-wide text-[#0a2230]/70 mb-1";
+    "mb-1 block text-[11px] font-semibold tracking-wide text-[#0a2230]/70";
 
   const selectClass =
-    "h-9 w-[260px] rounded-full border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
-    "shadow-sm outline-none focus:ring-2 focus:ring-[#c8a44d]/40";
+    "h-9 w-[260px] rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
+    "outline-none focus:ring-2 focus:ring-[#c8a44d]/35";
 
   return (
     <div className="w-[260px]">

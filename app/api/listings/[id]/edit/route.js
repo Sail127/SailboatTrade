@@ -3,6 +3,15 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
 import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+import {
+  normalizeBuilderName,
+  normalizeBusinessName,
+  normalizeCityName,
+  normalizeListingTitle,
+  normalizeModelName,
+  normalizePersonName,
+  normalizeStateName,
+} from "@/lib/textFormat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +23,10 @@ function cleanString(v) {
   if (v == null) return null;
   const s = String(v).trim();
   return s ? s : null;
+}
+function normalizeString(v, formatter) {
+  const s = cleanString(v);
+  return s ? formatter(s) : null;
 }
 function cleanInt(v) {
   if (v == null) return null;
@@ -232,20 +245,20 @@ export async function PATCH(req, { params }) {
     }
 
     const data = {
-      title: cleanString(body.title),
+      title: normalizeString(body.title, normalizeListingTitle),
       description: cleanString(body.description),
 
       locationCountry: cleanString(body.locationCountry),
-      locationCity: cleanString(body.locationCity),
-      locationState: cleanString(body.locationState),
+      locationCity: normalizeString(body.locationCity, normalizeCityName),
+      locationState: normalizeString(body.locationState, normalizeStateName),
       locationUsRegion: cleanString(body.locationUsRegion),
 
       price: cleanInt(body.price),
       currency: cleanString(body.currency),
 
       year: cleanInt(body.year),
-      builder: cleanString(body.builder),
-      model: cleanString(body.model),
+      builder: normalizeString(body.builder, normalizeBuilderName),
+      model: normalizeString(body.model, normalizeModelName),
       boatCondition: cleanString(body.boatCondition),
 
       cabins: cleanInt(body.cabins),
@@ -294,11 +307,11 @@ export async function PATCH(req, { params }) {
       additionalInfo: cleanString(body.additionalInfo),
 
       sellerRole: cleanString(body.sellerRole),
-      listingContactName: cleanString(body.listingContactName),
+      listingContactName: normalizeString(body.listingContactName, normalizePersonName),
       contactEmail: cleanString(body.contactEmail),
       contactPhone: cleanString(body.contactPhone),
 
-      brokerageName: cleanString(body.brokerageName),
+      brokerageName: normalizeString(body.brokerageName, normalizeBusinessName),
       brokerageAddress: cleanString(body.brokerageAddress),
       brokerHeroImageUrl: cleanString(body.brokerHeroImageUrl),
     };

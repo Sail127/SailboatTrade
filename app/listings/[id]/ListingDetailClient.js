@@ -1179,6 +1179,8 @@ export default function ListingDetailClient({
   const previewToken = String(
     forcedPreviewToken || (sp?.get("token") || "")
   ).trim();
+  const returnTo = String(sp?.get("returnTo") || "").trim();
+  const safeReturnTo = returnTo.startsWith("/listings") ? returnTo : "/listings";
 
   const isBroker = String(listing?.sellerRole || "").toUpperCase() === "BROKER";
   const meta = statusMeta(listing?.status);
@@ -2173,6 +2175,16 @@ export default function ListingDetailClient({
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left: Title + gallery + location + price */}
           <div className="lg:col-span-8 space-y-3">
+            <a
+              href={safeReturnTo}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
+            >
+              <span aria-hidden="true" className="text-base leading-none">
+                ←
+              </span>
+              Return to Search
+            </a>
+
             <h1 className={titleClass}>{titleLine}</h1>
 
             <Gallery keys={galleryKeys} token={previewToken} title={titleLine} />

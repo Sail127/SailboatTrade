@@ -1,6 +1,12 @@
 // app/api/listings/[id]/route.js
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import {
+  normalizeCityName,
+  normalizePersonName,
+  normalizeStateName,
+  normalizeListingTitle,
+} from "@/lib/textFormat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +27,11 @@ function toStr(v, maxLen = 500) {
   if (typeof v !== "string") return "";
   const s = v.trim();
   return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+function normalizeText(v, maxLen, formatter) {
+  const s = toStr(v, maxLen);
+  return s ? formatter(s) : null;
 }
 
 function toInt(v, { min = 0, max = 2_000_000_000 } = {}) {
@@ -163,7 +174,7 @@ export async function PUT(req, { params }) {
 
   // --------- Read incoming fields safely (partial update friendly) ----------
   const nextTitle = has(body, "title")
-    ? toStr(body.title, 120) || null
+    ? normalizeText(body.title, 120, normalizeListingTitle)
     : (listing.title ?? null);
   const nextDescription = has(body, "description")
     ? toStr(body.description, 12_000) || null
@@ -183,17 +194,17 @@ export async function PUT(req, { params }) {
     ? toStr(body.locationCountry, 60) || null
     : (listing.locationCountry ?? null);
   const nextLocationCity = has(body, "locationCity")
-    ? toStr(body.locationCity, 60) || null
+    ? normalizeText(body.locationCity, 60, normalizeCityName)
     : (listing.locationCity ?? null);
   const nextLocationState = has(body, "locationState")
-    ? toStr(body.locationState, 60) || null
+    ? normalizeText(body.locationState, 60, normalizeStateName)
     : (listing.locationState ?? null);
   const nextLocationUsRegion = has(body, "locationUsRegion")
     ? toStr(body.locationUsRegion, 60) || null
     : (listing.locationUsRegion ?? null);
 
   const nextListingContactName = has(body, "listingContactName")
-    ? toStr(body.listingContactName, 80) || null
+    ? normalizeText(body.listingContactName, 80, normalizePersonName)
     : (listing.listingContactName ?? null);
 
   const nextContactEmail = has(body, "contactEmail")

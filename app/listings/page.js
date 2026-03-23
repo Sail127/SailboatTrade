@@ -43,6 +43,11 @@ function toFloat(v, fb = null) {
   return Number.isFinite(n) ? n : fb;
 }
 
+function normalizeNumericRange(minValue, maxValue) {
+  if (minValue == null || maxValue == null) return [minValue, maxValue];
+  return minValue <= maxValue ? [minValue, maxValue] : [maxValue, minValue];
+}
+
 const COUNTRY_OPTIONS = (getCountryOptions("en") || []).filter((o) => o?.value);
 const COUNTRY_BY_CODE = new Map(COUNTRY_OPTIONS.map((o) => [String(o.value || "").toUpperCase(), o]));
 const COUNTRY_BY_LABEL = new Map(COUNTRY_OPTIONS.map((o) => [String(o.label || "").toLowerCase(), o]));
@@ -207,14 +212,20 @@ export default async function Browse({ searchParams }) {
   const usRegionParam = searchParams?.usRegion ?? searchParams?.locationUsRegion ?? "";
   const usRegion = hasUsCountry ? parseUsRegion(usRegionParam) : "";
 
-  const yearMin = toInt(searchParams?.yearMin);
-  const yearMax = toInt(searchParams?.yearMax);
-  const priceMin = toInt(searchParams?.priceMin);
-  const priceMax = toInt(searchParams?.priceMax);
+  const [yearMin, yearMax] = normalizeNumericRange(
+    toInt(searchParams?.yearMin),
+    toInt(searchParams?.yearMax),
+  );
+  const [priceMin, priceMax] = normalizeNumericRange(
+    toInt(searchParams?.priceMin),
+    toInt(searchParams?.priceMax),
+  );
 
   const loaUnit = (searchParams?.loaUnit || "ft").toString().toLowerCase();
-  const loaMinRaw = toFloat(searchParams?.loaMin);
-  const loaMaxRaw = toFloat(searchParams?.loaMax);
+  const [loaMinRaw, loaMaxRaw] = normalizeNumericRange(
+    toFloat(searchParams?.loaMin),
+    toFloat(searchParams?.loaMax),
+  );
 
   // DB stores LOA in feet
   const loaMin = loaMinRaw == null ? null : loaUnit === "m" ? loaMinRaw / M_PER_FT : loaMinRaw;
@@ -388,12 +399,12 @@ export default async function Browse({ searchParams }) {
     builder: builders,
     country: selectedCountryCodes,
     usRegion,
-    yearMin: searchParams?.yearMin || "",
-    yearMax: searchParams?.yearMax || "",
-    priceMin: searchParams?.priceMin || "",
-    priceMax: searchParams?.priceMax || "",
-    loaMin: searchParams?.loaMin || "",
-    loaMax: searchParams?.loaMax || "",
+    yearMin: yearMin == null ? "" : String(yearMin),
+    yearMax: yearMax == null ? "" : String(yearMax),
+    priceMin: priceMin == null ? "" : String(priceMin),
+    priceMax: priceMax == null ? "" : String(priceMax),
+    loaMin: loaMinRaw == null ? "" : String(loaMinRaw),
+    loaMax: loaMaxRaw == null ? "" : String(loaMaxRaw),
     loaUnit,
     sort,
   };

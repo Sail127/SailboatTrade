@@ -2,6 +2,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import {
+  normalizeBuilderName,
+  normalizeBusinessName,
+  normalizeCityName,
+  normalizeListingTitle,
+  normalizeModelName,
+  normalizePersonName,
+  normalizeStateName,
+} from "@/lib/textFormat";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +113,10 @@ export async function POST(req) {
       const s = toStr(v);
       return s ? s.toUpperCase() : null;
     };
+    const normalizeTextOrNull = (value, formatter) => {
+      const s = toStr(value);
+      return s ? formatter(s) : null;
+    };
 
     const isCurrency = (v) =>
       ["USD", "EUR", "GBP", "AUD", "NZD", "JPY"].includes(String(v || "").toUpperCase());
@@ -199,8 +212,8 @@ export async function POST(req) {
     const description = toStr(body.description);
 
     const year = toInt(body.year);
-    const builder = isNonEmpty(body.builder) ? toStr(body.builder) : null;
-    const model = isNonEmpty(body.model) ? toStr(body.model) : null;
+    const builder = isNonEmpty(body.builder) ? normalizeBuilderName(toStr(body.builder)) : null;
+    const model = isNonEmpty(body.model) ? normalizeModelName(toStr(body.model)) : null;
 
     const boatCondition = normalizeBoatCondition(body.boatCondition);
     const type = normalizeHullType(body.type);
@@ -212,15 +225,15 @@ export async function POST(req) {
     const currency = isCurrency(body.currency) ? String(body.currency).toUpperCase() : "USD";
 
     const locationCountry = normalizeIso2(body.locationCountry);
-    const locationCity = isNonEmpty(body.locationCity) ? toStr(body.locationCity) : null;
+    const locationCity = isNonEmpty(body.locationCity) ? normalizeCityName(toStr(body.locationCity)) : null;
 
     const isUSA = locationCountry === "US";
-    const locationState = isUSA && isNonEmpty(body.locationState) ? toStr(body.locationState) : null;
+    const locationState = isUSA && isNonEmpty(body.locationState) ? normalizeStateName(toStr(body.locationState)) : null;
     const locationUsRegion =
       isUSA && isNonEmpty(body.locationUsRegion) ? upperOrNull(body.locationUsRegion) : null;
 
     const sellerRole = normalizeSellerRole(body.sellerRole);
-    const listingContactName = toStr(body.listingContactName);
+    const listingContactName = normalizePersonName(toStr(body.listingContactName));
     const contactEmail = toStr(body.contactEmail);
 
     const missing = [];
@@ -254,7 +267,7 @@ export async function POST(req) {
 
     // ---------------- optional ----------------
     const title = isNonEmpty(body.title)
-      ? toStr(body.title)
+      ? normalizeListingTitle(toStr(body.title))
       : [year, builder, model].filter(Boolean).join(" ");
 
     const cabins = toInt(body.cabins);
@@ -300,7 +313,9 @@ export async function POST(req) {
     const contactPhone = isNonEmpty(body.contactPhone) ? toStr(body.contactPhone) : null;
 
     const brokerageName =
-      sellerRole === "BROKER" && isNonEmpty(body.brokerageName) ? toStr(body.brokerageName) : null;
+      sellerRole === "BROKER" && isNonEmpty(body.brokerageName)
+        ? normalizeBusinessName(toStr(body.brokerageName))
+        : null;
 
     const brokerageAddress =
       sellerRole === "BROKER" && isNonEmpty(body.brokerageAddress) ? toStr(body.brokerageAddress) : null;

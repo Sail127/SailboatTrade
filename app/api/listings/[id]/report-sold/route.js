@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { notifyAdminListingSoldReport } from "@/lib/adminReviewNotifications";
+import {
+  notifyAdminListingSoldReport,
+  notifyOwnerListingSoldConfirmation,
+} from "@/lib/adminReviewNotifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,10 +102,18 @@ export async function POST(req, { params }) {
     source: "api/listings/report-sold",
   });
 
+  const ownerEmailResult = await notifyOwnerListingSoldConfirmation({
+    req,
+    listingId: listing.id,
+    soldOnSailboatTrade,
+    source: "api/listings/report-sold",
+  });
+
   return NextResponse.json({
     ok: true,
     archived: true,
     emailNotified: Boolean(emailResult?.ok),
+    ownerEmailNotified: Boolean(ownerEmailResult?.ok),
     note: "Thanks for letting us know. Your listing has been moved to archived listings.",
   });
 }

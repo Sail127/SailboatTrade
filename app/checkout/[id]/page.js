@@ -58,6 +58,7 @@ export default async function CheckoutPage({ params, searchParams }) {
       billingProvider: true,
       billingCurrentPeriodEnd: true,
       billingTermMonths: true,
+      billingAutoRenew: true,
     },
   });
 
@@ -191,7 +192,7 @@ export default async function CheckoutPage({ params, searchParams }) {
                         {" "}
                         1, 3, or 6 months
                       </span>{" "}
-                      depending on your selected term.
+                      depending on your selected term, with optional PayPal auto-renew for paid listings.
                     </li>
                     <li>
                       When a listing expires, it moves to archived (not public).
@@ -226,6 +227,7 @@ export default async function CheckoutPage({ params, searchParams }) {
                       : ""
                   }
                   initialTermMonths={listing.billingTermMonths || 1}
+                  initialBillingAutoRenew={Boolean(listing.billingAutoRenew)}
                 />
               </>
             )}

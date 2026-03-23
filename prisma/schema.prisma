@@ -258,6 +258,8 @@ model Listing {
   lastPaidAt                DateTime?
   billingTermMonths         Int?
   billingAutoRenew          Boolean   @default(false)
+  billingSubscriptionId     String?   @unique
+  billingPlanId             String?
 
   // ============================
   // ✅ REVIEW / MODERATION FLOW

@@ -83,6 +83,9 @@ export async function POST(req, { params }) {
       billingTermMonths: termMonths,
       billingCurrentPeriodStart: now,
       billingCurrentPeriodEnd: addMonths(now, termMonths),
+      billingAutoRenew: false,
+      billingSubscriptionId: null,
+      billingPlanId: null,
       lastPaidAt: now,
 
       status: nextStatus,

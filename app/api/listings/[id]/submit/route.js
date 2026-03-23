@@ -111,6 +111,8 @@ export async function POST(req, { params }) {
           featuredHome: false,
           billingStatus: "FREE",
           billingProvider: null,
+          billingSubscriptionId: null,
+          billingPlanId: null,
           billingAddons: [],
           billingMonthlyCents: null,
           billingTermMonths: null,
@@ -119,6 +121,7 @@ export async function POST(req, { params }) {
           cancelAtPeriodEnd: false,
           canceledAt: null,
           lastPaidAt: null,
+          billingAutoRenew: false,
 
           status: "PENDING_REVIEW",
           contentReviewStatus: "PENDING",

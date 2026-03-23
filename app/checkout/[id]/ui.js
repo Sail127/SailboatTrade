@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import PayPalExpandedCheckout from "./PayPalExpandedCheckout";
+import PayPalSubscriptionCheckout from "./PayPalSubscriptionCheckout";
 
 const TERM_OPTIONS = [1, 3, 6];
 const TERM_DISCOUNT = {
@@ -111,12 +112,17 @@ export default function CheckoutUI({
   billingProvider,
   currentPeriodEnd,
   initialTermMonths,
+  initialBillingAutoRenew,
 }) {
   const [photoPlus, setPhotoPlus] = useState(String(initialPhotoPlan || "") === "PHOTO_PLUS_25");
   const [featuredHome, setFeaturedHome] = useState(Boolean(initialFeaturedHome));
   const [termMonths, setTermMonths] = useState(clampTerm(initialTermMonths));
+  const [autoRenew, setAutoRenew] = useState(Boolean(initialBillingAutoRenew));
+  const [autoRenewActive, setAutoRenewActive] = useState(Boolean(initialBillingAutoRenew));
+  const [cancelingAutoRenew, setCancelingAutoRenew] = useState(false);
   const initialPhotoPlusActive = String(initialPhotoPlan || "") === "PHOTO_PLUS_25";
   const initialFeaturedHomeActive = Boolean(initialFeaturedHome);
+  const initialAutoRenewActive = Boolean(initialBillingAutoRenew);
 
   const requirePhotoPlusByPhotos = photoCount > freePhotoLimit;
   const overMax = photoCount > maxPhotos;
@@ -149,6 +155,7 @@ export default function CheckoutUI({
   const hasUpgradeChange =
     photoPlus !== initialPhotoPlusActive || featuredHome !== initialFeaturedHomeActive;
   const paymentDisabled = overMax || (hasActiveBilling && !hasUpgradeChange);
+  const canChooseAutoRenew = needsPaymentUI && !hasActiveBilling;
 
   async function submitFree() {
     setErr("");
@@ -175,6 +182,26 @@ export default function CheckoutUI({
 
   const showSubBox = hasActiveBilling || (billingStatus && billingStatus !== "FREE");
 
+  async function cancelAutoRenew() {
+    if (cancelingAutoRenew) return;
+    setErr("");
+    setCancelingAutoRenew(true);
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(listingId)}/cancel-auto-renew`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || "Could not cancel auto-renew.");
+      }
+      setAutoRenewActive(false);
+    } catch (e) {
+      setErr(e?.message || "Could not cancel auto-renew.");
+    } finally {
+      setCancelingAutoRenew(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {showSubBox ? (
@@ -184,7 +211,23 @@ export default function CheckoutUI({
             Status: <span className="font-semibold">{billingStatus || "FREE"}</span>
             {providerUpper ? <span className="text-slate-500"> • Provider: {providerUpper}</span> : null}
             {currentPeriodEnd ? <span className="text-slate-500"> • Period ends: {new Date(currentPeriodEnd).toLocaleString()}</span> : null}
+            <span className="text-slate-500"> • Auto-renew: {autoRenewActive ? "On" : "Off"}</span>
           </div>
+          {autoRenewActive ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={cancelAutoRenew}
+                disabled={cancelingAutoRenew}
+                className="inline-flex h-9 items-center justify-center rounded-full border border-red-200 bg-red-50 px-4 text-[12px] font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cancelingAutoRenew ? "Stopping…" : "Cancel auto-renew"}
+              </button>
+              <div className="mt-2 text-[12px] text-slate-600">
+                This stops future recurring PayPal charges. Your current paid term remains active through its existing end date.
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -240,7 +283,36 @@ export default function CheckoutUI({
               3 months = 10% off. 6 months = 20% off.
             </div>
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-[12px] text-slate-600">
-              Billing is fixed-term only. Choose 1, 3, or 6 months.
+              {autoRenew
+                ? "Auto-renew charges this same term repeatedly until the customer cancels in PayPal."
+                : "Billing is fixed-term only. Choose 1, 3, or 6 months."}
+            </div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-3 text-[12px] text-slate-700">
+              <div className="font-extrabold text-[#0a2230]">Renewal preference</div>
+              {canChooseAutoRenew ? (
+                <label className="mt-2 flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={autoRenew}
+                    onChange={(e) => setAutoRenew(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0a2230] focus:ring-[#c8a44d]"
+                  />
+                  <span>
+                    <span className="font-semibold">Enable PayPal auto-renew</span>
+                    <span className="block text-slate-600">
+                      Optional for paid listings only. Free listings continue to renew manually.
+                    </span>
+                  </span>
+                </label>
+              ) : (
+                <div className="mt-2 text-slate-600">
+                  {initialAutoRenewActive
+                    ? autoRenewActive
+                      ? "Auto-renew is active for this listing."
+                      : "Auto-renew has been canceled for this listing."
+                    : "Auto-renew can be chosen when starting a new paid term. Active paid terms continue through their current billing cycle."}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -272,7 +344,11 @@ export default function CheckoutUI({
             <div className="pt-1 text-[13px] font-extrabold text-[#0a2230]">
               Total charge today: {formatMoneyFromCents(totalCents)}
             </div>
-            <div className="text-slate-600">Billing stops after the selected term.</div>
+            <div className="text-slate-600">
+              {autoRenew
+                ? `Renews automatically every ${termMonths} month${termMonths === 1 ? "" : "s"} until canceled in PayPal.`
+                : "Billing stops after the selected term."}
+            </div>
           </div>
         </div>
       ) : null}
@@ -285,20 +361,37 @@ export default function CheckoutUI({
         <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
           <div className="text-[13px] font-extrabold text-[#0a2230]">Payment</div>
           <div className="mt-3">
-            <PayPalExpandedCheckout
-              key={`paypal-${listingId}-${photoPlus ? "1" : "0"}-${featuredHome ? "1" : "0"}-${termMonths}`}
-              listingId={listingId}
-              clientId={paypalClientId}
-              photoPlus={photoPlus}
-              featuredHome={featuredHome}
-              termMonths={termMonths}
-              disabled={paymentDisabled}
-              onBusyChange={setBusy}
-              onError={setErr}
-              onSuccess={(data) => {
-                window.location.assign(data?.redirect || `/checkout/${listingId}?success=1`);
-              }}
-            />
+            {autoRenew ? (
+              <PayPalSubscriptionCheckout
+                key={`paypal-sub-${listingId}-${photoPlus ? "1" : "0"}-${featuredHome ? "1" : "0"}-${termMonths}`}
+                listingId={listingId}
+                clientId={paypalClientId}
+                photoPlus={photoPlus}
+                featuredHome={featuredHome}
+                termMonths={termMonths}
+                disabled={paymentDisabled}
+                onBusyChange={setBusy}
+                onError={setErr}
+                onSuccess={(data) => {
+                  window.location.assign(data?.redirect || `/checkout/${listingId}?success=1`);
+                }}
+              />
+            ) : (
+              <PayPalExpandedCheckout
+                key={`paypal-${listingId}-${photoPlus ? "1" : "0"}-${featuredHome ? "1" : "0"}-${termMonths}`}
+                listingId={listingId}
+                clientId={paypalClientId}
+                photoPlus={photoPlus}
+                featuredHome={featuredHome}
+                termMonths={termMonths}
+                disabled={paymentDisabled}
+                onBusyChange={setBusy}
+                onError={setErr}
+                onSuccess={(data) => {
+                  window.location.assign(data?.redirect || `/checkout/${listingId}?success=1`);
+                }}
+              />
+            )}
           </div>
         </div>
       ) : (

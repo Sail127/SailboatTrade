@@ -139,7 +139,9 @@ function billingLabel(listing) {
 
   switch (String(listing.billingStatus || "FREE").toUpperCase()) {
     case "ACTIVE":
-      return "Active";
+      return listing.cancelAtPeriodEnd && listing.billingCurrentPeriodEnd
+        ? `Active (auto-renew off, ends ${fmtDateShort(listing.billingCurrentPeriodEnd)})`
+        : "Active";
     case "PAST_DUE":
       return "Past due";
     case "CANCELED":
@@ -258,6 +260,7 @@ export default async function MyListings() {
       billingStatus: true,
       billingAddons: true,
       billingMonthlyCents: true,
+      billingAutoRenew: true,
       cancelAtPeriodEnd: true,
       billingCurrentPeriodEnd: true,
       billingTermMonths: true,
@@ -394,6 +397,7 @@ export default async function MyListings() {
             canEdit={canEdit}
             showRenew={showRenew}
             renewMode={isPaid ? "PAID" : "FREE"}
+            canCancelAutoRenew={Boolean(l.billingAutoRenew) && !Boolean(l.cancelAtPeriodEnd)}
             showUpgrade={showUpgrade}
             showSoldButton={statusUpper === "PUBLISHED"}
             stackPrimaryActions

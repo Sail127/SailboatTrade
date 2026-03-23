@@ -62,6 +62,7 @@ export default function RowActions({
   canEdit,
   showRenew,
   renewMode, // "FREE" | "PAID"
+  canCancelAutoRenew = false,
   showUpgrade,
   showSoldButton = false,
   stackPrimaryActions = false,
@@ -170,6 +171,24 @@ export default function RowActions({
     }
   }
 
+  async function cancelAutoRenew() {
+    if (busy) return;
+    setMsg("");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(id)}/cancel-auto-renew`, {
+        method: "POST",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not cancel auto-renew.");
+      router.refresh();
+    } catch (e) {
+      setMsg(e?.message || "Could not cancel auto-renew.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reportSold() {
     if (busy) return;
     setMsg("");
@@ -257,6 +276,20 @@ export default function RowActions({
             {busy ? "Working." : "Renew"}
           </button>
         )
+      ) : null}
+
+      {canCancelAutoRenew ? (
+        <button
+          type="button"
+          onClick={cancelAutoRenew}
+          disabled={busy}
+          className={`inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 ${
+            stackPrimaryActions ? "w-full max-w-[210px] self-end " : ""
+          }${busy ? "opacity-70 cursor-not-allowed" : ""}`}
+        >
+          <RenewIcon />
+          {busy ? "Working." : "Stop auto-renew"}
+        </button>
       ) : null}
 
       {showSoldButton && s === "PUBLISHED" ? (

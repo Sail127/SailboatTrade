@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 export default function PhotoUploaderContent({
   items = [],
   maxPhotos = 25,
@@ -20,6 +22,18 @@ export default function PhotoUploaderContent({
   onMove,
   onRemove,
 }) {
+  const [isDragTargetActive, setIsDragTargetActive] = useState(false);
+
+  async function handleDroppedFiles(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragTargetActive(false);
+    if (addButtonDisabled || isBusy) return;
+    const files = event.dataTransfer?.files;
+    if (!files?.length) return;
+    await onFilesSelected?.(files);
+  }
+
   return (
     <div className="space-y-4">
       {limitMessage ? (
@@ -39,21 +53,48 @@ export default function PhotoUploaderContent({
 
       {notice}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <label className={`inline-flex h-10 items-center justify-center rounded-full px-6 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50 transition cursor-pointer ${addButtonDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            disabled={addButtonDisabled}
-            className="hidden"
-            onChange={async (e) => {
-              await onFilesSelected?.(e.target.files);
-              e.target.value = "";
-            }}
-          />
-          {addButtonLabel}
-        </label>
+      <div
+        className={`rounded-2xl border border-dashed px-4 py-4 transition ${
+          isDragTargetActive
+            ? "border-[#c8a44d] bg-amber-50/70"
+            : "border-slate-300 bg-slate-50/60"
+        }`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          if (addButtonDisabled || isBusy) return;
+          if (event.dataTransfer?.types?.includes("Files")) setIsDragTargetActive(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (addButtonDisabled || isBusy) return;
+          event.dataTransfer.dropEffect = "copy";
+          if (!isDragTargetActive) setIsDragTargetActive(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget)) return;
+          setIsDragTargetActive(false);
+        }}
+        onDrop={handleDroppedFiles}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={`inline-flex h-10 items-center justify-center rounded-full px-6 text-[13px] font-semibold border border-slate-300 bg-white text-[#0a2230] hover:bg-slate-50 transition cursor-pointer ${addButtonDisabled ? "opacity-50 cursor-not-allowed" : ""}`}>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={addButtonDisabled}
+              className="hidden"
+              onChange={async (e) => {
+                await onFilesSelected?.(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {addButtonLabel}
+          </label>
+          <div className="text-[12px] text-slate-500">
+            Drag and drop photos here on desktop.
+          </div>
+        </div>
       </div>
 
       <div className="text-[12px] font-semibold text-[#0a2230]">

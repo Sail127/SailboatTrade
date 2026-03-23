@@ -321,10 +321,10 @@ export default async function MyListings() {
         key={l.id}
         className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
       >
-        <div className="grid gap-4 lg:grid-cols-[120px_minmax(0,1fr)_220px]">
-          <div className="h-24 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 lg:w-[120px]">
+        <div className="grid gap-4 md:grid-cols-[108px_minmax(0,1fr)_180px]">
+          <div className="h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 md:w-[108px]">
             {thumbSrc ? (
-              <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-contain bg-slate-100" loading="lazy" />
+              <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-cover bg-slate-100" loading="lazy" />
             ) : (
               <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-slate-500">
                 No photo
@@ -372,6 +372,10 @@ export default async function MyListings() {
                   </span>
                 ) : null}
               </span>
+
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-700">
+                Days on market: {daysOnMarket}
+              </span>
             </div>
 
             <div className="mt-3 grid gap-x-5 gap-y-2 text-[13px] text-slate-600 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -394,9 +398,6 @@ export default async function MyListings() {
                 <span>
                   Updated: <span className="font-semibold text-[#0a2230]">{updatedLabel}</span>
                 </span>
-                <span>
-                  Days on market: <span className="font-semibold text-[#0a2230]">{daysOnMarket}</span>
-                </span>
               </div>
             </div>
           </div>
@@ -411,10 +412,9 @@ export default async function MyListings() {
             canCancelAutoRenew={Boolean(l.billingAutoRenew) && !Boolean(l.cancelAtPeriodEnd)}
             showUpgrade={showUpgrade}
             showSoldButton={statusUpper === "PUBLISHED"}
-            stackPrimaryActions
             gridMode
             daysOnMarket={daysOnMarket}
-            containerClassName="w-full lg:w-[230px]"
+            containerClassName="w-full md:w-[180px]"
             messageClassName="lg:text-left"
           />
         </div>

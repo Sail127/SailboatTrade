@@ -55,6 +55,16 @@ function SoldIcon() {
   );
 }
 
+function MenuIcon() {
+  return (
+    <ActionIcon>
+      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+        <path d="M3 4h10M3 8h10M3 12h10" />
+      </svg>
+    </ActionIcon>
+  );
+}
+
 export default function RowActions({
   id,
   status,
@@ -81,6 +91,7 @@ export default function RowActions({
   const [msg, setMsg] = useState("");
   const [msgTone, setMsgTone] = useState("error");
   const [autoRenewCanceledLocal, setAutoRenewCanceledLocal] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [soldFormOpen, setSoldFormOpen] = useState(false);
   const [soldOnSailboatTrade, setSoldOnSailboatTrade] = useState("");
@@ -234,7 +245,7 @@ export default function RowActions({
   }
 
   const primaryButtons = showPrimaryActions ? (
-    <div className={stackPrimaryActions ? "flex flex-col gap-2" : primaryClasses}>
+    <div className={stackPrimaryActions || gridMode ? "flex flex-col gap-2" : primaryClasses}>
       {showEdit ? (
         <Link
           href={editHref}
@@ -308,6 +319,7 @@ export default function RowActions({
           type="button"
           onClick={() => {
             setMsg("");
+            setActionsOpen(false);
             setArchiveConfirmOpen(false);
             setSoldFormOpen((prev) => !prev);
           }}
@@ -319,7 +331,7 @@ export default function RowActions({
           }`}
         >
           <SoldIcon />
-          Boat is SOLD!!
+          Mark as SOLD!!
         </button>
       ) : null}
     </div>
@@ -430,6 +442,7 @@ export default function RowActions({
         type="button"
         onClick={() => {
           setMsg("");
+          setActionsOpen(false);
           setSoldFormOpen(false);
           setArchiveConfirmOpen(true);
         }}
@@ -465,14 +478,30 @@ export default function RowActions({
   if (gridMode) {
     return (
       <>
-        <div className={["flex flex-col gap-2 lg:col-start-3 lg:row-start-1", containerClassName].filter(Boolean).join(" ")}>
-          {primaryButtons}
-          {dangerAction ? <div className="flex justify-end lg:justify-start">{dangerAction}</div> : null}
+        <div className={["flex flex-col gap-2 md:col-start-3 md:row-start-1", containerClassName].filter(Boolean).join(" ")}>
+          <div className="relative flex justify-end md:justify-start">
+            <button
+              type="button"
+              onClick={() => setActionsOpen((prev) => !prev)}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
+            >
+              <MenuIcon />
+              Actions
+            </button>
+            {actionsOpen ? (
+              <div className="absolute right-0 top-11 z-20 w-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(2,6,23,0.12)] md:left-0 md:right-auto">
+                <div className="flex flex-col gap-2">
+                  {primaryButtons}
+                  {dangerAction}
+                </div>
+              </div>
+            ) : null}
+          </div>
           {adminHint}
           {messageBox}
         </div>
-        {archiveConfirm ? <div className="lg:col-span-3">{archiveConfirm}</div> : null}
-        {soldForm ? <div className="lg:col-span-3">{soldForm}</div> : null}
+        {archiveConfirm ? <div className="md:col-span-3">{archiveConfirm}</div> : null}
+        {soldForm ? <div className="md:col-span-3">{soldForm}</div> : null}
       </>
     );
   }

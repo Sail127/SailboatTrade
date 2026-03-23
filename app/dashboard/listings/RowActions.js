@@ -79,6 +79,8 @@ export default function RowActions({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgTone, setMsgTone] = useState("error");
+  const [autoRenewCanceledLocal, setAutoRenewCanceledLocal] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [soldFormOpen, setSoldFormOpen] = useState(false);
   const [soldOnSailboatTrade, setSoldOnSailboatTrade] = useState("");
@@ -89,6 +91,7 @@ export default function RowActions({
   const isRejected = s === "REJECTED";
 
   const editHref = `/dashboard/listings/${encodeURIComponent(id)}/edit`;
+  const effectiveCanCancelAutoRenew = canCancelAutoRenew && !autoRenewCanceledLocal;
 
   const showEdit = Boolean(canEdit);
   const showAdminReviewHint = s === "PENDING_REVIEW";
@@ -107,7 +110,11 @@ export default function RowActions({
 
   const dangerClasses = ["flex justify-center", dangerRowClassName].filter(Boolean).join(" ");
 
-  const msgClasses = ["text-[11px] text-red-700 sm:text-center", messageClassName]
+  const msgClasses = [
+    "text-[11px] sm:text-center",
+    msgTone === "success" ? "text-emerald-800" : "text-red-700",
+    messageClassName,
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -174,6 +181,7 @@ export default function RowActions({
   async function cancelAutoRenew() {
     if (busy) return;
     setMsg("");
+    setMsgTone("error");
     setBusy(true);
     try {
       const res = await fetch(`/api/listings/${encodeURIComponent(id)}/cancel-auto-renew`, {
@@ -181,8 +189,11 @@ export default function RowActions({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Could not cancel auto-renew.");
-      router.refresh();
+      setMsgTone("success");
+      setMsg("Auto-renew is off. Future PayPal charges have been stopped, and a confirmation email has been sent.");
+      setAutoRenewCanceledLocal(true);
     } catch (e) {
+      setMsgTone("error");
       setMsg(e?.message || "Could not cancel auto-renew.");
     } finally {
       setBusy(false);
@@ -278,7 +289,7 @@ export default function RowActions({
         )
       ) : null}
 
-      {canCancelAutoRenew ? (
+      {effectiveCanCancelAutoRenew ? (
         <button
           type="button"
           onClick={cancelAutoRenew}

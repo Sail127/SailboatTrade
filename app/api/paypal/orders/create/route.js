@@ -75,11 +75,20 @@ export async function POST(req) {
         photoPlan: true,
         featuredHome: true,
         billingAddons: true,
+        saleReport: {
+          select: { id: true },
+        },
       },
     });
 
     if (!listing || listing.ownerId !== s.uid) {
       return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
+    }
+    if (listing.saleReport?.id) {
+      return NextResponse.json(
+        { ok: false, error: "Sold listings cannot be reposted. Create a new listing instead." },
+        { status: 403 }
+      );
     }
 
     const addons = Array.isArray(listing.billingAddons) ? listing.billingAddons : [];

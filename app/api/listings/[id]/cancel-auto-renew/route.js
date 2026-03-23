@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { suspendPayPalSubscription } from "@/lib/paypal";
+import { notifyOwnerAutoRenewCanceled } from "@/lib/adminReviewNotifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(_req, { params }) {
+export async function POST(req, { params }) {
   const s = await requireUser().catch(() => null);
   if (!s?.uid) return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
 
@@ -41,6 +42,19 @@ export async function POST(_req, { params }) {
       canceledAt: now,
     },
   });
+
+  try {
+    await notifyOwnerAutoRenewCanceled({
+      req,
+      listingId: listing.id,
+      source: "api/listings/[id]/cancel-auto-renew",
+    });
+  } catch (error) {
+    console.warn("[cancel-auto-renew] owner confirmation email not sent", {
+      listingId: listing.id,
+      error: error?.message || String(error),
+    });
+  }
 
   return NextResponse.json({
     ok: true,

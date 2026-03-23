@@ -59,6 +59,9 @@ export default async function CheckoutPage({ params, searchParams }) {
       billingCurrentPeriodEnd: true,
       billingTermMonths: true,
       billingAutoRenew: true,
+      saleReport: {
+        select: { id: true },
+      },
     },
   });
 
@@ -100,6 +103,7 @@ export default async function CheckoutPage({ params, searchParams }) {
   const success = String(searchParams?.success || "") === "1";
   const canceled = String(searchParams?.canceled || "") === "1";
   const showConfirmation = success;
+  const isSoldArchived = Boolean(listing.saleReport?.id);
 
   return (
     <div className="py-10">
@@ -158,6 +162,37 @@ export default async function CheckoutPage({ params, searchParams }) {
                     className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-5 text-[13px] font-semibold text-white hover:bg-[#0f2a3b]"
                   >
                     View listing
+                  </Link>
+                  <Link
+                    href="/dashboard/listings"
+                    className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
+                  >
+                    Go to dashboard
+                  </Link>
+                </div>
+              </>
+            ) : isSoldArchived ? (
+              <>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+                  <div className="text-[12px] font-extrabold tracking-wide text-amber-900">
+                    Listing Closed
+                  </div>
+                  <div className="mt-1 text-[20px] font-extrabold text-[#0a2230]">
+                    Sold listings cannot be reposted
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-[14px] text-slate-700 space-y-2">
+                  <div>This listing has already been marked as sold and is permanently closed.</div>
+                  <div>If you want to advertise another boat, please create a brand new listing.</div>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href="/listings/new"
+                    className="inline-flex h-10 items-center justify-center rounded-full bg-[#0a2230] px-5 text-[13px] font-semibold text-white hover:bg-[#0f2a3b]"
+                  >
+                    Create new listing
                   </Link>
                   <Link
                     href="/dashboard/listings"

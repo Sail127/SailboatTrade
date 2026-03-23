@@ -110,10 +110,19 @@ export async function POST(req) {
         ownerId: true,
         status: true,
         imageUrls: true,
+        saleReport: {
+          select: { id: true },
+        },
       },
     });
     if (!listing || listing.ownerId !== s.uid) {
       return NextResponse.json({ ok: false, error: "Listing not found." }, { status: 404 });
+    }
+    if (listing.saleReport?.id) {
+      return NextResponse.json(
+        { ok: false, error: "Sold listings cannot be reposted. Create a new listing instead." },
+        { status: 403 }
+      );
     }
 
     const photoCount = Array.isArray(listing.imageUrls) ? listing.imageUrls.length : 0;

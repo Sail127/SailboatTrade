@@ -120,6 +120,7 @@ export default function CheckoutUI({
   const [autoRenew, setAutoRenew] = useState(Boolean(initialBillingAutoRenew));
   const [autoRenewActive, setAutoRenewActive] = useState(Boolean(initialBillingAutoRenew));
   const [cancelingAutoRenew, setCancelingAutoRenew] = useState(false);
+  const [notice, setNotice] = useState("");
   const initialPhotoPlusActive = String(initialPhotoPlan || "") === "PHOTO_PLUS_25";
   const initialFeaturedHomeActive = Boolean(initialFeaturedHome);
   const initialAutoRenewActive = Boolean(initialBillingAutoRenew);
@@ -159,6 +160,7 @@ export default function CheckoutUI({
 
   async function submitFree() {
     setErr("");
+    setNotice("");
     setBusy(true);
     try {
       if (overMax) throw new Error(`You have ${photoCount} photos. Max allowed is ${maxPhotos}. Remove photos first.`);
@@ -185,6 +187,7 @@ export default function CheckoutUI({
   async function cancelAutoRenew() {
     if (cancelingAutoRenew) return;
     setErr("");
+    setNotice("");
     setCancelingAutoRenew(true);
     try {
       const res = await fetch(`/api/listings/${encodeURIComponent(listingId)}/cancel-auto-renew`, {
@@ -195,6 +198,7 @@ export default function CheckoutUI({
         throw new Error(data?.error || "Could not cancel auto-renew.");
       }
       setAutoRenewActive(false);
+      setNotice("Auto-renew is off. Future PayPal charges have been stopped, and a confirmation email has been sent.");
     } catch (e) {
       setErr(e?.message || "Could not cancel auto-renew.");
     } finally {
@@ -351,6 +355,10 @@ export default function CheckoutUI({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {notice ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">{notice}</div>
       ) : null}
 
       {err ? (

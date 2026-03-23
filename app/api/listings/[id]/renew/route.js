@@ -24,10 +24,19 @@ export async function POST(req, { params }) {
       billingAddons: true,
       photoPlan: true,
       featuredHome: true,
+      saleReport: {
+        select: { id: true },
+      },
     },
   });
 
   if (!listing) return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
+  if (listing.saleReport?.id) {
+    return NextResponse.json(
+      { ok: false, error: "Sold listings cannot be renewed or reposted. Create a new listing instead." },
+      { status: 403 }
+    );
+  }
 
   const status = String(listing.status || "").toUpperCase();
 

@@ -266,6 +266,9 @@ export default async function MyListings() {
       billingTermMonths: true,
       expiresAt: true,
       archivedAt: true,
+      saleReport: {
+        select: { id: true },
+      },
     },
   });
 
@@ -292,6 +295,7 @@ export default async function MyListings() {
     const updatedLabel = fmtDateCompact(l.updatedAt);
 
     const isPaid = l.photoPlan === "PHOTO_PLUS_25" || !!l.featuredHome;
+    const isSold = Boolean(l.saleReport?.id);
     const statusUpper = String(l.status || "").toUpperCase();
     const previewHref =
       statusUpper === "PUBLISHED"
@@ -300,6 +304,7 @@ export default async function MyListings() {
             l.previewToken ? `?token=${encodeURIComponent(l.previewToken)}` : ""
           }`;
     const showRenew =
+      !isSold &&
       (statusUpper === "PUBLISHED" || statusUpper === "ARCHIVED") &&
       (statusUpper === "ARCHIVED" || dLeft <= RENEW_WINDOW_DAYS);
 
@@ -346,6 +351,12 @@ export default async function MyListings() {
               {l.featuredHome ? (
                 <span className="inline-flex items-center rounded-full border border-[#c8a44d] bg-[#fff7d6] px-3 py-1 text-[12px] font-semibold text-[#0a2230]">
                   Featured
+                </span>
+              ) : null}
+
+              {isSold ? (
+                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-800">
+                  Sold
                 </span>
               ) : null}
 

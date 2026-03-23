@@ -29,11 +29,18 @@ export async function POST(req, { params }) {
 
   const listing = await prisma.listing.findFirst({
     where: { id, ownerId: s.uid },
-    select: { id: true, status: true, heroImageUrl: true, imageUrls: true },
+    select: { id: true, status: true, heroImageUrl: true, imageUrls: true, saleReport: { select: { id: true } } },
   });
 
   if (!listing) {
     return NextResponse.json({ ok: false, error: "Not found." }, { status: 404 });
+  }
+
+  if (listing.saleReport?.id) {
+    return NextResponse.json(
+      { ok: false, error: "Sold listings cannot be restored or reposted. Create a new listing instead." },
+      { status: 403 }
+    );
   }
 
   const status = String(listing.status || "").toUpperCase();

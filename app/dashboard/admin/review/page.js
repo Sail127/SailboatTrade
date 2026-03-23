@@ -161,38 +161,38 @@ export default async function AdminReviewPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <Link
               href="/dashboard/admin/active-listings"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 sm:w-auto"
             >
               All Listings
             </Link>
 
             <Link
               href="/dashboard/admin/users"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 sm:w-auto"
             >
               User Management
             </Link>
 
             <Link
               href="/dashboard/admin/email-health"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 sm:w-auto"
             >
               Email Health
             </Link>
 
             <Link
               href="/dashboard/admin/email-previews"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 sm:w-auto"
             >
               Email Previews
             </Link>
 
             <Link
               href="/dashboard/admin/storage"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50 sm:w-auto"
               title="Admin-only destructive tool"
             >
               Storage Cleanup
@@ -200,7 +200,7 @@ export default async function AdminReviewPage() {
 
             <Link
               href="/dashboard"
-              className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold bg-[#0a2230] text-white hover:bg-[#0f2a3b]"
+              className="inline-flex h-10 w-full items-center justify-center rounded-full bg-[#0a2230] px-5 text-[13px] font-semibold text-white hover:bg-[#0f2a3b] sm:w-auto"
             >
               Back to Dashboard
             </Link>

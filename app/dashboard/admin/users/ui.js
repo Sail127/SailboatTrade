@@ -19,8 +19,8 @@ function displayName(user) {
 }
 
 function roleTone(role) {
-  if (role === "ADMIN") return "border-amber-300 bg-amber-50 text-amber-900";
-  if (role === "MODERATOR") return "border-sky-300 bg-sky-50 text-sky-900";
+  if (role === "ADMIN") return "border-red-300 bg-red-50 text-red-900";
+  if (role === "MODERATOR") return "border-rose-300 bg-rose-50 text-rose-900";
   return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
@@ -92,7 +92,21 @@ export default function AdminUsersClient({
   }, [filtered, sortBy]);
 
   const staffUsers = useMemo(
-    () => sortedUsers.filter((user) => user.role === "ADMIN" || user.role === "MODERATOR"),
+    () =>
+      sortedUsers
+        .filter((user) => user.role === "ADMIN" || user.role === "MODERATOR")
+        .sort((a, b) => {
+          const roleRank = (role) => {
+            if (role === "ADMIN") return 0;
+            if (role === "MODERATOR") return 1;
+            return 2;
+          };
+
+          const roleDiff = roleRank(a.role) - roleRank(b.role);
+          if (roleDiff !== 0) return roleDiff;
+
+          return new Date(a?.createdAt || 0).getTime() - new Date(b?.createdAt || 0).getTime();
+        }),
     [sortedUsers]
   );
   const memberUsers = useMemo(() => sortedUsers.filter((user) => user.role === "USER"), [sortedUsers]);
@@ -682,15 +696,15 @@ export default function AdminUsersClient({
 	        ) : (
 	          <div className="space-y-3">
             {staffUsers.length > 0 ? (
-              <div className="rounded-2xl border border-[#d9c486] bg-white/80 p-4">
+              <div className="rounded-2xl border border-red-200 bg-[linear-gradient(180deg,#fff5f5_0%,#ffe9e9_100%)] p-4 shadow-[0_10px_24px_rgba(127,29,29,0.08)]">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <div className="text-[11px] font-extrabold tracking-[0.16em] text-[#8a6a12]">STAFF</div>
-                    <div className="mt-1 text-sm text-slate-600">
+                    <div className="text-[11px] font-extrabold tracking-[0.16em] text-red-700">STAFF</div>
+                    <div className="mt-1 text-sm text-slate-700">
                       Admins and moderators are pinned here for quick access.
                     </div>
                   </div>
-                  <div className="rounded-full border border-[#d9c486] bg-[#fffaf0] px-3 py-1 text-xs font-semibold text-[#8a6a12]">
+                  <div className="rounded-full border border-red-200 bg-white/90 px-3 py-1 text-xs font-semibold text-red-700">
                     {staffUsers.length} staff
                   </div>
                 </div>

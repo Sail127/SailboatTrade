@@ -3,8 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBuilderGroups } from "@/lib/builders";
+import PhotoUploaderContent from "@/components/listings/PhotoUploaderContent";
 import { getCountryOptions } from "@/lib/countries";
 import { getUsStateOptions } from "@/lib/us-states";
+import {
+  createLocalPhotoItems,
+  deleteDraftUploadKeys,
+  makePhotoItemId,
+  revokeBlobUrl,
+  uploadLocalPhotoItems,
+} from "@/lib/photoUploader";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
@@ -71,27 +79,16 @@ function arraysEqual(a = [], b = []) {
   return true;
 }
 
-function makePhotoId(prefix = "photo") {
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function revokeBlobUrl(url) {
-  const v = String(url || "");
-  if (!v.startsWith("blob:")) return;
-  try {
-    URL.revokeObjectURL(v);
-  } catch {}
-}
-
 function toUploadedPhotoItems(imageUrls = []) {
   return (Array.isArray(imageUrls) ? imageUrls : [])
     .filter(Boolean)
     .map((key, idx) => ({
-      id: makePhotoId(`uploaded-${idx}`),
+      id: makePhotoItemId(`uploaded-${idx}`),
       status: "uploaded",
       uploadedKey: String(key),
       previewUrl: String(key),
       file: null,
+      isPersisted: true,
     }));
 }
 
@@ -436,8 +433,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     return [year, builder, model].filter(Boolean).join(" ") || String(form.title || "Listing");
   }, [form.year, form.builder, form.model, form.title]);
 
-  const fileRef = useRef(null);
-  const draggingPhotoIdxRef = useRef(-1);
+  const draggingPhotoIdRef = useRef("");
   const [photoItems, setPhotoItems] = useState(() => toUploadedPhotoItems(form.imageUrls));
   const photoItemsRef = useRef(photoItems);
   const pendingPhotoCount = useMemo(
@@ -554,12 +550,12 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   }
 
   function removePhoto(i) {
-    setPhotoItems((prev) => {
-      if (i < 0 || i >= prev.length) return prev;
-      const target = prev[i];
-      revokeBlobUrl(target?.previewUrl);
-      return prev.filter((_, idx) => idx !== i);
-    });
+    const target = (photoItemsRef.current || [])[i];
+    if (target?.previewUrl) revokeBlobUrl(target.previewUrl);
+    if (target?.uploadedKey && !target?.isPersisted) {
+      void deleteDraftUploadsByKeys([target.uploadedKey]);
+    }
+    setPhotoItems((prev) => prev.filter((_, idx) => idx !== i));
   }
 
   function movePhotoByIndex(i, direction) {
@@ -567,11 +563,11 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     movePhoto(i, to);
   }
 
-  function onPhotoDragStart(e, idx) {
-    draggingPhotoIdxRef.current = idx;
+  function onPhotoDragStart(e, id) {
+    draggingPhotoIdRef.current = String(id || "");
     try {
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", String(idx));
+      e.dataTransfer.setData("text/plain", String(id || ""));
     } catch {}
   }
 
@@ -582,19 +578,23 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     } catch {}
   }
 
-  function onPhotoDrop(e, toIdx) {
+  function onPhotoDrop(e, dropId) {
     e.preventDefault();
-    const fromIdx = Number.isInteger(draggingPhotoIdxRef.current) ? draggingPhotoIdxRef.current : -1;
-    draggingPhotoIdxRef.current = -1;
-    if (fromIdx < 0 || fromIdx === toIdx) return;
+    const fromId = draggingPhotoIdRef.current || "";
+    draggingPhotoIdRef.current = "";
+    if (!fromId || fromId === dropId) return;
+    const currentItems = photoItemsRef.current || [];
+    const fromIdx = currentItems.findIndex((item) => item.id === fromId);
+    const toIdx = currentItems.findIndex((item) => item.id === dropId);
+    if (fromIdx < 0 || toIdx < 0) return;
     movePhoto(fromIdx, toIdx);
   }
 
   function onPhotoDragEnd() {
-    draggingPhotoIdxRef.current = -1;
+    draggingPhotoIdRef.current = "";
   }
 
-  function addPhotosFromFiles(files) {
+  async function addPhotosFromFiles(files) {
     setPhotoErr("");
     if (!files?.length) return;
 
@@ -610,74 +610,34 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     const accepted = incoming.slice(0, remaining);
     const rejected = incoming.length - accepted.length;
     if (accepted.length) {
-      const localItems = accepted.map((file) => ({
-        id: makePhotoId("local"),
-        status: "local",
-        uploadedKey: "",
-        previewUrl: URL.createObjectURL(file),
-        file,
-      }));
-      setPhotoItems((prev) => [...prev, ...localItems]);
+      const localItems = createLocalPhotoItems(accepted, { idPrefix: "local", extra: { isPersisted: false } });
+      const nextSnapshot = [...(photoItemsRef.current || []), ...localItems];
+      setPhotoItems(nextSnapshot);
+      try {
+        await uploadQueuedPhotos(nextSnapshot);
+      } catch (e) {
+        setPhotoErr(e?.message || "Upload failed.");
+      }
     }
     if (rejected > 0) {
       setPhotoErr(`Only ${remaining} more ${remaining === 1 ? "photo" : "photos"} can be added.`);
     }
   }
 
-  async function uploadQueuedPhotos() {
+  async function uploadQueuedPhotos(itemsSnapshot = null) {
     setPhotoErr("");
-    const localItems = (photoItemsRef.current || []).filter((p) => p?.status === "local" && p?.file);
-    if (!localItems.length) return;
-    if (photoItemsRef.current.length > maxAllowedPhotos) {
-      setPhotoErr(`Max ${maxAllowedPhotos} photos.`);
-      return;
-    }
-
-    setPhotoBusy(true);
     try {
-      const uploadedById = {};
-      const previewById = {};
-      let uploadErr = "";
-
-      for (const item of localItems) {
-        // eslint-disable-next-line no-await-in-loop
-        try {
-          const uploaded = await uploadOneFile(item.file);
-          const key = String(uploaded?.key || "").trim();
-          if (!key) throw new Error("Upload failed.");
-          uploadedById[item.id] = key;
-          previewById[item.id] = String(uploaded?.previewUrl || key);
-        } catch (e) {
-          uploadErr = e?.message || "Upload failed.";
-          break;
-        }
-      }
-
-      if (Object.keys(uploadedById).length) {
-        setPhotoItems((prev) =>
-          prev.map((p) => {
-            const key = uploadedById[p.id];
-            if (!key) return p;
-            revokeBlobUrl(p.previewUrl);
-            return {
-              ...p,
-              status: "uploaded",
-              uploadedKey: key,
-              previewUrl: previewById[p.id] || key,
-              file: null,
-            };
-          })
-        );
-      }
-
-      if (uploadErr) {
-        throw new Error(uploadErr);
-      }
+      const next = await uploadLocalPhotoItems({
+        items: itemsSnapshot ?? photoItemsRef.current ?? [],
+        maxPhotos: maxAllowedPhotos,
+        uploadFile: uploadOneFile,
+        toPreviewUrl: (key, uploaded) => String(uploaded?.previewUrl || key),
+        onBefore: () => setPhotoBusy(true),
+        onAfter: () => setPhotoBusy(false),
+      });
+      setPhotoItems(next.map((item) => (item.status === "uploaded" ? { ...item, isPersisted: item.isPersisted ?? false } : item)));
     } catch (e) {
       setPhotoErr(e?.message || "Upload failed.");
-    } finally {
-      setPhotoBusy(false);
-      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -715,7 +675,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       return false;
     }
     if (hasPendingLocalPhotos) {
-      showNotice("error", "You selected photos. Please press Upload in the Photos section before saving.");
+      showNotice("error", "Please wait for photo uploads to finish before saving.");
       return false;
     }
 
@@ -990,148 +950,61 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-[13px] font-extrabold text-[#0a2230]">Photos</div>
-                <div className="text-[11px] text-slate-600">Max {maxAllowedPhotos}. First photo is the hero image.</div>
+                <div className="text-[11px] text-slate-600">Free listings include 3 photos. Upgrade to have up to {maxAllowedPhotos}.</div>
               </div>
-
-              {photoErr ? (
-                <div className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
-                  {photoErr}
-                </div>
-              ) : null}
-
-              {!photoErr && atPhotoLimit ? (
-                <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                  {hasPhotoPlus ? (
-                    <span>
-                      This listing is at its {maxAllowedPhotos}-photo limit. Remove one photo to add another.
-                    </span>
-                  ) : (
-                    <span>
-                      This free listing is at its {FREE_PHOTO_LIMIT}-photo limit. Remove one photo to add another, or{" "}
-                      <a
-                        href={`/checkout/${encodeURIComponent(id)}`}
-                        className="font-semibold underline underline-offset-2 hover:text-amber-950"
-                      >
-                        upgrade to 25 photos
-                      </a>
-                      .
-                    </span>
-                  )}
-                </div>
-              ) : null}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => addPhotosFromFiles(e.target.files)} />
-                <button
-                  type="button"
-                  disabled={photoBusy || atPhotoLimit}
-                  onClick={() => fileRef.current?.click()}
-                  title={
-                    atPhotoLimit
-                      ? hasPhotoPlus
-                        ? `Remove a photo first. This listing allows up to ${maxAllowedPhotos} photos.`
-                        : `Remove a photo first, or upgrade this listing to 25 photos.`
-                      : "Add photos"
-                  }
-                  className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold border border-slate-300 bg-white text-[#0a2230] ${
-                    photoBusy || atPhotoLimit ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50"
-                  }`}
-                >
-                  {atPhotoLimit ? "Photo limit reached" : "Add photos"}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={photoBusy || pendingPhotoCount === 0}
-                  onClick={uploadQueuedPhotos}
-                  className={`inline-flex h-9 items-center justify-center rounded-full px-5 text-[12px] font-semibold text-white ${
-                    photoBusy || pendingPhotoCount === 0 ? "bg-slate-300 cursor-not-allowed" : "bg-[#0a2230] hover:bg-[#0f2a3b]"
-                  }`}
-                >
-                  {photoBusy ? "Uploading…" : "Upload"}
-                </button>
-              </div>
-
-              {pendingPhotoCount ? (
-                <div className="mt-2 text-[12px] text-slate-600">
-                  {pendingPhotoCount} selected. Press Upload.
-                </div>
-              ) : null}
-
-              {photoItems.length > 1 ? (
-                <div className="mt-2 text-[12px] text-slate-600">
-                  Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
-                </div>
-              ) : null}
-
-              {photoItems.length ? (
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {photoItems.map((item, i) => (
-                    <div
-                      key={item.id}
-                      draggable={!photoBusy}
-                      onDragStart={(e) => onPhotoDragStart(e, i)}
-                      onDragOver={onPhotoDragOver}
-                      onDrop={(e) => onPhotoDrop(e, i)}
-                      onDragEnd={onPhotoDragEnd}
-                      className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={photoSrc(item)} alt={photoLabel(i)} className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
-
-                      {i === 0 ? (
-                        <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">
-                          Hero
-                        </div>
-                      ) : null}
-
-                      {item.status === "uploaded" ? (
-                        <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">
-                          ✓
-                        </div>
-                      ) : null}
-
-                      <div className="p-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-[12px] text-slate-600">
-                          {photoLabel(i)}
-                          {item.status !== "uploaded" ? " (Local)" : ""}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1 sm:justify-end">
-                          <div className="sm:hidden flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={i === 0}
-                              aria-label="Move photo up"
-                              onClick={() => movePhotoByIndex(i, "up")}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              ↑
-                            </button>
-                            <button
-                              type="button"
-                              disabled={i === photoItems.length - 1}
-                              aria-label="Move photo down"
-                              onClick={() => movePhotoByIndex(i, "down")}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              ↓
-                            </button>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removePhoto(i)}
-                            className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[11px] font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+              <PhotoUploaderContent
+                items={photoItems.map((item, index) => ({
+                  id: item.id,
+                  imageSrc: photoSrc(item),
+                  alt: photoLabel(index),
+                  isHero: index === 0,
+                  isUploaded: item.status === "uploaded",
+                  label: photoLabel(index),
+                }))}
+                maxPhotos={maxAllowedPhotos}
+                isBusy={photoBusy}
+                limitMessage={photoErr}
+                onDismissLimitMessage={() => setPhotoErr("")}
+                notice={
+                  !photoErr && atPhotoLimit ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+                      {hasPhotoPlus ? (
+                        <span>This listing is at its {maxAllowedPhotos}-photo limit. Remove one photo to add another.</span>
+                      ) : (
+                        <span>
+                          This free listing is at its {FREE_PHOTO_LIMIT}-photo limit. Remove one photo to add another, or{" "}
+                          <a
+                            href={`/checkout/${encodeURIComponent(id)}`}
+                            className="font-semibold underline underline-offset-2 hover:text-amber-950"
                           >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
+                            upgrade to 25 photos
+                          </a>
+                          .
+                        </span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-3 text-[12px] text-slate-600">No photos yet.</div>
-              )}
+                  ) : null
+                }
+                onFilesSelected={addPhotosFromFiles}
+                addButtonDisabled={photoBusy || atPhotoLimit}
+                addButtonLabel={photoBusy ? "Uploading…" : atPhotoLimit ? "Photo limit reached" : "Add photos"}
+                onDragStart={onPhotoDragStart}
+                onDragOver={onPhotoDragOver}
+                onDrop={onPhotoDrop}
+                onDragEnd={onPhotoDragEnd}
+                onMove={(photoId, direction) => {
+                  const currentItems = photoItemsRef.current || [];
+                  const index = currentItems.findIndex((item) => item.id === photoId);
+                  if (index < 0) return;
+                  movePhotoByIndex(index, direction);
+                }}
+                onRemove={(photoId) => {
+                  const currentItems = photoItemsRef.current || [];
+                  const index = currentItems.findIndex((item) => item.id === photoId);
+                  if (index < 0) return;
+                  removePhoto(index);
+                }}
+              />
             </div>
           </div>
 

@@ -51,7 +51,7 @@ function formatBytes(bytes) {
 }
 
 export default function DraftCleanupPanel({ storageReport = null }) {
-  const [days, setDays] = useState(7);
+  const [minutes, setMinutes] = useState(30);
   const [busy, setBusy] = useState(false);
   const [inactiveCleanupBusy, setInactiveCleanupBusy] = useState(false);
   const [emailCleanupBusy, setEmailCleanupBusy] = useState(false);
@@ -61,11 +61,11 @@ export default function DraftCleanupPanel({ storageReport = null }) {
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState("");
 
-  const daysSafe = useMemo(() => {
-    const n = Number(days);
-    if (!Number.isFinite(n)) return 7;
-    return Math.min(90, Math.max(1, Math.floor(n)));
-  }, [days]);
+  const minutesSafe = useMemo(() => {
+    const n = Number(minutes);
+    if (!Number.isFinite(n)) return 30;
+    return Math.min(60 * 24 * 90, Math.max(1, Math.floor(n)));
+  }, [minutes]);
 
   function clearMessages() {
     setErr("");
@@ -81,7 +81,7 @@ export default function DraftCleanupPanel({ storageReport = null }) {
       const res = await fetch("/api/admin/cleanup-drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ days: daysSafe, dryRun }),
+        body: JSON.stringify({ minutes: minutesSafe, dryRun }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -340,7 +340,7 @@ export default function DraftCleanupPanel({ storageReport = null }) {
                 Draft Storage Cleanup
               </div>
               <div className="mt-1 text-[12px] font-medium text-white/95">
-                Deletes unreferenced objects in <span className="font-semibold">drafts/</span> older than N days.
+                Deletes unreferenced objects in <span className="font-semibold">drafts/</span> after they have been inactive past the selected minute cutoff.
               </div>
             </div>
           </div>
@@ -359,11 +359,11 @@ export default function DraftCleanupPanel({ storageReport = null }) {
             <div className="text-[13px] font-semibold text-[#0a2230]">Older than</div>
             <input
               className={input}
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
               inputMode="numeric"
             />
-            <div className="text-[13px] text-slate-600">days</div>
+            <div className="text-[13px] text-slate-600">minutes</div>
 
             <div className="flex-1" />
 
@@ -393,7 +393,7 @@ export default function DraftCleanupPanel({ storageReport = null }) {
                   Mode: <span className="font-semibold">{result.mode}</span>
                 </div>
                 <div>
-                  Cutoff: <span className="font-semibold">{result.cutoffDays}</span> days
+                  Cutoff: <span className="font-semibold">{result.cutoffMinutes}</span> minutes
                 </div>
                 <div>
                   Scanned: <span className="font-semibold">{result.scanned}</span> objects

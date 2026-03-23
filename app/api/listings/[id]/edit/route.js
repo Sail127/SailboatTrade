@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { readSession } from "@/lib/auth";
 import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+import { getR2, getR2Bucket } from "@/lib/r2";
+import { normalizeDraftUploadKeys } from "@/lib/draftUploads";
+import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import {
   normalizeBuilderName,
   normalizeBusinessName,
@@ -92,6 +95,20 @@ function normalizePhotoOrder(imageUrls = [], heroImageUrl = "") {
 function valueEqual(a, b) {
   if (Array.isArray(a) || Array.isArray(b)) return arraysEqual(Array.isArray(a) ? a : [], Array.isArray(b) ? b : []);
   return String(a ?? "") === String(b ?? "");
+}
+
+async function deleteR2Keys(keys) {
+  const safeKeys = normalizeDraftUploadKeys(keys);
+  if (!safeKeys.length) return;
+
+  const r2 = getR2();
+  const Bucket = getR2Bucket();
+  await r2.send(
+    new DeleteObjectsCommand({
+      Bucket,
+      Delete: { Objects: safeKeys.map((Key) => ({ Key })), Quiet: true },
+    })
+  );
 }
 
 const editResponseSelect = {
@@ -222,6 +239,8 @@ export async function PATCH(req, { params }) {
 
     const existingOrderedPhotos = normalizePhotoOrder(listing.imageUrls || [], listing.heroImageUrl || "");
     const uploadedPhotosChanged = !arraysEqual(orderedNextPhotos, existingOrderedPhotos);
+    const removedPhotoKeys = normalizeDraftUploadKeys(existingOrderedPhotos.filter((key) => !orderedNextPhotos.includes(key)));
+    const addedPhotoKeys = normalizeDraftUploadKeys(orderedNextPhotos);
 
     const addons = Array.isArray(listing.billingAddons) ? listing.billingAddons : [];
     const hasPhotoPlus = String(listing.photoPlan || "").toUpperCase() === "PHOTO_PLUS_25" || addons.includes("PHOTO_PLUS_25");
@@ -340,11 +359,63 @@ export async function PATCH(req, { params }) {
       if (data[k] === undefined) delete data[k];
     });
 
-    const updatedListing = await prisma.listing.update({
-      where: { id },
-      data,
-      select: editResponseSelect,
+    const updatedListing = await prisma.$transaction(async (tx) => {
+      const updated = await tx.listing.update({
+        where: { id },
+        data,
+        select: editResponseSelect,
+      });
+
+      if (addedPhotoKeys.length) {
+        await tx.draftUpload.updateMany({
+          where: {
+            userId: String(s.uid),
+            key: { in: addedPhotoKeys },
+          },
+          data: {
+            claimedAt: new Date(),
+            claimedListingId: id,
+          },
+        });
+      }
+
+      if (removedPhotoKeys.length) {
+        await tx.draftUpload.deleteMany({
+          where: {
+            claimedListingId: id,
+            key: { in: removedPhotoKeys },
+          },
+        });
+      }
+
+      return updated;
     });
+
+    if (removedPhotoKeys.length) {
+      const stillReferenced = await prisma.listing.findMany({
+        where: {
+          id: { not: id },
+          OR: [
+            { heroImageUrl: { in: removedPhotoKeys } },
+            { brokerHeroImageUrl: { in: removedPhotoKeys } },
+            { imageUrls: { hasSome: removedPhotoKeys } },
+          ],
+        },
+        select: { heroImageUrl: true, brokerHeroImageUrl: true, imageUrls: true },
+      });
+
+      const referencedElsewhere = new Set();
+      for (const row of stillReferenced) {
+        if (row.heroImageUrl) referencedElsewhere.add(String(row.heroImageUrl));
+        if (row.brokerHeroImageUrl) referencedElsewhere.add(String(row.brokerHeroImageUrl));
+        for (const key of row.imageUrls || []) referencedElsewhere.add(String(key));
+      }
+
+      const deletableKeys = removedPhotoKeys.filter((key) => !referencedElsewhere.has(key));
+      if (deletableKeys.length) {
+        await deleteR2Keys(deletableKeys);
+      }
+    }
 
     if (status === "PUBLISHED" && submitForPhotoReview && uploadedPhotosChanged) {
       try {

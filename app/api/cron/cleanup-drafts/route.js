@@ -3,9 +3,18 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getR2, getR2Bucket } from "@/lib/r2";
+import { DRAFT_UPLOAD_TTL_MINUTES, getDraftUploadCutoffDate } from "@/lib/draftUploads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+function isAuthorized(req) {
+  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
+  const url = new URL(req.url);
+  const secret = url.searchParams.get("secret") || req.headers.get("x-cron-secret") || "";
+  const expected = String(process.env.CRON_SECRET || "").trim();
+  return isVercelCron || (expected && secret === expected);
+}
 
 function isSafeR2Key(key) {
   const s = String(key || "").trim();
@@ -67,28 +76,34 @@ async function deleteR2Keys(keys) {
 
 export async function GET(req) {
   try {
-    const url = new URL(req.url);
-
-    // ✅ Protect cron endpoint
-    const secret = url.searchParams.get("secret") || req.headers.get("x-cron-secret") || "";
-    if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
+    if (!isAuthorized(req)) {
       return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
     }
 
-    const days = Number(process.env.DRAFT_CLEANUP_DAYS || "7");
-    const cutoffMs = Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000;
+    const minutes = Math.max(
+      1,
+      Number(process.env.DRAFT_CLEANUP_MINUTES || Number(process.env.DRAFT_CLEANUP_DAYS || 0) * 24 * 60 || DRAFT_UPLOAD_TTL_MINUTES)
+    );
+    const cutoffDate = getDraftUploadCutoffDate(minutes);
+    const cutoffMs = cutoffDate.getTime();
 
-    // ✅ Build reference set from DB so we never delete something still used
-    const [listings, users] = await Promise.all([
+    // ✅ Build reference + draft tracking sets so we never delete something still used
+    const [listings, users, unclaimedDraftUploads] = await Promise.all([
       prisma.listing.findMany({
         select: { heroImageUrl: true, brokerHeroImageUrl: true, imageUrls: true },
       }),
       prisma.user.findMany({
         select: { brokerHeroImageUrl: true },
       }),
+      prisma.draftUpload.findMany({
+        where: { claimedAt: null },
+        select: { key: true, lastTouchedAt: true },
+      }),
     ]);
 
     const referenced = new Set();
+    const trackedDraftKeys = new Set();
+    const staleTrackedDraftKeys = new Set();
 
     for (const l of listings) {
       if (l.heroImageUrl) referenced.add(String(l.heroImageUrl));
@@ -100,6 +115,14 @@ export async function GET(req) {
 
     for (const u of users) {
       if (u.brokerHeroImageUrl) referenced.add(String(u.brokerHeroImageUrl));
+    }
+
+    for (const row of unclaimedDraftUploads) {
+      const key = String(row?.key || "");
+      if (!key) continue;
+      trackedDraftKeys.add(key);
+      const lastTouchedAt = row?.lastTouchedAt ? new Date(row.lastTouchedAt).getTime() : 0;
+      if (lastTouchedAt && lastTouchedAt <= cutoffMs) staleTrackedDraftKeys.add(key);
     }
 
     // ✅ List objects under drafts/
@@ -126,8 +149,12 @@ export async function GET(req) {
         if (!isSafeR2Key(key)) continue;
 
         const lastMod = obj?.LastModified ? new Date(obj.LastModified).getTime() : 0;
-        if (!lastMod || lastMod > cutoffMs) continue;          // too recent
-        if (referenced.has(key)) continue;                      // still referenced
+        const isTracked = trackedDraftKeys.has(key);
+        const isStaleTracked = staleTrackedDraftKeys.has(key);
+
+        if (referenced.has(key)) continue; // still referenced
+        if (isTracked && !isStaleTracked) continue; // active draft photo
+        if (!isTracked && (!lastMod || lastMod > cutoffMs)) continue; // legacy draft key still recent
 
         candidates.push(key);
       }
@@ -141,11 +168,17 @@ export async function GET(req) {
     let storage = { attempted: 0, deleted: 0 };
     if (candidates.length) {
       storage = await deleteR2Keys(candidates);
+      await prisma.draftUpload.deleteMany({
+        where: {
+          claimedAt: null,
+          key: { in: candidates },
+        },
+      });
     }
 
     return NextResponse.json({
       ok: true,
-      cutoffDays: Math.max(1, days),
+      cutoffMinutes: minutes,
       scannedPrefix: "drafts/",
       deletions: storage,
       candidatesFound: candidates.length,

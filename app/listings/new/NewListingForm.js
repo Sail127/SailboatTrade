@@ -9,6 +9,15 @@ import { useRouter } from "next/navigation";
  */
 import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
+import { DRAFT_UPLOAD_TTL_MS, normalizeDraftUploadKeys } from "@/lib/draftUploads";
+import PhotoUploaderContent from "@/components/listings/PhotoUploaderContent";
+import {
+  createLocalPhotoItems,
+  deleteDraftUploadKeys,
+  revokeBlobUrl,
+  touchDraftUploadKeys,
+  uploadLocalPhotoItems,
+} from "@/lib/photoUploader";
 import { guessDefaultPhoneCountry, normalizePhoneToE164, toPhoneIso2Lower } from "@/lib/phone";
 
 /**
@@ -27,7 +36,6 @@ import "react-international-phone/style.css";
 ========================================================= */
 const DRAFT_KEY = "st:newListingDraft:v3";
 const AUTOSAVE_MS = 3 * 60 * 1000; // ✅ 3 minutes
-const DRAFT_TTL_MS = 30 * 60 * 1000; // ✅ 30 minutes (sliding TTL)
 
 // ✅ Pricing rules (UI copy only — enforcement happens in checkout/server)
 const FREE_PHOTO_LIMIT = 3;
@@ -256,14 +264,14 @@ function Pill({ active, children, onClick }) {
 }
 
 function UnitSystemToggle({ value, onChange }) {
-  const base = "h-8 px-3 rounded-full text-[12px] font-semibold transition inline-flex items-center justify-center";
+  const base = "h-7 px-2.5 rounded-full text-[11px] font-semibold transition inline-flex items-center justify-center";
   const active = "bg-white text-[#0a2230] border border-white";
   const inactive = "bg-transparent text-white/95 border border-transparent hover:bg-white/10";
 
   return (
-    <div className="inline-flex items-center gap-2">
-      <div className="mr-1 text-[11px] font-semibold text-white/95">Units</div>
-      <div className="inline-flex items-center rounded-full border border-white/25 p-1">
+    <div className="inline-flex items-center gap-1.5">
+      <div className="mr-0.5 text-[10px] font-semibold text-white/90">Units</div>
+      <div className="inline-flex items-center rounded-full border border-white/25 p-0.5">
         <button type="button" className={`${base} ${value === "US" ? active : inactive}`} onClick={() => onChange("US")}>
           U.S.
         </button>
@@ -321,23 +329,21 @@ function CurrencyPill({ value, onChange }) {
   );
 }
 
-function SectionCard({ title, subtitle, headerRight, showRequiredNote = false, children }) {
+function SectionCard({ title, subtitle, headerRight, titleMeta = "", children }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-[0_8px_24px_rgba(2,6,23,0.08)] overflow-visible">
       <div className="px-5 py-3 bg-[#0a2230] border-b border-black/10">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base sm:text-lg font-semibold tracking-tight" style={{ color: GOLD }}>
-              {title}
-            </h2>
-            {subtitle ? <p className="mt-1 text-xs sm:text-sm font-medium text-white/95">{subtitle}</p> : null}
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,auto)] items-start gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <h2 className="text-base sm:text-lg font-semibold tracking-tight" style={{ color: GOLD }}>
+                {title}
+              </h2>
+              {titleMeta ? <span className="text-[12px] sm:text-[13px] font-medium text-white/75">{titleMeta}</span> : null}
+            </div>
+            {subtitle ? <p className="mt-1 text-[11px] sm:text-[12px] font-medium text-white/90">{subtitle}</p> : null}
           </div>
-          <div className="flex items-start gap-3 pl-3">
-            {showRequiredNote ? (
-              <div className="pt-0.5 text-[11px] font-medium whitespace-nowrap text-white/75">* required items</div>
-            ) : null}
-            {headerRight ? <div className="pt-0.5">{headerRight}</div> : null}
-          </div>
+          <div className="flex justify-end">{headerRight ? <div className="pt-0.5">{headerRight}</div> : null}</div>
         </div>
       </div>
       <div className="p-4 sm:p-5">{children}</div>
@@ -567,9 +573,11 @@ export default function NewListingForm() {
   }, [photoItems]);
   const draggingPhotoIdRef = useRef("");
 
-  function addPhotos(filesList) {
-    const files = Array.from(filesList || []).filter((f) => /^image\//i.test(f.type));
-    if (!files.length) return;
+  const getUploadedDraftKeys = useCallback((items) => normalizeDraftUploadKeys((items || []).map((item) => item?.uploadedKey)), []);
+
+  async function addPhotos(filesList) {
+    const next = createLocalPhotoItems(filesList, { idPrefix: "local" });
+    if (!next.length) return;
 
     setDraftSessionReady(true);
     setPhotoLimitMsg("");
@@ -582,16 +590,11 @@ export default function NewListingForm() {
       return;
     }
 
-    const accepted = files.slice(0, remaining);
-    const rejectedCount = files.length - accepted.length;
+    const accepted = next.slice(0, remaining);
+    const rejectedCount = next.length - accepted.length;
 
-    const next = accepted.map((file) => {
-      const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const previewUrl = URL.createObjectURL(file);
-      return { id, file, previewUrl, status: "local", uploadedKey: "" };
-    });
-
-    setPhotoItems((prev) => [...prev, ...next]);
+    const nextSnapshot = [...(photoItemsRef.current || []), ...accepted];
+    setPhotoItems(nextSnapshot);
 
     if (rejectedCount > 0) {
       setPhotoLimitMsg(
@@ -600,18 +603,25 @@ export default function NewListingForm() {
         } not added (max ${MAX_PHOTO_LIMIT}).`
       );
     }
+
+    try {
+      await uploadAllPhotosIfNeeded(nextSnapshot);
+    } catch (err) {
+      setFormError(err?.message || "Could not upload photos.");
+    }
   }
 
   function removePhoto(id) {
-    setPhotoItems((prev) => {
-      const item = prev.find((p) => p.id === id);
-      if (item?.previewUrl) {
-        try {
-          if (String(item.previewUrl).startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
-        } catch {}
-      }
-      return prev.filter((p) => p.id !== id);
-    });
+    const item = (photoItemsRef.current || []).find((p) => p.id === id);
+    if (item?.previewUrl) {
+      try {
+        if (String(item.previewUrl).startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+      } catch {}
+    }
+    if (item?.uploadedKey) {
+      void deleteDraftUploadKeys([item.uploadedKey]);
+    }
+    setPhotoItems((prev) => prev.filter((p) => p.id !== id));
     setPhotoLimitMsg("");
   }
 
@@ -672,48 +682,25 @@ export default function NewListingForm() {
   }
 
   async function uploadAllPhotosIfNeeded(itemsSnapshot = null) {
-    const snapshot = itemsSnapshot ?? photoItems;
-
-    if ((snapshot || []).length > MAX_PHOTO_LIMIT) {
-      throw new Error(`This listing is limited to ${MAX_PHOTO_LIMIT} photos. Remove photos before uploading.`);
-    }
-
-    const locals = snapshot.filter((p) => p.status === "local");
-    if (!locals.length) return snapshot;
-
-    setUploadingPhotos(true);
     setFormError("");
-
-    try {
-      const uploadedKeyById = {};
-      for (const item of locals) {
+    const next = await uploadLocalPhotoItems({
+      items: itemsSnapshot ?? photoItems,
+      maxPhotos: MAX_PHOTO_LIMIT,
+      uploadFile: async (file) => {
         const formData = new FormData();
-        formData.append("file", item.file);
-
+        formData.append("file", file);
         const res = await fetch("/api/uploads", { method: "POST", body: formData });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
         if (!data?.key) throw new Error("Upload did not return a key.");
-
-        uploadedKeyById[item.id] = String(data.key);
-      }
-
-      const next = snapshot.map((p) => {
-        const k = uploadedKeyById[p.id];
-        if (!k) return p;
-
-        try {
-          if (p?.previewUrl && String(p.previewUrl).startsWith("blob:")) URL.revokeObjectURL(p.previewUrl);
-        } catch {}
-
-        return { ...p, status: "uploaded", uploadedKey: k, previewUrl: toPhotoPreviewUrl(k) };
-      });
-
-      setPhotoItems(next);
-      return next;
-    } finally {
-      setUploadingPhotos(false);
-    }
+        return data;
+      },
+      toPreviewUrl: (key) => toPhotoPreviewUrl(key),
+      onBefore: () => setUploadingPhotos(true),
+      onAfter: () => setUploadingPhotos(false),
+    });
+    setPhotoItems(next);
+    return next;
   }
 
   /* -------------------------
@@ -735,7 +722,7 @@ export default function NewListingForm() {
   // Broker hero: READ-ONLY here (from account)
   const [accountBrokerHero, setAccountBrokerHero] = useState("");
 
-  const [showPhonePrivacy, setShowPhonePrivacy] = useState(false);
+  const [showContactPrivacy, setShowContactPrivacy] = useState(false);
 
   const contactTouchedRef = useRef({
     sellerRole: false,
@@ -980,12 +967,13 @@ export default function NewListingForm() {
 
       try {
         const snap = buildDraftSnapshot();
-        snap.expiresAt = Date.now() + DRAFT_TTL_MS; // sliding TTL
+        snap.expiresAt = Date.now() + DRAFT_UPLOAD_TTL_MS; // sliding TTL
         store.setItem(DRAFT_KEY, JSON.stringify(snap));
         setLastDraftSavedAt(snap.savedAt);
+        void touchDraftUploadKeys(getUploadedDraftKeys(photoItemsRef.current || []));
       } catch {}
     },
-    [buildDraftSnapshot, draftLoaded, draftSessionReady]
+    [buildDraftSnapshot, draftLoaded, draftSessionReady, getUploadedDraftKeys, touchDraftUploads]
   );
 
   const resetAllFields = useCallback(() => {
@@ -1046,6 +1034,7 @@ export default function NewListingForm() {
     setDescription("");
     setAdditionalInfo("");
 
+    const draftPhotoKeys = getUploadedDraftKeys(photoItemsRef.current || []);
     setPhotoLimitMsg("");
     setPhotoItems((prev) => {
       try {
@@ -1053,6 +1042,9 @@ export default function NewListingForm() {
       } catch {}
       return [];
     });
+    if (draftPhotoKeys.length) {
+      void deleteDraftUploadKeys(draftPhotoKeys);
+    }
 
     setSellerRole("");
     setListingContactFirstName("");
@@ -1096,7 +1088,7 @@ export default function NewListingForm() {
     setTimeout(() => {
       suppressAutosaveRef.current = false;
     }, 0);
-  }, []);
+  }, [deleteDraftUploadsByKeys, getUploadedDraftKeys]);
 
   const resetFormAndDraft = useCallback(() => {
     clearDraftStorageOnly();
@@ -1198,6 +1190,7 @@ export default function NewListingForm() {
           .filter(Boolean);
 
         setPhotoItems(restored);
+        void touchDraftUploadKeys(restored.map((item) => item?.uploadedKey));
       }
 
       if (typeof d.accountBrokerHero === "string") setAccountBrokerHero(d.accountBrokerHero);
@@ -1211,7 +1204,7 @@ export default function NewListingForm() {
         restoringDraftRef.current = false;
       }, 0);
     }
-  }, []);
+  }, [touchDraftUploads]);
 
   /* -------------------------
      Draft load (auto-restore) on mount
@@ -1238,9 +1231,12 @@ export default function NewListingForm() {
       // ✅ backward compatible expiry check
       const expired =
         (expiresAt && Date.now() > expiresAt) ||
-        (!expiresAt && savedAt && Date.now() - savedAt > DRAFT_TTL_MS);
+        (!expiresAt && savedAt && Date.now() - savedAt > DRAFT_UPLOAD_TTL_MS);
 
       if (expired) {
+        void deleteDraftUploadKeys(
+          Array.isArray(parsed?.photoItemsUploaded) ? parsed.photoItemsUploaded.map((item) => item?.uploadedKey) : []
+        );
         store.removeItem(DRAFT_KEY);
         setDraftLoaded(true);
         return;
@@ -1455,10 +1451,16 @@ export default function NewListingForm() {
       phoneE164 = pn.e164;
     }
 
-    // Require user to press Upload if they added photos
+    // Photo uploads are immediate, but submission must wait until they finish.
     const hasLocalPhotos = (photoItems || []).some((p) => p?.status === "local");
-    if (photoItems.length > 0 && hasLocalPhotos) {
-      setFormError("You selected photos. Please press Upload in the Photos section before submitting.");
+    if (hasLocalPhotos) {
+      setFormError("Please wait for photo uploads to finish before submitting.");
+      window.scrollTo?.({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    if (photoItems.length < 1) {
+      setFormError("Please add at least 1 photo before submitting your listing.");
       window.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
@@ -1589,8 +1591,8 @@ export default function NewListingForm() {
     const linkBtnDanger = "text-[12px] font-semibold underline underline-offset-2 text-red-600 hover:text-red-700 transition";
 
     return (
-      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-600 flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-600">
+        <div className="min-w-0 text-center">
           {hasSaved ? (
             <>
               Draft saved <span className="font-semibold text-slate-800">{fmtWhen(lastDraftSavedAt)}</span>
@@ -1599,13 +1601,11 @@ export default function NewListingForm() {
             <>Draft not saved yet</>
           )}
           <span className="mx-2 text-slate-500">•</span>
-          <span>Autosaves every 3 minutes while you edit. Expires after 30 minutes of inactivity.</span>
-        </div>
-
-        <div className="flex items-center gap-3">
           <button type="button" className={linkBtnDanger} onClick={resetFormAndDraft}>
             Reset form
           </button>
+          <span className="mx-2 text-slate-500">•</span>
+          <span>Autosaves every 3 minutes while you edit. Expires after 30 minutes of inactivity.</span>
         </div>
       </div>
     );
@@ -1709,10 +1709,12 @@ export default function NewListingForm() {
       {/* ✅ Draft bar TOP */}
       <DraftBar />
 
+      <div className="mt-1 mb-1 text-left text-[11px] font-medium text-slate-500">* required items</div>
+
       {/* =====================================================
           1) BOAT BASICS
       ====================================================== */}
-      <SectionCard title="Boat Basics" showRequiredNote>
+      <SectionCard title="Boat Basics">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
           <div className="sm:col-span-4">
             <label className={label("boatCondition")}>
@@ -1814,7 +1816,7 @@ export default function NewListingForm() {
       {/* =====================================================
           2) BOAT LOCATION
       ====================================================== */}
-      <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located." showRequiredNote>
+      <SectionCard title="Boat Location" subtitle="Enter where the boat is physically located.">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
           <div className="sm:col-span-6">
             <label className={label("country")}>
@@ -1892,51 +1894,87 @@ export default function NewListingForm() {
       ====================================================== */}
       <SectionCard
         title="Specifications"
-        subtitle="Dimensions, accommodations, and capacities."
-        showRequiredNote
         headerRight={<UnitSystemToggle value={unitSystem} onChange={changeUnitSystem} />}
       >
-        <div className="columns-1 sm:columns-2 lg:columns-3 gap-6">
-          <div className="mb-3 break-inside-avoid">
+        <div className="grid grid-cols-2 min-[760px]:grid-cols-3 gap-4">
+          <div>
             <label className={label("loa")}>
-              LOA (Length) ({lengthUnit}) <Asterisk />
+              LOA (Length) <Asterisk />
             </label>
-            <input className={input("loa")} value={loa} onChange={(e) => setLoa(e.target.value)} onBlur={() => touch("loa")} inputMode="decimal" />
+            <input
+              className={input("loa")}
+              value={loa}
+              onChange={(e) => setLoa(e.target.value)}
+              onBlur={() => touch("loa")}
+              inputMode="decimal"
+              placeholder={lengthUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
+          <div>
             <label className={label("draft")}>
-              Draft (keel depth) ({lengthUnit}) <Asterisk />
+              Draft (keel depth) <Asterisk />
             </label>
-            <input className={input("draft")} value={draft} onChange={(e) => setDraft(e.target.value)} onBlur={() => touch("draft")} inputMode="decimal" />
+            <input
+              className={input("draft")}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => touch("draft")}
+              inputMode="decimal"
+              placeholder={lengthUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
-            <label className={labelBase}>Air Draft (Min. Bridge Clearance) ({lengthUnit})</label>
-            <input className={`${fieldBase} border-slate-300 bg-white`} value={airDraft} onChange={(e) => setAirDraft(e.target.value)} inputMode="decimal" />
+          <div>
+            <label className={labelBase}>Air Draft (Min. Bridge Clearance)</label>
+            <input
+              className={`${fieldBase} border-slate-300 bg-white`}
+              value={airDraft}
+              onChange={(e) => setAirDraft(e.target.value)}
+              inputMode="decimal"
+              placeholder={lengthUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
-            <label className={labelBase}>Displacement ({displacementUnit})</label>
-            <input className={`${fieldBase} border-slate-300 bg-white`} value={displacement} onChange={(e) => setDisplacement(formatCommaNumber(e.target.value))} inputMode="decimal" />
+          <div>
+            <label className={labelBase}>Displacement</label>
+            <input
+              className={`${fieldBase} border-slate-300 bg-white`}
+              value={displacement}
+              onChange={(e) => setDisplacement(formatCommaNumber(e.target.value))}
+              inputMode="decimal"
+              placeholder={displacementUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
-            <label className={labelBase}>Fuel Capacity ({tankUnit})</label>
-            <input className={`${fieldBase} border-slate-300 bg-white`} value={tankFuel} onChange={(e) => setTankFuel(e.target.value)} inputMode="decimal" />
+          <div>
+            <label className={labelBase}>Fuel Capacity</label>
+            <input
+              className={`${fieldBase} border-slate-300 bg-white`}
+              value={tankFuel}
+              onChange={(e) => setTankFuel(e.target.value)}
+              inputMode="decimal"
+              placeholder={tankUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
-            <label className={labelBase}>Water Capacity ({tankUnit})</label>
-            <input className={`${fieldBase} border-slate-300 bg-white`} value={tankWater} onChange={(e) => setTankWater(e.target.value)} inputMode="decimal" />
+          <div>
+            <label className={labelBase}>Water Capacity</label>
+            <input
+              className={`${fieldBase} border-slate-300 bg-white`}
+              value={tankWater}
+              onChange={(e) => setTankWater(e.target.value)}
+              inputMode="decimal"
+              placeholder={tankUnit}
+            />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
+          <div>
             <label className={labelBase}>Number of Cabins</label>
             <input className={`${fieldBase} border-slate-300 bg-white`} value={cabins} onChange={(e) => setCabins(e.target.value)} inputMode="numeric" />
           </div>
 
-          <div className="mb-3 break-inside-avoid">
+          <div>
             <label className={labelBase}>Number of Heads</label>
             <input className={`${fieldBase} border-slate-300 bg-white`} value={heads} onChange={(e) => setHeads(e.target.value)} inputMode="numeric" />
           </div>
@@ -1946,7 +1984,7 @@ export default function NewListingForm() {
       {/* =====================================================
           4) DESCRIPTION
       ====================================================== */}
-      <SectionCard title="Description" showRequiredNote>
+      <SectionCard title="Description">
         <label className={label("description")}>
           Description <Asterisk />
         </label>
@@ -1962,7 +2000,7 @@ export default function NewListingForm() {
       {/* =====================================================
           5) ENGINE
       ====================================================== */}
-      <SectionCard title="Engine" subtitle="Fuel type, hours, make, horsepower, and propeller details (optional).">
+      <SectionCard title="Engine Info" titleMeta="Optional">
         <div className="space-y-4">
           <div>
             <div className="text-[12px] font-semibold text-[#0a2230] mb-2">Fuel Type</div>
@@ -2012,7 +2050,7 @@ export default function NewListingForm() {
       {/* =====================================================
           6) EQUIPMENT INVENTORY
       ====================================================== */}
-      <SectionCard title="Equipment Inventory" subtitle="Select installed equipment, then add additional equipment.">
+      <SectionCard title="Equipment Inventory" titleMeta="Optional">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="text-[13px] font-semibold text-[#0a2230] mb-3">Installed Equipment</div>
 
@@ -2113,8 +2151,8 @@ export default function NewListingForm() {
           </div>
 
           {hasGenerator === "YES" && (
-            <div className="mt-3 grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
-              <div className="lg:col-span-4">
+            <div className="mt-3 space-y-4">
+              <div>
                 <div className="text-[12px] font-semibold text-[#0a2230] mb-2">Fuel</div>
                 <div className="flex items-center gap-2">
                   <Pill active={generatorFuel === "DIESEL"} onClick={() => setGeneratorFuel("DIESEL")}>Diesel</Pill>
@@ -2122,19 +2160,21 @@ export default function NewListingForm() {
                 </div>
               </div>
 
-              <div className="lg:col-span-4">
+              <div className="grid grid-cols-1 min-[560px]:grid-cols-3 xl:grid-cols-12 gap-4 items-end">
+                <div className="xl:col-span-6">
                 <label className={labelBase}>Generator Make</label>
                 <input className={`${fieldBase} border-slate-300 bg-white`} value={generatorMake} onChange={(e) => setGeneratorMake(e.target.value)} />
               </div>
 
-              <div className="lg:col-span-2">
+                <div className="xl:col-span-3">
                 <label className={labelBase}>kW</label>
                 <input className={`${fieldBase} border-slate-300 bg-white`} value={generatorKw} onChange={(e) => setGeneratorKw(e.target.value)} inputMode="decimal" />
               </div>
 
-              <div className="lg:col-span-2">
+                <div className="xl:col-span-3">
                 <label className={labelBase}>Hours</label>
                 <input className={`${fieldBase} border-slate-300 bg-white`} value={generatorHours} onChange={(e) => setGeneratorHours(e.target.value)} inputMode="numeric" />
+              </div>
               </div>
             </div>
           )}
@@ -2180,8 +2220,7 @@ export default function NewListingForm() {
       {/* =====================================================
           7) ADDITIONAL INFORMATION
       ====================================================== */}
-      <SectionCard title="Additional Information" subtitle="Anything else buyers should know (optional).">
-        <label className={labelBase}>Additional Information</label>
+      <SectionCard title="Additional Information" titleMeta="Optional">
         <textarea
           className={`${textareaBase} border-slate-300 bg-white !min-h-[180px]`}
           value={additionalInfo}
@@ -2194,132 +2233,40 @@ export default function NewListingForm() {
           8) PHOTOS
       ====================================================== */}
       <div id="photos-section" />
-      <SectionCard title="Photos" subtitle="Add photos, then press Upload. First photo becomes the hero image.">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[12px] text-slate-700">
-            <div className="font-extrabold text-[#0a2230]">Photo limits</div>
-            <div className="mt-1">
-              Free listings include <span className="font-extrabold">{FREE_PHOTO_LIMIT}</span> photos. Upgraded listings allow up to{" "}
-              <span className="font-extrabold">{MAX_PHOTO_LIMIT}</span> photos.
-            </div>
-            <div className="mt-1 text-slate-600">
-              You currently have <span className="font-extrabold">{photoItems.length}</span> selected.
-            </div>
-          </div>
-
-          {photoLimitMsg ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900 flex items-start justify-between gap-3">
-              <div>{photoLimitMsg}</div>
-              <button type="button" className="text-[12px] font-semibold underline underline-offset-2 hover:text-amber-950" onClick={() => setPhotoLimitMsg("")}>
-                Dismiss
-              </button>
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-2">
-            {(() => {
-              const atMax = photoItems.length >= MAX_PHOTO_LIMIT;
-              return (
-                <label className={`${btnGhost} cursor-pointer ${atMax ? "opacity-50 cursor-not-allowed" : ""}`}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    disabled={atMax}
-                    className="hidden"
-                    onChange={(e) => {
-                      addPhotos(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  Add photos
-                </label>
-              );
-            })()}
-
-            <button
-              type="button"
-              className={`${btnPrimary} ${uploadingPhotos ? "opacity-70 cursor-not-allowed" : ""}`}
-              disabled={uploadingPhotos || photoItems.length === 0}
-              onClick={() => {
-                setDraftSessionReady(true);
-                uploadAllPhotosIfNeeded(photoItems);
-              }}
-            >
-              {uploadingPhotos ? "Uploading…" : "Upload"}
-            </button>
-          </div>
-
-          {photoItems.length > 1 ? (
-            <div className="text-[12px] text-slate-600">
-              Drag photos to reorder on desktop. On mobile, use the arrows on each photo.
-            </div>
-          ) : null}
-
-          {photoItems.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-[13px] text-slate-600">No photos yet.</div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {photoItems.map((p, idx) => (
-                <div
-                  key={p.id}
-                  draggable={!uploadingPhotos}
-                  onDragStart={(e) => onPhotoDragStart(e, p.id)}
-                  onDragOver={onPhotoDragOver}
-                  onDrop={(e) => onPhotoDrop(e, p.id)}
-                  onDragEnd={onPhotoDragEnd}
-                  className="relative rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-sm cursor-move"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.previewUrl} alt="Photo preview" className="w-full h-36 object-contain bg-slate-100" loading="lazy" />
-
-                  {idx === 0 && (
-                    <div className="absolute left-2 top-2 rounded-full bg-[#0a2230] text-white text-[11px] font-semibold px-2 py-1">Hero</div>
-                  )}
-
-                  {p.status === "uploaded" && (
-                    <div className="absolute right-2 top-2 rounded-full bg-emerald-600 text-white text-[11px] font-semibold px-2 py-1">✓</div>
-                  )}
-
-                  <div className="p-2 flex items-center justify-between gap-2">
-                    <div className="text-[12px] text-slate-600">{p.status === "uploaded" ? "Uploaded" : "Local"}</div>
-                    <div className="flex items-center gap-1">
-                      <div className="sm:hidden flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          aria-label="Move photo up"
-                          onClick={() => movePhotoById(p.id, "up")}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={idx === photoItems.length - 1}
-                          aria-label="Move photo down"
-                          onClick={() => movePhotoById(p.id, "down")}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-white text-[#0a2230] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <button type="button" className={btnGhost} onClick={() => removePhoto(p.id)}>
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <SectionCard
+        title="Photos"
+        subtitle={`Free listings include ${FREE_PHOTO_LIMIT} photos. Upgrade to have up to ${MAX_PHOTO_LIMIT}.`}
+      >
+        <PhotoUploaderContent
+          items={photoItems.map((item, index) => ({
+            id: item.id,
+            imageSrc: item.previewUrl,
+            alt: "Photo preview",
+            isHero: index === 0,
+            isUploaded: item.status === "uploaded",
+            label: item.status === "uploaded" ? "Uploaded" : "Local",
+          }))}
+          maxPhotos={MAX_PHOTO_LIMIT}
+          isBusy={uploadingPhotos}
+          limitMessage={photoLimitMsg}
+          onDismissLimitMessage={() => setPhotoLimitMsg("")}
+          onFilesSelected={addPhotos}
+          addButtonDisabled={photoItems.length >= MAX_PHOTO_LIMIT || uploadingPhotos}
+          addButtonLabel={uploadingPhotos ? "Uploading…" : "Add photos"}
+          counterSecondaryText="Minimum 1 required"
+          onDragStart={onPhotoDragStart}
+          onDragOver={onPhotoDragOver}
+          onDrop={onPhotoDrop}
+          onDragEnd={onPhotoDragEnd}
+          onMove={movePhotoById}
+          onRemove={removePhoto}
+        />
       </SectionCard>
 
       {/* =====================================================
           9) LISTING CONTACT
       ====================================================== */}
-      <SectionCard title="Listing Contact" showRequiredNote>
+      <SectionCard title="Listing Contact">
         <div className="space-y-5">
           <div>
             <label className={label("sellerRole")}>
@@ -2495,14 +2442,14 @@ export default function NewListingForm() {
             {/* RIGHT */}
             <div className="space-y-4">
               <div>
-                <div className="flex items-center justify-between">
-                  <label className={labelBase}>Phone Number</label>
+                <div className="flex items-baseline gap-3">
+                  <label className={`${labelBase} mb-0`}>Phone Number</label>
                   <button
                     type="button"
-                    onClick={() => setShowPhonePrivacy(true)}
-                    className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                    onClick={() => setShowContactPrivacy(true)}
+                    className="ml-1 pb-[3px] text-[11px] leading-[1.2] font-semibold text-blue-600 hover:text-blue-700 underline decoration-1 underline-offset-[3px]"
                   >
-                    How ST protects your number
+                    Privacy policy
                   </button>
                 </div>
 
@@ -2543,9 +2490,18 @@ export default function NewListingForm() {
               </div>
 
               <div>
-                <label className={label("contactEmail")}>
-                  Email <Asterisk />
-                </label>
+                <div className="flex items-baseline gap-3">
+                  <label className={`${label("contactEmail")} mb-0`}>
+                    Email <Asterisk />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowContactPrivacy(true)}
+                    className="ml-1 pb-[3px] text-[11px] leading-[1.2] font-semibold text-blue-600 hover:text-blue-700 underline decoration-1 underline-offset-[3px]"
+                  >
+                    Privacy policy
+                  </button>
+                </div>
                 <input
                   className={input("contactEmail")}
                   value={contactEmail}
@@ -2560,9 +2516,9 @@ export default function NewListingForm() {
 
               {sellerRole === "BROKER" && (
                 <div>
-                  <div className="flex items-end justify-between gap-3">
-                    <label className={labelBase}>Broker Hero Image</label>
-                    <div className="text-[11px] text-slate-500">Set this on your Account page</div>
+                  <div>
+                    <label className={`${labelBase} mb-0`}>Broker Hero Image</label>
+                    <div className="mt-0.5 text-[11px] text-slate-500">(Upload a broker image on account dashboard)</div>
                   </div>
 
                   <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -2597,9 +2553,6 @@ export default function NewListingForm() {
                       </div>
                     </div>
 
-                    <div className="p-3 text-[12px] text-slate-600 border-t border-slate-200 bg-slate-50">
-                      Brokers can upload a business logo on their Dashboard → Account page before creating a listing.
-                    </div>
                   </div>
                 </div>
               )}
@@ -2608,24 +2561,24 @@ export default function NewListingForm() {
         </div>
       </SectionCard>
 
-      {/* Phone privacy modal */}
-      {showPhonePrivacy && (
+      {/* Contact privacy modal */}
+      {showContactPrivacy && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           role="dialog"
           aria-modal="true"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setShowPhonePrivacy(false);
+            if (e.target === e.currentTarget) setShowContactPrivacy(false);
           }}
         >
           <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 overflow-hidden">
             <div className="px-5 py-3 bg-[#0a2230]">
-              <div className="text-[14px] font-semibold text-white">How ST protects your email & phone number</div>
+              <div className="text-[14px] font-semibold text-white">Privacy policy for contact information</div>
             </div>
             <div className="p-5 text-[13px] text-slate-700">
-              ST.com values your privacy and only displays emails & phone numbers if a valid user is logged in. If a individual does not have a account with us, they can send a message through the website to you, right from the listing detail page!
+              Sailboat Trade helps protect your contact information by only showing seller email addresses and phone numbers to signed-in users. Visitors without an account can still contact you through the site’s messaging flow on the listing page instead of seeing your private details directly.
               <div className="mt-4 flex justify-end">
-                <button type="button" className={btnPrimary} onClick={() => setShowPhonePrivacy(false)}>
+                <button type="button" className={btnPrimary} onClick={() => setShowContactPrivacy(false)}>
                   Got it
                 </button>
               </div>
@@ -2634,6 +2587,8 @@ export default function NewListingForm() {
         </div>
       )}
 
+      <div className="mt-1 mb-1 text-left text-[11px] font-medium text-slate-500">* required items</div>
+
       {/* ✅ Bottom: form error banner ALSO here */}
       <FormErrorBanner />
 
@@ -2641,7 +2596,7 @@ export default function NewListingForm() {
       <DraftBar />
 
       {/* Submit buttons */}
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex items-center justify-between gap-3">
         <button type="button" className={btnGhost} onClick={() => router.push("/listings")}>
           Cancel
         </button>

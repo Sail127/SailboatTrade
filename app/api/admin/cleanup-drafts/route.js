@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { requireAdminApi, audit } from "@/lib/admin";
 import { ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getR2, getR2Bucket } from "@/lib/r2";
+import { DRAFT_UPLOAD_TTL_MINUTES, getDraftUploadCutoffDate } from "@/lib/draftUploads";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +12,10 @@ export const dynamic = "force-dynamic";
 // Safety cap so one click can't nuke your entire bucket
 const MAX_DELETE_PER_RUN = 10000;
 
-function clampDays(n) {
-  if (!Number.isFinite(n)) return 7;
+function clampMinutes(n) {
+  if (!Number.isFinite(n)) return DRAFT_UPLOAD_TTL_MINUTES;
   if (n < 1) return 1;
-  if (n > 90) return 90;
+  if (n > 60 * 24 * 90) return 60 * 24 * 90;
   return Math.floor(n);
 }
 
@@ -87,23 +88,36 @@ export async function POST(req) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const days = clampDays(Number(body?.days ?? process.env.DRAFT_CLEANUP_DAYS ?? 7));
+    const fallbackMinutes =
+      Number(process.env.DRAFT_CLEANUP_MINUTES || Number(process.env.DRAFT_CLEANUP_DAYS || 0) * 24 * 60 || DRAFT_UPLOAD_TTL_MINUTES);
+    const requestedMinutes =
+      body?.minutes != null
+        ? Number(body.minutes)
+        : body?.days != null
+          ? Number(body.days) * 24 * 60
+          : fallbackMinutes;
+    const minutes = clampMinutes(requestedMinutes);
     const dryRun = Boolean(body?.dryRun ?? true);
 
-    const cutoffMs = Date.now() - days * 24 * 60 * 60 * 1000;
+    const cutoffDate = getDraftUploadCutoffDate(minutes);
+    const cutoffMs = cutoffDate.getTime();
 
-    // ✅ Build reference set so we never delete anything still used
-    // Listing keys
-    const listings = await prisma.listing.findMany({
-      select: { heroImageUrl: true, brokerHeroImageUrl: true, imageUrls: true },
-    });
-
-    // User broker logos (account-level)
-    const users = await prisma.user.findMany({
-      select: { brokerHeroImageUrl: true },
-    });
-
+    // ✅ Build reference + draft tracking sets so we never delete anything still used
+    const [listings, users, unclaimedDraftUploads] = await Promise.all([
+      prisma.listing.findMany({
+        select: { heroImageUrl: true, brokerHeroImageUrl: true, imageUrls: true },
+      }),
+      prisma.user.findMany({
+        select: { brokerHeroImageUrl: true },
+      }),
+      prisma.draftUpload.findMany({
+        where: { claimedAt: null },
+        select: { key: true, lastTouchedAt: true },
+      }),
+    ]);
     const referenced = new Set();
+    const trackedDraftKeys = new Set();
+    const staleTrackedDraftKeys = new Set();
 
     for (const l of listings) {
       if (l.heroImageUrl) referenced.add(String(l.heroImageUrl));
@@ -115,6 +129,14 @@ export async function POST(req) {
 
     for (const u of users) {
       if (u.brokerHeroImageUrl) referenced.add(String(u.brokerHeroImageUrl));
+    }
+
+    for (const row of unclaimedDraftUploads) {
+      const key = String(row?.key || "");
+      if (!key) continue;
+      trackedDraftKeys.add(key);
+      const lastTouchedAt = row?.lastTouchedAt ? new Date(row.lastTouchedAt).getTime() : 0;
+      if (lastTouchedAt && lastTouchedAt <= cutoffMs) staleTrackedDraftKeys.add(key);
     }
 
     // ✅ List objects under drafts/
@@ -143,8 +165,12 @@ export async function POST(req) {
         if (!key || !isSafeR2Key(key)) continue;
 
         const lastMod = obj?.LastModified ? new Date(obj.LastModified).getTime() : 0;
-        if (!lastMod || lastMod > cutoffMs) continue; // too recent
+        const isTracked = trackedDraftKeys.has(key);
+        const isStaleTracked = staleTrackedDraftKeys.has(key);
+
         if (referenced.has(key)) continue; // still referenced by listing/user
+        if (isTracked && !isStaleTracked) continue; // active draft photo
+        if (!isTracked && (!lastMod || lastMod > cutoffMs)) continue; // legacy untracked draft still recent
 
         candidates.push(key);
         if (candidates.length >= MAX_DELETE_PER_RUN) break;
@@ -166,7 +192,7 @@ export async function POST(req) {
       entityId: "drafts/",
       reason: null,
       meta: {
-        cutoffDays: days,
+        cutoffMinutes: minutes,
         dryRun,
         scanned,
         candidatesFound: candidates.length,
@@ -178,7 +204,7 @@ export async function POST(req) {
       return NextResponse.json({
         ok: true,
         mode: "dryRun",
-        cutoffDays: days,
+        cutoffMinutes: minutes,
         scanned,
         candidatesFound: candidates.length,
         limited,
@@ -187,6 +213,14 @@ export async function POST(req) {
     }
 
     const deletions = candidates.length ? await deleteR2Keys(candidates) : { attempted: 0, deleted: 0 };
+    if (candidates.length) {
+      await prisma.draftUpload.deleteMany({
+        where: {
+          claimedAt: null,
+          key: { in: candidates },
+        },
+      });
+    }
 
     await audit({
       actorId: guard.me.id,
@@ -195,7 +229,7 @@ export async function POST(req) {
       entityId: "drafts/",
       reason: null,
       meta: {
-        cutoffDays: days,
+        cutoffMinutes: minutes,
         scanned,
         candidatesFound: candidates.length,
         limited,
@@ -206,7 +240,7 @@ export async function POST(req) {
     return NextResponse.json({
       ok: true,
       mode: "delete",
-      cutoffDays: days,
+      cutoffMinutes: minutes,
       scanned,
       candidatesFound: candidates.length,
       limited,

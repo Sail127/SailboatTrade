@@ -5,9 +5,11 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getR2, getR2Bucket, makeObjectKey } from "@/lib/r2";
+import { normalizeDraftUploadKeys } from "@/lib/draftUploads";
 import { requireUser } from "@/lib/auth";
 import { hasMinRole } from "@/lib/rbac";
 
@@ -62,6 +64,62 @@ async function canUserAccessDraftKey(userId, key) {
   if (listing?.id) return true;
 
   return false;
+}
+
+async function getActiveSessionUser() {
+  const s = await requireUser().catch(() => null);
+  if (!s?.uid) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: String(s.uid) },
+    select: { id: true, role: true, deletedAt: true, isDisabled: true, brokerHeroImageUrl: true },
+  });
+
+  if (!user || user.deletedAt || user.isDisabled) return null;
+  return user;
+}
+
+async function findUserReferencedDraftKeys(userId, keys) {
+  const requested = normalizeDraftUploadKeys(keys);
+  if (!requested.length) return new Set();
+
+  const [user, listings] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: String(userId) },
+      select: { brokerHeroImageUrl: true },
+    }),
+    prisma.listing.findMany({
+      where: {
+        ownerId: String(userId),
+        OR: [
+          { heroImageUrl: { in: requested } },
+          { brokerHeroImageUrl: { in: requested } },
+          { imageUrls: { hasSome: requested } },
+        ],
+      },
+      select: { heroImageUrl: true, brokerHeroImageUrl: true, imageUrls: true },
+    }),
+  ]);
+
+  const referenced = new Set();
+
+  if (requested.includes(String(user?.brokerHeroImageUrl || ""))) {
+    referenced.add(String(user.brokerHeroImageUrl));
+  }
+
+  for (const listing of listings) {
+    if (listing.heroImageUrl && requested.includes(String(listing.heroImageUrl))) {
+      referenced.add(String(listing.heroImageUrl));
+    }
+    if (listing.brokerHeroImageUrl && requested.includes(String(listing.brokerHeroImageUrl))) {
+      referenced.add(String(listing.brokerHeroImageUrl));
+    }
+    for (const key of listing.imageUrls || []) {
+      if (requested.includes(String(key))) referenced.add(String(key));
+    }
+  }
+
+  return referenced;
 }
 
 export async function GET(req) {
@@ -156,16 +214,8 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
-    // ✅ IMPORTANT: require auth for uploads to prevent anonymous bucket abuse
-    const s = await requireUser().catch(() => null);
-    if (!s?.uid) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-
-    // Optional: block disabled/deleted accounts from uploading
-    const u = await prisma.user.findUnique({
-      where: { id: String(s.uid) },
-      select: { deletedAt: true, isDisabled: true },
-    });
-    if (!u || u.deletedAt || u.isDisabled) {
+    const user = await getActiveSessionUser();
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
@@ -220,7 +270,7 @@ export async function POST(req) {
     }
 
     // ✅ Store drafts under drafts/<uid>/... (still starts with drafts/ so existing logic works)
-    const Key = makeObjectKey({ folder: `drafts/${String(s.uid)}`, ext: "webp" });
+    const Key = makeObjectKey({ folder: `drafts/${String(user.id)}`, ext: "webp" });
 
     await r2.send(
       new PutObjectCommand({
@@ -232,6 +282,26 @@ export async function POST(req) {
         Metadata: { originalname: String(file.name || "").slice(0, 200) },
       })
     );
+
+    try {
+      await prisma.draftUpload.create({
+        data: {
+          key: Key,
+          userId: String(user.id),
+          lastTouchedAt: new Date(),
+        },
+      });
+    } catch (dbErr) {
+      try {
+        await r2.send(
+          new DeleteObjectsCommand({
+            Bucket,
+            Delete: { Objects: [{ Key }], Quiet: true },
+          })
+        );
+      } catch {}
+      throw dbErr;
+    }
 
     // Give a longer preview URL so your 30-min draft TTL doesn’t show broken images
     const previewUrl = await getSignedUrl(r2, new GetObjectCommand({ Bucket, Key }), { expiresIn: 60 * 30 });
@@ -245,5 +315,94 @@ export async function POST(req) {
       { error: "Upload failed.", details: { name: err?.name, code: err?.Code, message: err?.message } },
       { status: 500 }
     );
+  }
+}
+
+export async function PATCH(req) {
+  try {
+    const user = await getActiveSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const keys = normalizeDraftUploadKeys(body?.keys);
+    if (!keys.length) {
+      return NextResponse.json({ ok: true, touched: 0 });
+    }
+
+    const result = await prisma.draftUpload.updateMany({
+      where: {
+        userId: String(user.id),
+        claimedAt: null,
+        key: { in: keys },
+      },
+      data: { lastTouchedAt: new Date() },
+    });
+
+    return NextResponse.json({ ok: true, touched: result.count });
+  } catch (err) {
+    console.error("PATCH /api/uploads error:", err);
+    return NextResponse.json({ error: "Failed to refresh draft uploads." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const user = await getActiveSessionUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const requestedKeys = normalizeDraftUploadKeys(body?.keys);
+    if (!requestedKeys.length) {
+      return NextResponse.json({ ok: true, deleted: 0 });
+    }
+
+    const referenced = await findUserReferencedDraftKeys(user.id, requestedKeys);
+    const trackedRows = await prisma.draftUpload.findMany({
+      where: {
+        userId: String(user.id),
+        key: { in: requestedKeys },
+      },
+      select: { key: true, claimedAt: true },
+    });
+
+    const trackedMap = new Map(trackedRows.map((row) => [String(row.key), row]));
+    const userPrefix = `drafts/${String(user.id)}/`;
+
+    const deletableKeys = requestedKeys.filter((key) => {
+      if (referenced.has(key)) return false;
+      const tracked = trackedMap.get(key);
+      if (tracked) return !tracked.claimedAt;
+      return key.startsWith(userPrefix);
+    });
+
+    if (!deletableKeys.length) {
+      return NextResponse.json({ ok: true, deleted: 0 });
+    }
+
+    const r2 = getR2();
+    const Bucket = getR2Bucket();
+    await r2.send(
+      new DeleteObjectsCommand({
+        Bucket,
+        Delete: { Objects: deletableKeys.map((Key) => ({ Key })), Quiet: true },
+      })
+    );
+
+    await prisma.draftUpload.deleteMany({
+      where: {
+        userId: String(user.id),
+        claimedAt: null,
+        key: { in: deletableKeys },
+      },
+    });
+
+    return NextResponse.json({ ok: true, deleted: deletableKeys.length });
+  } catch (err) {
+    console.error("DELETE /api/uploads error:", err);
+    return NextResponse.json({ error: "Failed to delete draft uploads." }, { status: 500 });
   }
 }

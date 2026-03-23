@@ -198,9 +198,10 @@ export async function POST(req) {
     const wantsFeatured = yesNoToBool(body.featuredHome, false);
     if (wantsFeatured) billingAddons.push("FEATURED_HOME");
 
-    const listing = await prisma.listing.create({
-      data: {
-        ownerId,
+    const listing = await prisma.$transaction(async (tx) => {
+      const created = await tx.listing.create({
+        data: {
+          ownerId,
 
         title: normalizeTextOrNull(body.title, normalizeListingTitle),
         description: toStringOrNull(body.description),
@@ -280,9 +281,26 @@ export async function POST(req) {
         billingAddons,             // requested addons; used for checkout gating
         billingMonthlyCents: null,
 
-        status: "DRAFT",
-      },
-      select: { id: true, previewToken: true },
+          status: "DRAFT",
+        },
+        select: { id: true, previewToken: true },
+      });
+
+      if (imageUrls.length) {
+        await tx.draftUpload.updateMany({
+          where: {
+            userId: ownerId,
+            claimedAt: null,
+            key: { in: imageUrls },
+          },
+          data: {
+            claimedAt: new Date(),
+            claimedListingId: created.id,
+          },
+        });
+      }
+
+      return created;
     });
 
     const previewPath = `/listings/${listing.id}?token=${encodeURIComponent(listing.previewToken)}`;

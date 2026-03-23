@@ -27,6 +27,18 @@ function fmtDateShort(d) {
   }
 }
 
+function fmtDateCompact(d) {
+  try {
+    return new Date(d).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "";
+  }
+}
+
 function formatListingPrice(price, currency = "USD") {
   const amount = Number(price);
   if (!Number.isFinite(amount) || amount <= 0) return null;
@@ -152,6 +164,18 @@ function daysUntil(date) {
   return Math.ceil(ms / (24 * 60 * 60 * 1000));
 }
 
+function daysSince(date) {
+  const ms = Date.now() - new Date(date).getTime();
+  return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
+}
+
+function expirationToneClass(date) {
+  if (!date) return "border-slate-200 bg-slate-50 text-slate-700";
+  const daysLeft = daysUntil(date);
+  if (daysLeft <= 5) return "border-red-200 bg-red-50 text-red-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-800";
+}
+
 function Section({ title, subtitle, items, tone = "slate", children }) {
   const toneClass =
     tone === "yellow" ? "text-amber-700" : tone === "green" ? "text-emerald-700" : "text-[#0a2230]";
@@ -260,75 +284,105 @@ export default async function MyListings() {
     const expiresAt = computeExpiresAt(l);
     const expiresLabel = fmtDateShort(expiresAt);
     const dLeft = daysUntil(expiresAt);
+    const daysOnMarket = daysSince(l.createdAt);
+    const createdLabel = fmtDateCompact(l.createdAt);
+    const updatedLabel = fmtDateCompact(l.updatedAt);
 
     const isPaid = l.photoPlan === "PHOTO_PLUS_25" || !!l.featuredHome;
     const statusUpper = String(l.status || "").toUpperCase();
+    const previewHref =
+      statusUpper === "PUBLISHED"
+        ? `/listings/${encodeURIComponent(l.id)}`
+        : `/listings/${encodeURIComponent(l.id)}${
+            l.previewToken ? `?token=${encodeURIComponent(l.previewToken)}` : ""
+          }`;
     const showRenew =
       (statusUpper === "PUBLISHED" || statusUpper === "ARCHIVED") &&
       (statusUpper === "ARCHIVED" || dLeft <= RENEW_WINDOW_DAYS);
 
     const canEdit = statusUpper !== "PENDING_REVIEW";
     const showUpgrade = !l.featuredHome && statusUpper !== "ARCHIVED" && statusUpper !== "REMOVED";
-    const expiresUrgent = dLeft <= RENEW_WINDOW_DAYS;
+    const expiresUrgent = dLeft <= 5;
+    const expiringSoonLabel =
+      statusUpper === "PUBLISHED" && showRenew && dLeft > 0
+        ? `(Expiring in ${dLeft} day${dLeft === 1 ? "" : "s"})`
+        : null;
 
     return (
       <div
         key={l.id}
-        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)] flex flex-col gap-3"
+        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 flex gap-4">
-            <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-              {thumbSrc ? (
-                <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-contain bg-slate-100" loading="lazy" />
-              ) : (
-                <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-slate-500">
-                  No photo
-                </div>
-              )}
+        <div className="grid gap-4 lg:grid-cols-[120px_minmax(0,1fr)_220px]">
+          <div className="h-24 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 lg:w-[120px]">
+            {thumbSrc ? (
+              <img src={thumbSrc} alt={l.title || "Listing photo"} className="h-full w-full object-contain bg-slate-100" loading="lazy" />
+            ) : (
+              <div className="h-full w-full flex items-center justify-center text-[11px] font-semibold text-slate-500">
+                No photo
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <Link
+                href={previewHref}
+                className="min-w-0 truncate text-[15px] font-extrabold text-[#0a2230] underline-offset-2 hover:text-[#18374a] hover:underline"
+              >
+                {l.title || "(Untitled)"}
+              </Link>
+              {listingPrice ? (
+                <div className="shrink-0 text-sm font-semibold text-slate-700">{listingPrice}</div>
+              ) : null}
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <div className="min-w-0 truncate font-extrabold text-[#0a2230]">{l.title || "(Untitled)"}</div>
-                {listingPrice ? (
-                  <div className="shrink-0 text-sm font-semibold text-slate-700">{listingPrice}</div>
-                ) : null}
-              </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <StatusBadge status={l.status} />
 
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge status={l.status} />
+              {l.featuredHome ? (
+                <span className="inline-flex items-center rounded-full border border-[#c8a44d] bg-[#fff7d6] px-3 py-1 text-[12px] font-semibold text-[#0a2230]">
+                  Featured
+                </span>
+              ) : null}
 
-                {l.featuredHome ? (
-                  <span className="inline-flex items-center rounded-full border border-[#c8a44d] bg-[#fff7d6] px-3 py-1 text-[12px] font-semibold text-[#0a2230]">
-                    Featured
+              <span
+                className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${expirationToneClass(
+                  expiresAt
+                )}`}
+              >
+                Expires: {expiresLabel}
+                {expiringSoonLabel ? (
+                  <span className={`ml-2 ${expiresUrgent ? "text-red-700" : "text-emerald-700"}`}>
+                    {expiringSoonLabel}
                   </span>
                 ) : null}
+              </span>
+            </div>
 
-                <span
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
-                    expiresUrgent
-                      ? "border-red-200 bg-red-50 text-red-700"
-                      : "border-slate-200 bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  Expires: {expiresLabel}
-                  {showRenew ? (
-                    <span className={`ml-2 ${expiresUrgent ? "text-red-700" : "text-amber-700"}`}>(soon)</span>
-                  ) : null}
-                </span>
-              </div>
-
-              <div className="text-sm text-slate-600 mt-2">
-                Plan: <span className="font-semibold">{plan}</span>
-                <span className="mx-2 text-slate-500">•</span>
-                Billing: <span className="font-semibold">{billing}</span>
+            <div className="mt-3 grid gap-x-5 gap-y-2 text-[13px] text-slate-600 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+              <div className="min-w-0">
+                Plan: <span className="font-semibold text-[#0a2230]">{plan}</span>
+                <span className="mx-2 text-slate-400">•</span>
+                Billing: <span className="font-semibold text-[#0a2230]">{billing}</span>
                 {monthly ? (
                   <>
-                    <span className="mx-2 text-slate-500">•</span>
-                    <span className="font-semibold">{monthly}</span>
+                    <span className="mx-2 text-slate-400">•</span>
+                    <span className="font-semibold text-[#0a2230]">{monthly}</span>
                   </>
                 ) : null}
+              </div>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  Created: <span className="font-semibold text-[#0a2230]">{createdLabel}</span>
+                </span>
+                <span>
+                  Updated: <span className="font-semibold text-[#0a2230]">{updatedLabel}</span>
+                </span>
+                <span>
+                  Days on market: <span className="font-semibold text-[#0a2230]">{daysOnMarket}</span>
+                </span>
               </div>
             </div>
           </div>
@@ -341,21 +395,12 @@ export default async function MyListings() {
             showRenew={showRenew}
             renewMode={isPaid ? "PAID" : "FREE"}
             showUpgrade={showUpgrade}
-            showDangerAction={false}
-          />
-        </div>
-
-        <div className="min-h-5 flex flex-col gap-1 sm:relative sm:flex-row sm:items-center sm:justify-end">
-          <div className="text-xs text-slate-500 sm:absolute sm:left-0">
-            Updated: {fmtDate(l.updatedAt)}
-          </div>
-          <RowActions
-            id={l.id}
-            status={l.status}
-            showPrimaryActions={false}
-            showAdminHint={false}
-            containerClassName="gap-0 items-end"
-            dangerRowClassName="justify-end"
+            showSoldButton={statusUpper === "PUBLISHED"}
+            stackPrimaryActions
+            gridMode
+            daysOnMarket={daysOnMarket}
+            containerClassName="w-full lg:w-[230px]"
+            messageClassName="lg:text-left"
           />
         </div>
       </div>

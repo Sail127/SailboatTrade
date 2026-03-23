@@ -166,7 +166,7 @@ export default async function AdminReviewPage() {
               href="/dashboard/admin/active-listings"
               className="inline-flex h-10 items-center justify-center rounded-full px-5 text-[13px] font-semibold border border-slate-300 text-[#0a2230] hover:bg-slate-50"
             >
-              Active Listings
+              All Listings
             </Link>
 
             <Link

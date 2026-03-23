@@ -135,6 +135,7 @@ model User {
   listings                Listing[]
   favorites               Favorite[]
   savedSearches           SavedSearch[]
+  saleReports             ListingSaleReport[]
   reviewedListings        Listing[]       @relation("ListingReviewedBy")
   removedListings         Listing[]       @relation("ListingRemovedBy")
   contentReviewedListings Listing[]       @relation("ListingContentReviewedBy")
@@ -301,6 +302,24 @@ model Listing {
   archivedImagesPrunedAt DateTime?
 
   favorites Favorite[]
+  saleReport ListingSaleReport?
+}
+
+model ListingSaleReport {
+  id        String   @id @default(cuid())
+  listingId String   @unique
+  ownerId   String
+
+  soldOnSailboatTrade Boolean
+  feedback            String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  owner   User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([soldOnSailboatTrade, createdAt])
 }
 
 model Favorite {

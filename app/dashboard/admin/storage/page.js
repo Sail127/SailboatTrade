@@ -1,7 +1,6 @@
 // app/dashboard/admin/storage/page.js
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import prisma from "@/lib/prisma";
 import { requireAdminApi } from "@/lib/admin";
 import { getStorageReport } from "@/lib/storageReport";
 import DraftCleanupPanel from "./DraftCleanupPanel";
@@ -12,61 +11,7 @@ export default async function AdminStoragePage() {
   const guard = await requireAdminApi("ADMIN");
   if (!guard.ok) redirect("/dashboard");
 
-  const [inactiveListings, storageReport] = await Promise.all([
-    prisma.listing.findMany({
-      where: {
-        status: {
-          not: "PUBLISHED",
-        },
-      },
-      orderBy: [{ updatedAt: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        ownerId: true,
-        status: true,
-        title: true,
-        year: true,
-        builder: true,
-        model: true,
-        heroImageUrl: true,
-        imageUrls: true,
-        createdAt: true,
-        updatedAt: true,
-        owner: {
-          select: {
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-            businessName: true,
-          },
-        },
-      },
-    }),
-    getStorageReport(),
-  ]);
-
-  const initialDraftListings = inactiveListings.map((listing) => ({
-    id: listing.id,
-    ownerId: listing.ownerId,
-    status: listing.status,
-    title:
-      [listing?.year != null ? String(listing.year) : "", String(listing.builder || "").trim(), String(listing.model || "").trim()]
-        .filter(Boolean)
-        .join(" ") || String(listing.title || "Untitled listing").trim(),
-    heroImageUrl: listing.heroImageUrl || null,
-    imageUrls: Array.isArray(listing.imageUrls) ? listing.imageUrls : [],
-    createdAt: listing.createdAt,
-    updatedAt: listing.updatedAt,
-    ownerEmail: listing.owner?.email || "",
-    ownerName:
-      `${String(listing.owner?.firstName || "").trim()} ${String(listing.owner?.lastName || "").trim()}`.trim() ||
-      String(listing.owner?.name || "").trim() ||
-      String(listing.owner?.businessName || "").trim() ||
-      "Unknown owner",
-    ownerBusinessName: listing.owner?.businessName || "",
-    imageCount: Array.isArray(listing.imageUrls) ? listing.imageUrls.length : 0,
-  }));
+  const storageReport = await getStorageReport();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -74,9 +19,9 @@ export default async function AdminStoragePage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-[12px] font-extrabold tracking-wide text-slate-500">ADMIN</div>
-            <h1 className="mt-1 text-2xl font-semibold text-[#0a2230]">Storage Cleanup / Site Inactive Listings</h1>
+            <h1 className="mt-1 text-2xl font-semibold text-[#0a2230]">Storage Cleanup</h1>
             <p className="mt-1 text-sm text-slate-600">
-              Remove unreferenced draft uploads and review any non-live listings that are no longer needed.
+              Run storage and retention cleanup tools. Use the master listings page to browse all listing statuses.
             </p>
           </div>
 
@@ -85,7 +30,7 @@ export default async function AdminStoragePage() {
             href="/dashboard/admin/active-listings"
             className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
           >
-            Active Listings
+            All Listings
           </Link>
           <Link
             href="/dashboard/admin/users"
@@ -115,7 +60,7 @@ export default async function AdminStoragePage() {
         </div>
       </div>
 
-      <DraftCleanupPanel initialDraftListings={initialDraftListings} storageReport={storageReport} />
+      <DraftCleanupPanel storageReport={storageReport} />
     </div>
   );
 }

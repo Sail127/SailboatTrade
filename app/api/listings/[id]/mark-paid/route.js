@@ -2,7 +2,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireAdminApi, audit } from "@/lib/admin";
-import { notifyAdminListingPendingReview } from "@/lib/adminReviewNotifications";
+import {
+  notifyAdminListingPendingReview,
+  notifyOwnerListingPendingReviewAfterPurchase,
+  notifyOwnerListingPublished,
+  notifyOwnerListingUpgradeConfirmation,
+} from "@/lib/adminReviewNotifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +95,25 @@ export async function POST(req, { params }) {
       archivedImagesPrunedAt: nextStatus === "PUBLISHED" ? null : undefined,
     },
   });
+
+  const ownerUpgradeNotice = await notifyOwnerListingUpgradeConfirmation({
+    req,
+    listingId: listing.id,
+    photoPlus,
+    featuredHome,
+    termMonths,
+    totalCents: monthlyCents * termMonths,
+    currency: "USD",
+    nextStatus,
+    source: "api/listings/[id]/mark-paid",
+  });
+  if (!ownerUpgradeNotice?.ok) {
+    console.warn("[mark-paid] owner upgrade confirmation email not sent", {
+      listingId: listing.id,
+      reason: ownerUpgradeNotice?.skipped || ownerUpgradeNotice?.error || "unknown",
+    });
+  }
+
   if (isPending) {
     const adminNotice = await notifyAdminListingPendingReview({
       req,
@@ -100,6 +124,30 @@ export async function POST(req, { params }) {
       console.warn("[mark-paid] admin review email not sent", {
         listingId: listing.id,
         reason: adminNotice?.skipped || adminNotice?.error || "unknown",
+      });
+    }
+
+    const ownerPendingNotice = await notifyOwnerListingPendingReviewAfterPurchase({
+      req,
+      listingId: listing.id,
+      source: "api/listings/[id]/mark-paid",
+    });
+    if (!ownerPendingNotice?.ok) {
+      console.warn("[mark-paid] owner pending review email not sent", {
+        listingId: listing.id,
+        reason: ownerPendingNotice?.skipped || ownerPendingNotice?.error || "unknown",
+      });
+    }
+  } else if (nextStatus === "PUBLISHED" && status !== "PUBLISHED") {
+    const ownerPublishedNotice = await notifyOwnerListingPublished({
+      req,
+      listingId: listing.id,
+      source: "api/listings/[id]/mark-paid",
+    });
+    if (!ownerPublishedNotice?.ok) {
+      console.warn("[mark-paid] owner published email not sent", {
+        listingId: listing.id,
+        reason: ownerPublishedNotice?.skipped || ownerPublishedNotice?.error || "unknown",
       });
     }
   }

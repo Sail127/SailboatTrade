@@ -104,7 +104,7 @@ export default async function DashboardHome() {
   const isAdmin = user.role === "ADMIN";
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [totalUsers, newUsersLast7Days, totalActiveListings] = isAdmin
+  const [totalUsers, newUsersLast7Days, totalActiveListings, soldOnSiteCount] = isAdmin
     ? await Promise.all([
         prisma.user.count(),
         prisma.user.count({
@@ -115,8 +115,11 @@ export default async function DashboardHome() {
         prisma.listing.count({
           where: { status: "PUBLISHED" },
         }),
+        prisma.listingSaleReport.count({
+          where: { soldOnSailboatTrade: true },
+        }),
       ])
-    : [0, 0, 0];
+    : [0, 0, 0, 0];
 
   return (
     <div className="bg-white">
@@ -166,15 +169,24 @@ export default async function DashboardHome() {
                 description="Moderation and back-office tools are separated here so they’re easy to find and harder to confuse with standard user actions."
                 tone="admin"
               >
+                {isAdmin ? (
+                  <div className="mb-4 rounded-2xl border border-[#e6d49a] bg-white/80 px-4 py-3">
+                    <div className="text-[11px] font-extrabold tracking-[0.16em] text-[#8a6a12]">BOATS SOLD ON ST.COM</div>
+                    <div className="mt-1 text-2xl font-extrabold text-[#0a2230]">{soldOnSiteCount}</div>
+                    <div className="mt-1 text-sm text-slate-600">
+                      Sellers who answered yes when reporting a sold boat.
+                    </div>
+                  </div>
+                ) : null}
                 <SimpleLink href="/dashboard/admin/review" label="Admin Review Queue" />
                 {isAdmin ? (
                   <SimpleLink
                     href="/dashboard/admin/active-listings"
-                    label="Active Listings"
+                    label="All Listings"
                     right={`${totalActiveListings} live`}
                   />
                 ) : null}
-                {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup / Site Inactive Listings" right="Drafts and storage" /> : null}
+                {isAdmin ? <SimpleLink href="/dashboard/admin/storage" label="Storage Cleanup" right="Drafts and storage" /> : null}
                 {isAdmin ? (
                   <SimpleLink
                     href="/dashboard/admin/users"

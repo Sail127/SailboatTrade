@@ -1649,7 +1649,7 @@ export default function NewListingForm() {
   function FreeListingPromo() {
     return (
       <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-[0_16px_48px_rgba(2,6,23,0.16)] bg-white">
-        <div className="absolute -right-14 top-8 rotate-45 bg-[#f3b23f] text-[#0a2230] px-16 py-2 text-[12px] font-extrabold tracking-wide shadow-md">
+        <div className="absolute -right-12 top-6 rotate-45 bg-[#f3b23f] text-[#0a2230] px-11 py-1.5 text-[10px] font-extrabold tracking-[0.14em] shadow-md sm:-right-14 sm:top-8 sm:px-16 sm:py-2 sm:text-[12px] sm:tracking-wide">
           FREE LISTING
         </div>
 

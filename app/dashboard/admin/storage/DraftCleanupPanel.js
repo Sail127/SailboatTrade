@@ -27,35 +27,6 @@ function fmtDate(value) {
   }
 }
 
-function daysSince(value) {
-  try {
-    const ts = new Date(value).getTime();
-    if (!Number.isFinite(ts)) return null;
-    return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)));
-  } catch {
-    return null;
-  }
-}
-
-function imageUrlFromKey(key) {
-  const value = String(key || "").trim();
-  if (!value) return null;
-  if (value.startsWith("http://") || value.startsWith("https://")) return value;
-  if (value.startsWith("/")) return value;
-  const normalized = value.replace(/^public\//, "");
-  if (normalized.startsWith("boats/") || normalized.startsWith("images/")) return `/${normalized}`;
-  return `/api/uploads?key=${encodeURIComponent(value)}`;
-}
-
-function listingThumbSrc(listing) {
-  const candidates = [listing?.heroImageUrl];
-  if (Array.isArray(listing?.imageUrls) && listing.imageUrls.length > 0) {
-    candidates.push(listing.imageUrls[0]);
-  }
-  const src = candidates.find(Boolean);
-  return src ? imageUrlFromKey(src) : null;
-}
-
 function statusLabel(status) {
   const value = String(status || "").toUpperCase();
   if (value === "DRAFT") return "Draft";
@@ -64,16 +35,6 @@ function statusLabel(status) {
   if (value === "ARCHIVED") return "Archived";
   if (value === "REMOVED") return "Removed";
   return value || "Unknown";
-}
-
-function statusTone(status) {
-  const value = String(status || "").toUpperCase();
-  if (value === "DRAFT") return "border-slate-300 bg-slate-50 text-slate-700";
-  if (value === "PENDING_REVIEW") return "border-amber-300 bg-amber-50 text-amber-900";
-  if (value === "REJECTED") return "border-red-300 bg-red-50 text-red-700";
-  if (value === "ARCHIVED") return "border-sky-300 bg-sky-50 text-sky-900";
-  if (value === "REMOVED") return "border-zinc-300 bg-zinc-100 text-zinc-700";
-  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function formatBytes(bytes) {
@@ -89,7 +50,7 @@ function formatBytes(bytes) {
   return `${size >= 10 || unit === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
 }
 
-export default function DraftCleanupPanel({ initialDraftListings = [], storageReport = null }) {
+export default function DraftCleanupPanel({ storageReport = null }) {
   const [days, setDays] = useState(7);
   const [busy, setBusy] = useState(false);
   const [inactiveCleanupBusy, setInactiveCleanupBusy] = useState(false);
@@ -99,39 +60,12 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
   const [emailCleanupResult, setEmailCleanupResult] = useState(null);
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState("");
-  const [draftListings, setDraftListings] = useState(Array.isArray(initialDraftListings) ? initialDraftListings : []);
-  const [draftQuery, setDraftQuery] = useState("");
-  const [draftBusyId, setDraftBusyId] = useState("");
-  const [inactiveDaysFilter, setInactiveDaysFilter] = useState(0);
-  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const daysSafe = useMemo(() => {
     const n = Number(days);
     if (!Number.isFinite(n)) return 7;
     return Math.min(90, Math.max(1, Math.floor(n)));
   }, [days]);
-
-  const filteredDrafts = useMemo(() => {
-    const search = draftQuery.trim().toLowerCase();
-    return draftListings.filter((listing) => {
-      const listingStatus = String(listing.status || "").toUpperCase();
-      if (statusFilter !== "ALL" && listingStatus !== statusFilter) {
-        return false;
-      }
-      const inactiveDays = daysSince(listing.updatedAt);
-      if (inactiveDaysFilter > 0 && (inactiveDays == null || inactiveDays < inactiveDaysFilter)) {
-        return false;
-      }
-      if (!search) return true;
-      return (
-        String(listing.id || "").toLowerCase().includes(search) ||
-        String(listing.title || "").toLowerCase().includes(search) ||
-        String(listing.ownerEmail || "").toLowerCase().includes(search) ||
-        String(listing.ownerName || "").toLowerCase().includes(search) ||
-        String(listing.ownerBusinessName || "").toLowerCase().includes(search)
-      );
-    });
-  }, [draftListings, draftQuery, inactiveDaysFilter, statusFilter]);
 
   function clearMessages() {
     setErr("");
@@ -171,36 +105,6 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
       setErr(e?.message || "Cleanup failed.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function deleteDraftListing(listing) {
-    if (!listing?.id) return;
-
-    const statusText = statusLabel(listing.status).toLowerCase();
-
-    const confirmed = window.confirm(
-      `Delete ${statusText} listing "${listing.title || "this listing"}"? \n\nThis permanently removes the listing and its stored listing images. This cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    clearMessages();
-    setDraftBusyId(listing.id);
-    try {
-      const res = await fetch(`/api/admin/listings/${encodeURIComponent(listing.id)}/delete`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.error || "Could not delete listing.");
-      }
-
-      setDraftListings((prev) => prev.filter((item) => item.id !== listing.id));
-      setSuccess(`"${data?.deletedTitle || listing.title || listing.id}" was deleted.`);
-    } catch (e) {
-      setErr(e?.message || "Could not delete listing.");
-    } finally {
-      setDraftBusyId("");
     }
   }
 
@@ -520,163 +424,6 @@ export default function DraftCleanupPanel({ initialDraftListings = [], storageRe
         </div>
       </div>
 
-      <div className={card}>
-        <div className="px-5 py-3 bg-[#0a2230] border-b border-black/10">
-          <div className="text-[15px] font-extrabold tracking-wide" style={{ color: GOLD }}>
-            Non-Live Listing Cleanup
-          </div>
-          <div className="mt-1 text-[12px] font-medium text-white/95">
-            Review every non-live listing on the site and permanently remove the ones you no longer need to keep.
-          </div>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: "All non-live", value: "ALL" },
-                { label: "Drafts", value: "DRAFT" },
-                { label: "Pending Review", value: "PENDING_REVIEW" },
-                { label: "Changes Requested", value: "REJECTED" },
-                { label: "Archived", value: "ARCHIVED" },
-                { label: "Removed", value: "REMOVED" },
-              ].map((option) => {
-                const active = statusFilter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setStatusFilter(option.value)}
-                    className={[
-                      "inline-flex h-10 items-center justify-center rounded-full border px-4 text-[13px] font-semibold transition",
-                      active
-                        ? "border-[#c8a44d] bg-[#fff7df] text-[#0a2230]"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: "All ages", value: 0 },
-                { label: "7+ days inactive", value: 7 },
-                { label: "30+ days inactive", value: 30 },
-                { label: "60+ days inactive", value: 60 },
-              ].map((option) => {
-                const active = inactiveDaysFilter === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setInactiveDaysFilter(option.value)}
-                    className={[
-                      "inline-flex h-10 items-center justify-center rounded-full border px-4 text-[13px] font-semibold transition",
-                      active
-                        ? "border-[#c8a44d] bg-[#fff7df] text-[#0a2230]"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <input
-              className="h-10 w-full rounded-xl border border-slate-300 px-3 text-[13px] text-[#0a2230] outline-none focus:ring-2 focus:ring-[#c8a44d]/40 sm:w-[320px]"
-              value={draftQuery}
-              onChange={(e) => setDraftQuery(e.target.value)}
-              placeholder="Search non-live listings by title, owner, email, or ID..."
-            />
-            <div className="text-[13px] text-slate-600">
-              Showing <span className="font-semibold text-[#0a2230]">{filteredDrafts.length}</span> of{" "}
-              <span className="font-semibold text-[#0a2230]">{draftListings.length}</span> non-live listings.
-              {inactiveDaysFilter > 0 ? ` Filter: ${inactiveDaysFilter}+ inactive days.` : ""}
-            </div>
-          </div>
-          </div>
-
-          {filteredDrafts.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-[13px] text-slate-600">
-              No non-live listings match your current filters.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredDrafts.map((listing) => {
-                const thumbSrc = listingThumbSrc(listing);
-                const ageDays = daysSince(listing.updatedAt);
-                const busy = draftBusyId === listing.id;
-                return (
-                  <div
-                    key={listing.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex min-w-0 gap-4">
-                        <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                          {thumbSrc ? (
-                            <img
-                              src={thumbSrc}
-                              alt={listing.title || "Draft listing photo"}
-                              className="h-full w-full object-contain bg-slate-100"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-[11px] font-semibold text-slate-500">
-                              No photo
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="min-w-0">
-                          <div className="text-[15px] font-extrabold text-[#0a2230]">{listing.title || "Untitled draft"}</div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusTone(
-                                listing.status
-                              )}`}
-                            >
-                              {statusLabel(listing.status)}
-                            </span>
-                            <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900">
-                              {ageDays != null ? `${ageDays} day${ageDays === 1 ? "" : "s"} inactive` : "Unknown age"}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
-                            <span>Listing ID: {listing.id}</span>
-                            <span>Owner: {listing.ownerName}</span>
-                            <span className="break-all">Email: {listing.ownerEmail}</span>
-                            {listing.ownerBusinessName ? <span>Business: {listing.ownerBusinessName}</span> : null}
-                            <span>Images: {listing.imageCount}</span>
-                            <span>Created: {fmtDate(listing.createdAt)}</span>
-                            <span>Updated: {fmtDate(listing.updatedAt)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex shrink-0 flex-col gap-2 sm:min-w-[220px]">
-                        <button
-                          type="button"
-                          onClick={() => deleteDraftListing(listing)}
-                          disabled={busy}
-                          className={btnDanger}
-                        >
-                          {busy ? "Working…" : "Delete Listing"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

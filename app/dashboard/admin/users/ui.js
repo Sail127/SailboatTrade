@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 function fmtDate(value) {
@@ -33,12 +34,17 @@ const SORT_OPTIONS = [
   { value: "listings_asc", label: "Fewest Listings" },
 ];
 
-export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) {
+export default function AdminUsersClient({
+  initialUsers,
+  currentAdminId = "",
+  initialQuery = "",
+  initialExpandedUserId = "",
+}) {
   const [users, setUsers] = useState(Array.isArray(initialUsers) ? initialUsers : []);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(String(initialQuery || ""));
   const [msg, setMsg] = useState("");
   const [busyId, setBusyId] = useState("");
-  const [expandedUserIds, setExpandedUserIds] = useState([]);
+  const [expandedUserIds, setExpandedUserIds] = useState(initialExpandedUserId ? [initialExpandedUserId] : []);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState("created_desc");
   const [composeUserId, setComposeUserId] = useState("");
@@ -366,45 +372,92 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
 	                  key={user.id}
 	                  className="rounded-2xl border border-[#eadba9] bg-white p-4 shadow-[0_8px_18px_rgba(2,6,23,0.05)]"
 	                >
-	                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-	                    <div className="min-w-0 flex-1">
-	                      <div className="flex flex-wrap items-center gap-2">
-	                        <div className="text-[15px] font-extrabold text-[#0a2230]">{displayName(user)}</div>
-	                        <span
-	                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roleTone(
-	                            user.role
-	                          )}`}
-	                        >
-	                          {user.role}
-	                        </span>
-	                        <span
-	                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
-	                            user.emailVerified
-	                              ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-	                              : "border-amber-300 bg-amber-50 text-amber-900"
-	                          }`}
-	                        >
-	                          {user.emailVerified ? "Email verified" : "Email unverified"}
-	                        </span>
-	                        {user.businessName ? (
-	                          <span className="inline-flex items-center rounded-full border border-[#d9c486] bg-[#fffaf0] px-2.5 py-1 text-[11px] font-semibold text-[#8a6a12]">
-	                            {user.businessName}
-	                          </span>
-	                        ) : null}
-	                      </div>
-	                      <div className="mt-1 break-all text-[13px] text-slate-700">{user.email}</div>
-	                    </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-[15px] font-extrabold text-[#0a2230]">{displayName(user)}</div>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roleTone(
+                              user.role
+                            )}`}
+                          >
+                            {user.role}
+                          </span>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                              user.emailVerified
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                                : "border-amber-300 bg-amber-50 text-amber-900"
+                            }`}
+                          >
+                            {user.emailVerified ? "Email verified" : "Email unverified"}
+                          </span>
+                          {user.businessName ? (
+                            <span className="inline-flex items-center rounded-full border border-[#d9c486] bg-[#fffaf0] px-2.5 py-1 text-[11px] font-semibold text-[#8a6a12]">
+                              {user.businessName}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
 
-	                    <div className="flex shrink-0 items-start sm:pl-3">
-	                      <button
-	                        type="button"
-	                        onClick={() => toggleExpanded(user.id)}
-	                        className="inline-flex h-10 items-center justify-center rounded-xl border border-[#d9c486] bg-[#fffaf0] px-4 text-sm font-semibold text-[#8a6a12] hover:bg-[#fff5dc]"
-	                      >
-	                        {expanded ? "Hide Details" : "More Details"}
-	                      </button>
-	                    </div>
-	                  </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Joined</div>
+                        <div className="mt-1 text-[13px] font-medium text-[#0a2230]">{fmtDate(user.createdAt)}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid gap-x-6 gap-y-3 md:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+                      <div className="flex flex-wrap gap-x-6 gap-y-3">
+                        <div>
+                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Listings</div>
+                          <div className="mt-1 text-[13px] font-medium text-[#0a2230]">
+                            {user.listingsCount > 0 ? (
+                              <Link
+                                href={`/dashboard/admin/active-listings?ownerId=${encodeURIComponent(user.id)}`}
+                                className="font-semibold text-[#0a2230] underline underline-offset-2 hover:text-[#18374a]"
+                              >
+                                {user.listingsCount}
+                              </Link>
+                            ) : (
+                              user.listingsCount || 0
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Updated</div>
+                          <div className="mt-1 text-[13px] font-medium text-[#0a2230]">{fmtDate(user.updatedAt)}</div>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Email</div>
+                            <div className="mt-1 break-all text-[13px] text-slate-700">{user.email}</div>
+                          </div>
+
+                          <div className="flex shrink-0 items-start">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(user.id)}
+                              aria-label={expanded ? "Collapse user details" : "Expand user details"}
+                              title={expanded ? "Hide details" : "Show details"}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#d9c486] bg-[#fffaf0] text-[#8a6a12] hover:bg-[#fff5dc]"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`text-lg leading-none transition-transform ${expanded ? "rotate-180" : ""}`}
+                              >
+                                ▾
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
 	                  {expanded ? (
 	                    <div className="mt-4 rounded-2xl border border-[#eadba9] bg-[#fffaf0] p-4">
@@ -431,7 +484,18 @@ export default function AdminUsersClient({ initialUsers, currentAdminId = "" }) 
 	                        </div>
 	                        <div>
 	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Listings</div>
-	                          <div className="mt-1 font-medium text-[#0a2230]">{user.listingsCount || 0}</div>
+	                          <div className="mt-1 font-medium text-[#0a2230]">
+                              {user.listingsCount > 0 ? (
+                                <Link
+                                  href={`/dashboard/admin/active-listings?ownerId=${encodeURIComponent(user.id)}`}
+                                  className="font-semibold text-[#0a2230] underline underline-offset-2 hover:text-[#18374a]"
+                                >
+                                  {user.listingsCount}
+                                </Link>
+                              ) : (
+                                user.listingsCount || 0
+                              )}
+                            </div>
 	                        </div>
 	                        <div>
 	                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Favorites</div>

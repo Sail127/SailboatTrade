@@ -7,7 +7,7 @@ import AdminUsersClient from "./ui";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersPage({ searchParams }) {
   const guard = await requireAdminApi("ADMIN");
   if (!guard.ok) redirect("/dashboard");
 
@@ -69,7 +69,7 @@ export default async function AdminUsersPage() {
             href="/dashboard/admin/active-listings"
             className="inline-flex h-10 items-center justify-center rounded-full border border-slate-300 px-5 text-[13px] font-semibold text-[#0a2230] hover:bg-slate-50"
           >
-            Active Listings
+            All Listings
           </Link>
           <Link
             href="/dashboard/admin/email-health"
@@ -98,7 +98,12 @@ export default async function AdminUsersPage() {
         </div>
       </div>
 
-      <AdminUsersClient initialUsers={initialUsers} currentAdminId={guard.me.id} />
+      <AdminUsersClient
+        initialUsers={initialUsers}
+        currentAdminId={guard.me.id}
+        initialQuery={String(searchParams?.userId || searchParams?.q || "")}
+        initialExpandedUserId={String(searchParams?.userId || "")}
+      />
     </div>
   );
 }

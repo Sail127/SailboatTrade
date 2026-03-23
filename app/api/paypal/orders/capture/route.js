@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import {
+  notifyOwnerListingPublished,
+  notifyOwnerListingUpgradeConfirmation,
   notifyAdminListingPendingReview,
   notifyOwnerListingPendingReviewAfterPurchase,
 } from "@/lib/adminReviewNotifications";
@@ -186,6 +188,25 @@ export async function POST(req) {
       },
     });
 
+    const ownerUpgradeNotice = await notifyOwnerListingUpgradeConfirmation({
+      req,
+      listingId: listing.id,
+      photoPlus: decoded.photoPlus,
+      featuredHome: decoded.featuredHome,
+      termMonths: decoded.termMonths,
+      totalCents: totals.totalCents,
+      currency: "USD",
+      nextStatus,
+      source: "api/paypal/orders/capture",
+    });
+    if (!ownerUpgradeNotice?.ok) {
+      console.warn("[paypal capture] owner upgrade confirmation email not sent", {
+        listingId: listing.id,
+        orderId,
+        reason: ownerUpgradeNotice?.skipped || ownerUpgradeNotice?.error || "unknown",
+      });
+    }
+
     if (isPending) {
       const adminNotice = await notifyAdminListingPendingReview({
         req,
@@ -210,6 +231,19 @@ export async function POST(req) {
           listingId: listing.id,
           orderId,
           reason: ownerNotice?.skipped || ownerNotice?.error || "unknown",
+        });
+      }
+    } else if (nextStatus === "PUBLISHED" && listingStatus !== "PUBLISHED") {
+      const ownerPublishedNotice = await notifyOwnerListingPublished({
+        req,
+        listingId: listing.id,
+        source: "api/paypal/orders/capture",
+      });
+      if (!ownerPublishedNotice?.ok) {
+        console.warn("[paypal capture] owner published email not sent", {
+          listingId: listing.id,
+          orderId,
+          reason: ownerPublishedNotice?.skipped || ownerPublishedNotice?.error || "unknown",
         });
       }
     }

@@ -11,6 +11,7 @@ import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
 import { DRAFT_UPLOAD_TTL_MS, normalizeDraftUploadKeys } from "@/lib/draftUploads";
 import PhotoUploaderContent from "@/components/listings/PhotoUploaderContent";
+import { SearchableSingleSelect } from "@/components/search/FilterDropdown";
 import {
   createLocalPhotoItems,
   deleteDraftUploadKeys,
@@ -351,6 +352,57 @@ function SectionCard({ title, subtitle, headerRight, titleMeta = "", children })
   );
 }
 
+function FormSearchSelect({
+  value,
+  onChange,
+  options,
+  placeholder = "Select...",
+  ariaLabel,
+  className,
+  panelClassName = "",
+  inputClassName,
+  rowClassName,
+  onBlur = null,
+  inputMode = "text",
+  pattern,
+}) {
+  const detailsRef = useRef(null);
+
+  useEffect(() => {
+    const node = detailsRef.current;
+    if (!node) return undefined;
+
+    function handleDocumentMouseDown(event) {
+      if (!node.hasAttribute("open")) return;
+      if (node.contains(event.target)) return;
+      node.removeAttribute("open");
+      onBlur?.();
+    }
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    return () => document.removeEventListener("mousedown", handleDocumentMouseDown);
+  }, [onBlur]);
+
+  return (
+    <SearchableSingleSelect
+      detailsRef={detailsRef}
+      value={value}
+      onChange={onChange}
+      options={options}
+      placeholder={placeholder}
+      ariaLabel={ariaLabel}
+      summaryClassName={`${className} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+      panelClassName={`mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ${panelClassName}`.trim()}
+      inputClassName={inputClassName}
+      rowClassName={rowClassName}
+      inputMode={inputMode}
+      pattern={pattern}
+      getOptionLabel={(option) => option.label}
+      getOptionValue={(option) => option.value}
+    />
+  );
+}
+
 /* =========================================================
    5) MAIN
 ========================================================= */
@@ -360,6 +412,35 @@ export default function NewListingForm() {
   const { popular: topBuilders, rest: otherBuilders } = useMemo(getBuilderGroups, []);
   const countryOptions = useMemo(() => getCountryOptions("en"), []);
   const usStateOptions = useMemo(() => getUsStateOptions(), []);
+  const typeOptions = useMemo(
+    () => [
+      { label: "Monohull", value: "MONOHULL" },
+      { label: "Catamaran", value: "CATAMARAN" },
+      { label: "Trimaran", value: "TRIMARAN" },
+    ],
+    []
+  );
+  const yearSelectOptions = useMemo(() => yearOptions.map((value) => ({ label: value, value })), [yearOptions]);
+  const builderSelectOptions = useMemo(
+    () => [
+      ...topBuilders.map((value) => ({ label: value, value })),
+      ...otherBuilders.map((value) => ({ label: value, value })),
+      { label: "Other", value: "Other" },
+    ],
+    [otherBuilders, topBuilders]
+  );
+  const countrySelectOptions = useMemo(
+    () => [...countryOptions.filter((option) => option?.value), { label: "Other", value: "Other" }],
+    [countryOptions]
+  );
+  const usRegionSelectOptions = useMemo(
+    () => US_REGION_OPTIONS.filter((option) => option.label !== "Select…"),
+    []
+  );
+  const usStateSelectOptions = useMemo(
+    () => usStateOptions.filter((option) => option?.value),
+    [usStateOptions]
+  );
 
   /* -------------------------
      FORM STATE (global)
@@ -809,6 +890,17 @@ export default function NewListingForm() {
   const label = (key) => `${labelBase} ${showErrorFor(key) ? "text-red-700" : ""}`;
   const input = (key) => `${fieldBase} ${fieldBorder(showErrorFor(key))}`;
   const textarea = (key) => `${textareaBase} ${fieldBorder(showErrorFor(key))}`;
+  const dropdownInputClass =
+    "h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-[13px] text-[#0a2230] outline-none placeholder:text-slate-500 focus:border-[#c8a44d]/70 focus:ring-2 focus:ring-[#c8a44d]/25";
+  const dropdownRowClass = (active, highlighted) =>
+    [
+      "w-full rounded-lg px-3 py-2 text-left text-[13px] transition",
+      active
+        ? "bg-[#0a2230] text-white font-semibold"
+        : highlighted
+        ? "bg-amber-50 text-[#0a2230] ring-1 ring-[#c8a44d]/45"
+        : "text-[#0a2230] hover:bg-slate-100",
+    ].join(" ");
 
   /* =========================================================
      7) DRAFT SAVE / RESTORE / RESET (NO RESUME BUTTON)
@@ -1734,24 +1826,36 @@ export default function NewListingForm() {
             <label className={label("type")}>
               Hull Type <Asterisk />
             </label>
-            <select className={input("type")} value={type} onChange={(e) => setType(e.target.value)} onBlur={() => touch("type")}>
-              <option value="">Select…</option>
-              <option value="MONOHULL">Monohull</option>
-              <option value="CATAMARAN">Catamaran</option>
-              <option value="TRIMARAN">Trimaran</option>
-            </select>
+            <FormSearchSelect
+              value={type}
+              onChange={setType}
+              options={typeOptions}
+              placeholder="Select..."
+              ariaLabel="Hull Type"
+              className={input("type")}
+              inputClassName={dropdownInputClass}
+              rowClassName={dropdownRowClass}
+              onBlur={() => touch("type")}
+            />
           </div>
 
           <div className="sm:col-span-4">
             <label className={label("year")}>
               Year <Asterisk />
             </label>
-            <select className={input("year")} value={year} onChange={(e) => setYear(e.target.value)} onBlur={() => touch("year")}>
-              <option value="">Select…</option>
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <FormSearchSelect
+              value={year}
+              onChange={setYear}
+              options={yearSelectOptions}
+              placeholder="Select..."
+              ariaLabel="Year"
+              className={input("year")}
+              inputClassName={dropdownInputClass}
+              rowClassName={dropdownRowClass}
+              onBlur={() => touch("year")}
+              inputMode="numeric"
+              pattern="[0-9]*"
+            />
           </div>
         </div>
 
@@ -1760,18 +1864,17 @@ export default function NewListingForm() {
             <label className={label("builder")}>
               Builder <Asterisk />
             </label>
-            <select className={input("builder")} value={builderSel} onChange={(e) => setBuilderSel(e.target.value)} onBlur={() => touch("builder")}>
-              <option value="">Select a builder</option>
-              {topBuilders.map((b) => (
-                <option key={`top-${b}`} value={b}>{b}</option>
-              ))}
-              <option disabled>──────────</option>
-              {otherBuilders.map((b) => (
-                <option key={`az-${b}`} value={b}>{b}</option>
-              ))}
-              <option disabled>──────────</option>
-              <option value="Other">Other</option>
-            </select>
+            <FormSearchSelect
+              value={builderSel}
+              onChange={setBuilderSel}
+              options={builderSelectOptions}
+              placeholder="Select a builder"
+              ariaLabel="Builder"
+              className={input("builder")}
+              inputClassName={dropdownInputClass}
+              rowClassName={dropdownRowClass}
+              onBlur={() => touch("builder")}
+            />
 
             {builderSel === "Other" && (
               <div className="mt-3">
@@ -1822,11 +1925,9 @@ export default function NewListingForm() {
             <label className={label("country")}>
               Country <Asterisk />
             </label>
-            <select
-              className={input("country")}
+            <FormSearchSelect
               value={locationCountrySel || ""}
-              onChange={(e) => {
-                const nextVal = e.target.value;
+              onChange={(nextVal) => {
                 setLocationCountrySel(nextVal);
                 touch("country");
 
@@ -1836,13 +1937,14 @@ export default function NewListingForm() {
                   setLocationState("");
                 }
               }}
+              options={countrySelectOptions}
+              placeholder="Select..."
+              ariaLabel="Country"
+              className={input("country")}
+              inputClassName={dropdownInputClass}
+              rowClassName={dropdownRowClass}
               onBlur={() => touch("country")}
-            >
-              {countryOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-              <option value="Other">Other</option>
-            </select>
+            />
 
             {locationCountrySel === "Other" && (
               <div className="mt-3">
@@ -1867,22 +1969,34 @@ export default function NewListingForm() {
                 <label className={label("usRegion")}>
                   USA Region <Asterisk />
                 </label>
-                <select className={input("usRegion")} value={locationUsRegion} onChange={(e) => setLocationUsRegion(e.target.value)} onBlur={() => touch("usRegion")}>
-                  {US_REGION_OPTIONS.map((o) => (
-                    <option key={o.value || "blank"} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+                <FormSearchSelect
+                  value={locationUsRegion}
+                  onChange={setLocationUsRegion}
+                  options={usRegionSelectOptions}
+                  placeholder="Select..."
+                  ariaLabel="USA Region"
+                  className={input("usRegion")}
+                  inputClassName={dropdownInputClass}
+                  rowClassName={dropdownRowClass}
+                  onBlur={() => touch("usRegion")}
+                />
               </div>
 
               <div className="sm:col-span-6">
                 <label className={label("state")}>
                   State <Asterisk />
                 </label>
-                <select className={input("state")} value={locationState} onChange={(e) => setLocationState(e.target.value)} onBlur={() => touch("state")}>
-                  {usStateOptions.map((s) => (
-                    <option key={s.value || "blank"} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
+                <FormSearchSelect
+                  value={locationState}
+                  onChange={setLocationState}
+                  options={usStateSelectOptions}
+                  placeholder="Select..."
+                  ariaLabel="State"
+                  className={input("state")}
+                  inputClassName={dropdownInputClass}
+                  rowClassName={dropdownRowClass}
+                  onBlur={() => touch("state")}
+                />
               </div>
             </>
           )}
@@ -2376,20 +2490,19 @@ export default function NewListingForm() {
                       <label className={labelBase}>{isBrokerUS ? "State" : "State / Region"}</label>
 
                       {isBrokerUS ? (
-                        <select
-                          className={`${fieldBase} border-slate-300 bg-white`}
+                        <FormSearchSelect
                           value={brokerageState || ""}
-                          onChange={(e) => {
+                          onChange={(nextValue) => {
                             contactTouchedRef.current.brokerageState = true;
-                            setBrokerageState(e.target.value);
+                            setBrokerageState(nextValue);
                           }}
-                        >
-                          {usStateOptions.map((s) => (
-                            <option key={`bs-${s.value || "blank"}`} value={s.value}>
-                              {s.label}
-                            </option>
-                          ))}
-                        </select>
+                          options={usStateSelectOptions}
+                          placeholder="Select..."
+                          ariaLabel="Brokerage State"
+                          className={`${fieldBase} border-slate-300 bg-white`}
+                          inputClassName={dropdownInputClass}
+                          rowClassName={dropdownRowClass}
+                        />
                       ) : (
                         <input
                           className={`${fieldBase} border-slate-300 bg-white`}
@@ -2405,21 +2518,19 @@ export default function NewListingForm() {
 
                   <div>
                     <label className={labelBase}>Country</label>
-                    <select
-                      className={`${fieldBase} border-slate-300 bg-white`}
+                    <FormSearchSelect
                       value={brokerageCountrySel || ""}
-                      onChange={(e) => {
+                      onChange={(nextValue) => {
                         contactTouchedRef.current.brokerageCountry = true;
-                        setBrokerageCountrySel(e.target.value);
+                        setBrokerageCountrySel(nextValue);
                       }}
-                    >
-                      {countryOptions.map((c) => (
-                        <option key={`bc-${c.value}`} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                      <option value="Other">Other</option>
-                    </select>
+                      options={countrySelectOptions}
+                      placeholder="Select..."
+                      ariaLabel="Brokerage Country"
+                      className={`${fieldBase} border-slate-300 bg-white`}
+                      inputClassName={dropdownInputClass}
+                      rowClassName={dropdownRowClass}
+                    />
 
                     {brokerageCountrySel === "Other" && (
                       <div className="mt-3">

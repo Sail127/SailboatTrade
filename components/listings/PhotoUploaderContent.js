@@ -12,6 +12,7 @@ export default function PhotoUploaderContent({
   onFilesSelected,
   addButtonDisabled = false,
   addButtonLabel = "Select photos",
+  tipText = "Tip: Landscape-oriented photos present best as the featured image.",
   counterNote = "",
   counterSecondaryText = "",
   emptyText = "No photos yet.",
@@ -107,6 +108,9 @@ export default function PhotoUploaderContent({
               {addButtonLabel}
             </label>
             <div className="text-[12px] text-slate-500">JPG, PNG, and WEBP supported.</div>
+            {tipText ? (
+              <div className="max-w-md text-[12px] text-slate-600">{tipText}</div>
+            ) : null}
           </div>
 
           <div className="mt-4 text-center text-[12px] font-semibold text-[#0a2230]">

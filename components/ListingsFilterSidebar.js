@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
+import { SearchableMultiSelect, SearchableSingleSelect } from "@/components/search/FilterDropdown";
 
 const US_REGION_OPTIONS = [
   { label: "All USA regions", value: "" },
@@ -80,20 +81,6 @@ function formatPriceInput(value) {
 
 function numericText(value, maxLength = 4) {
   return digitsOnly(value).slice(0, maxLength);
-}
-
-function normalizeSearchText(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function getSearchScore(label, query) {
-  const haystack = normalizeSearchText(label);
-  const needle = normalizeSearchText(query);
-  if (!needle) return 0;
-  if (haystack === needle) return 3;
-  if (haystack.startsWith(needle)) return 2;
-  if (haystack.includes(needle)) return 1;
-  return -1;
 }
 
 function parseFiniteNumber(value) {
@@ -256,241 +243,6 @@ function HullButton({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-function ValuePicker({
-  detailsRef,
-  value,
-  onChange,
-  options,
-  placeholder,
-  ariaLabel,
-  summaryClassName,
-  panelClassName,
-  inputClassName,
-  rowClassName,
-  anchorValue,
-  maxLength = 4,
-  optionLabel = (option) => option,
-}) {
-  const scrollBoxRef = useRef(null);
-  const inputRef = useRef(null);
-  const optionRefs = useRef(new Map());
-  const typedQuery = normalizeSearchText(value);
-
-  const filteredOptions = useMemo(() => {
-    if (!typedQuery) return options;
-    return options
-      .map((option, index) => ({
-        option,
-        index,
-        score: getSearchScore(optionLabel(option), typedQuery),
-      }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map((entry) => entry.option);
-  }, [optionLabel, options, typedQuery]);
-
-  const bestMatch = typedQuery ? filteredOptions[0] ?? "" : "";
-
-  const centerOnValue = (targetValue) => {
-    const key = String(targetValue || "").trim();
-    if (!key) return;
-    const container = scrollBoxRef.current;
-    const node = optionRefs.current.get(key);
-    if (!container || !node) return;
-    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
-    container.scrollTop = Math.max(0, nextTop);
-  };
-
-  const handleToggle = (e) => {
-    if (!e.currentTarget.open) return;
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      centerOnValue(value || anchorValue);
-    });
-  };
-
-  const chooseValue = (nextValue) => {
-    onChange(String(nextValue || ""));
-    detailsRef?.current?.removeAttribute?.("open");
-  };
-
-  const handleInputKeyDown = (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (!bestMatch) return;
-    chooseValue(bestMatch);
-  };
-
-  return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
-      <summary
-        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-        aria-label={ariaLabel}
-      >
-        <span>{value || placeholder}</span>
-        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-          ▼
-        </span>
-      </summary>
-      <div className={panelClassName}>
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={value}
-          onChange={(e) => onChange(numericText(e.target.value, maxLength))}
-          onKeyDown={handleInputKeyDown}
-          placeholder={placeholder}
-          className={inputClassName}
-          aria-label={`${ariaLabel} value`}
-        />
-        <div ref={scrollBoxRef} className="mt-2 max-h-44 overflow-y-auto space-y-1">
-          <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
-            {placeholder}
-          </button>
-          {filteredOptions.map((option) => (
-            <button
-              key={`${ariaLabel}-${option}`}
-              type="button"
-              ref={(node) => {
-                if (node) optionRefs.current.set(String(option), node);
-                else optionRefs.current.delete(String(option));
-              }}
-              onClick={() => chooseValue(option)}
-              className={[
-                rowClassName(String(value) === String(option)),
-                String(bestMatch) === String(option) ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
-              ].join(" ")}
-            >
-              {optionLabel(option)}
-            </button>
-          ))}
-          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
-        </div>
-      </div>
-    </details>
-  );
-}
-
-function SearchableMultiPicker({
-  detailsRef,
-  values,
-  onToggle,
-  options,
-  placeholder,
-  ariaLabel,
-  summaryText,
-  summaryClassName,
-  panelClassName,
-  inputClassName,
-  rowClassName,
-}) {
-  const [query, setQuery] = useState("");
-  const scrollBoxRef = useRef(null);
-  const inputRef = useRef(null);
-  const optionRefs = useRef(new Map());
-
-  const filteredOptions = useMemo(() => {
-    if (!normalizeSearchText(query)) return options;
-    return options
-      .map((option, index) => ({
-        option,
-        index,
-        score: getSearchScore(option.label, query),
-      }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map((entry) => entry.option);
-  }, [options, query]);
-
-  const bestMatch = normalizeSearchText(query) ? filteredOptions[0] ?? null : null;
-
-  const centerOnValue = (targetValue) => {
-    const key = String(targetValue || "").trim();
-    if (!key) return;
-    const container = scrollBoxRef.current;
-    const node = optionRefs.current.get(key);
-    if (!container || !node) return;
-    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
-    container.scrollTop = Math.max(0, nextTop);
-  };
-
-  const handleToggle = (e) => {
-    if (!e.currentTarget.open) {
-      setQuery("");
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      const selectedFirst = options.find((option) =>
-        values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value))
-      );
-      centerOnValue(selectedFirst?.value || bestMatch?.value);
-    });
-  };
-
-  const handleInputKeyDown = (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (!bestMatch) return;
-    onToggle(bestMatch.value);
-  };
-
-  return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
-      <summary
-        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-        aria-label={ariaLabel}
-      >
-        <span>{summaryText}</span>
-        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-          ▼
-        </span>
-      </summary>
-      <div className={panelClassName}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          placeholder={`Type to search ${placeholder.toLowerCase()}`}
-          className={inputClassName}
-          aria-label={`${ariaLabel} search`}
-        />
-        <div ref={scrollBoxRef} className="mt-2 max-h-52 overflow-y-auto space-y-1">
-          {filteredOptions.map((option) => {
-            const isActive = values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value));
-            const isHighlighted = bestMatch?.value === option.value;
-
-            return (
-              <button
-                key={`${ariaLabel}-${option.value}`}
-                type="button"
-                ref={(node) => {
-                  if (node) optionRefs.current.set(String(option.value), node);
-                  else optionRefs.current.delete(String(option.value));
-                }}
-                onClick={() => onToggle(option.value)}
-                aria-pressed={isActive}
-                className={[
-                  rowClassName(isActive),
-                  isHighlighted ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
-                ].join(" ")}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
-        </div>
-      </div>
-    </details>
-  );
-}
-
 function SavedSearchList({
   items,
   emptyLabel,
@@ -571,12 +323,14 @@ export default function ListingsFilterSidebar({
   const applyTimerRef = useRef(null);
   const mobileBuilderDetailsRef = useRef(null);
   const mobileCountryDetailsRef = useRef(null);
+  const mobileUsRegionDetailsRef = useRef(null);
   const mobileYearMinDetailsRef = useRef(null);
   const mobileYearMaxDetailsRef = useRef(null);
   const mobileLoaMinDetailsRef = useRef(null);
   const mobileLoaMaxDetailsRef = useRef(null);
   const desktopBuilderDetailsRef = useRef(null);
   const desktopCountryDetailsRef = useRef(null);
+  const desktopUsRegionDetailsRef = useRef(null);
   const desktopYearMinDetailsRef = useRef(null);
   const desktopYearMaxDetailsRef = useRef(null);
   const desktopLoaMinDetailsRef = useRef(null);
@@ -756,12 +510,12 @@ export default function ListingsFilterSidebar({
   }, [type, builder, yearMin, yearMax, priceMin, priceMax, loaMin, loaMax, loaUnit, country, countryLabelByCode, isUSA, usRegion, q]);
 
   const input =
-    "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
-    "placeholder:text-slate-500 outline-none focus:ring-2 focus:ring-[#c8a44d]/35";
+    "h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
+    "placeholder:text-slate-500 outline-none focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
 
   const select =
-    "h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
-    "outline-none focus:ring-2 focus:ring-[#c8a44d]/35";
+    "h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm text-[#0a2230] " +
+    "outline-none focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
 
   const selectTextClass = (value) =>
     Array.isArray(value)
@@ -775,11 +529,11 @@ export default function ListingsFilterSidebar({
   const drawerLabel = "block text-[12px] font-bold tracking-wide text-white/95";
   const drawerSection = "space-y-2 border-t border-white/15 pt-3";
   const drawerInput =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
-    "!bg-white !text-[#0a2230] placeholder:!text-slate-500 focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+    "h-10 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none [color-scheme:light] " +
+    "bg-white text-[#0a2230] placeholder:text-slate-500 focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
   const drawerSelect =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
-    "!bg-white !text-[#0a2230] focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+    "h-10 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none [color-scheme:light] " +
+    "bg-white text-[#0a2230] focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
   const drawerSelectTextClass = (value) =>
     Array.isArray(value)
       ? value.length
@@ -788,11 +542,16 @@ export default function ListingsFilterSidebar({
       : String(value || "").trim()
       ? "!text-[#0a2230]"
       : "!text-slate-500";
-  const pickerRowClass = (active) =>
+  const pickerRowClass = (active, highlighted) =>
     [
-      "w-full rounded-md px-2 py-1.5 text-left text-[13px] transition",
-      active ? "bg-[#0a2230] text-white font-semibold" : "text-[#0a2230] hover:bg-slate-50",
+      "w-full rounded-lg px-3 py-2 text-left text-[13px] transition",
+      active
+        ? "bg-[#0a2230] text-white font-semibold"
+        : highlighted
+        ? "bg-amber-50 text-[#0a2230] ring-1 ring-[#f3b23f]/50"
+        : "text-[#0a2230] hover:bg-slate-100",
     ].join(" ");
+  const pickerPanelClass = "mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl";
 
   function buildParams() {
     const params = new URLSearchParams();
@@ -942,12 +701,14 @@ export default function ListingsFilterSidebar({
     const detailRefs = [
       mobileBuilderDetailsRef,
       mobileCountryDetailsRef,
+      mobileUsRegionDetailsRef,
       mobileYearMinDetailsRef,
       mobileYearMaxDetailsRef,
       mobileLoaMinDetailsRef,
       mobileLoaMaxDetailsRef,
       desktopBuilderDetailsRef,
       desktopCountryDetailsRef,
+      desktopUsRegionDetailsRef,
       desktopYearMinDetailsRef,
       desktopYearMaxDetailsRef,
       desktopLoaMinDetailsRef,
@@ -1253,7 +1014,7 @@ export default function ListingsFilterSidebar({
 
               <div className={drawerSection}>
                 <label className={drawerLabel}>BUILDER</label>
-                <SearchableMultiPicker
+                <SearchableMultiSelect
                   detailsRef={mobileBuilderDetailsRef}
                   values={builder}
                   onToggle={handleBuilderToggle}
@@ -1262,7 +1023,7 @@ export default function ListingsFilterSidebar({
                   ariaLabel="Builder"
                   summaryText={builderSummary}
                   summaryClassName={`${drawerSelect} ${drawerSelectTextClass(builder)}`}
-                  panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                  panelClassName={pickerPanelClass}
                   inputClassName={drawerInput}
                   rowClassName={pickerRowClass}
                 />
@@ -1271,7 +1032,7 @@ export default function ListingsFilterSidebar({
               <div className={drawerSection}>
                 <label className={drawerLabel}>YEAR</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileYearMinDetailsRef}
                     value={yearMin}
                     onChange={setYearMin}
@@ -1279,12 +1040,15 @@ export default function ListingsFilterSidebar({
                     placeholder="Min"
                     ariaLabel="Minimum year"
                     summaryClassName={`${drawerSelect} ${drawerSelectTextClass(yearMin)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    panelClassName={pickerPanelClass}
                     inputClassName={drawerInput}
                     rowClassName={pickerRowClass}
                     anchorValue={yearMinAnchorValue}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 4)}
                   />
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileYearMaxDetailsRef}
                     value={yearMax}
                     onChange={setYearMax}
@@ -1292,10 +1056,13 @@ export default function ListingsFilterSidebar({
                     placeholder="Max"
                     ariaLabel="Maximum year"
                     summaryClassName={`${drawerSelect} ${drawerSelectTextClass(yearMax)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    panelClassName={pickerPanelClass}
                     inputClassName={drawerInput}
                     rowClassName={pickerRowClass}
                     anchorValue={yearMaxAnchorValue}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 4)}
                   />
                 </div>
               </div>
@@ -1306,7 +1073,7 @@ export default function ListingsFilterSidebar({
                   <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileLoaMinDetailsRef}
                     value={loaMin}
                     onChange={setLoaMin}
@@ -1314,14 +1081,17 @@ export default function ListingsFilterSidebar({
                     placeholder={`${loaUnit.toUpperCase()} Min`}
                     ariaLabel={`Minimum LOA (${loaUnit})`}
                     summaryClassName={`${drawerSelect} ${drawerSelectTextClass(loaMin)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    panelClassName={pickerPanelClass}
                     inputClassName={drawerInput}
                     rowClassName={pickerRowClass}
                     anchorValue={loaUnit === "m" ? "6" : "20"}
                     maxLength={3}
-                    optionLabel={(option) => `${option} ${loaUnit}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 3)}
+                    getOptionLabel={(option) => `${option} ${loaUnit}`}
                   />
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileLoaMaxDetailsRef}
                     value={loaMax}
                     onChange={setLoaMax}
@@ -1329,12 +1099,15 @@ export default function ListingsFilterSidebar({
                     placeholder={`${loaUnit.toUpperCase()} Max`}
                     ariaLabel={`Maximum LOA (${loaUnit})`}
                     summaryClassName={`${drawerSelect} ${drawerSelectTextClass(loaMax)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    panelClassName={pickerPanelClass}
                     inputClassName={drawerInput}
                     rowClassName={pickerRowClass}
                     anchorValue={loaUnit === "m" ? "18" : "60"}
                     maxLength={3}
-                    optionLabel={(option) => `${option} ${loaUnit}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 3)}
+                    getOptionLabel={(option) => `${option} ${loaUnit}`}
                   />
                 </div>
               </div>
@@ -1368,7 +1141,7 @@ export default function ListingsFilterSidebar({
               <div className={drawerSection}>
                 <label className={drawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
                 <div className="grid grid-cols-1 gap-2">
-                  <SearchableMultiPicker
+                  <SearchableMultiSelect
                     detailsRef={mobileCountryDetailsRef}
                     values={country}
                     onToggle={handleCountryToggle}
@@ -1380,24 +1153,26 @@ export default function ListingsFilterSidebar({
                     ariaLabel="Country"
                     summaryText={countrySummary}
                     summaryClassName={`${drawerSelect} ${drawerSelectTextClass(country)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                    panelClassName={pickerPanelClass}
                     inputClassName={drawerInput}
                     rowClassName={pickerRowClass}
                   />
 
                   {isUSA ? (
-                    <select
-                      className={`${drawerSelect} ${drawerSelectTextClass(usRegion)}`}
+                    <SearchableSingleSelect
+                      detailsRef={mobileUsRegionDetailsRef}
                       value={usRegion}
-                      onChange={(e) => setUsRegion(e.target.value)}
-                      aria-label="USA Region"
-                    >
-                      {US_REGION_OPTIONS.map((o) => (
-                        <option key={`mobile-us-region-${o.value || "all"}`} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setUsRegion}
+                      options={US_REGION_OPTIONS}
+                      placeholder="All USA regions"
+                      ariaLabel="USA Region"
+                      summaryClassName={`${drawerSelect} ${drawerSelectTextClass(usRegion)}`}
+                      panelClassName={pickerPanelClass}
+                      inputClassName={drawerInput}
+                      rowClassName={pickerRowClass}
+                      getOptionLabel={(option) => option.label}
+                      getOptionValue={(option) => option.value}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -1585,7 +1360,7 @@ export default function ListingsFilterSidebar({
 
           <div className="space-y-2 border-t border-slate-300 pt-3">
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">BUILDER</label>
-            <SearchableMultiPicker
+            <SearchableMultiSelect
               detailsRef={desktopBuilderDetailsRef}
               values={builder}
               onToggle={handleBuilderToggle}
@@ -1594,7 +1369,7 @@ export default function ListingsFilterSidebar({
               ariaLabel="Builder"
               summaryText={builderSummary}
               summaryClassName={`${select} ${selectTextClass(builder)}`}
-              panelClassName="mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+              panelClassName="mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
               inputClassName={input}
               rowClassName={pickerRowClass}
             />
@@ -1603,7 +1378,7 @@ export default function ListingsFilterSidebar({
           <div className="space-y-2 border-t border-slate-300 pt-3">
             <label className="block text-[12px] font-bold tracking-wide text-slate-700">YEAR</label>
             <div className="grid grid-cols-2 gap-2">
-              <ValuePicker
+              <SearchableSingleSelect
                 detailsRef={desktopYearMinDetailsRef}
                 value={yearMin}
                 onChange={setYearMin}
@@ -1611,12 +1386,15 @@ export default function ListingsFilterSidebar({
                 placeholder="Min"
                 ariaLabel="Minimum year"
                 summaryClassName={`${select} ${selectTextClass(yearMin)}`}
-                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
                 anchorValue={yearMinAnchorValue}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                transformInput={(nextValue) => numericText(nextValue, 4)}
               />
-              <ValuePicker
+              <SearchableSingleSelect
                 detailsRef={desktopYearMaxDetailsRef}
                 value={yearMax}
                 onChange={setYearMax}
@@ -1624,10 +1402,13 @@ export default function ListingsFilterSidebar({
                 placeholder="Max"
                 ariaLabel="Maximum year"
                 summaryClassName={`${select} ${selectTextClass(yearMax)}`}
-                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
                 anchorValue={yearMaxAnchorValue}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                transformInput={(nextValue) => numericText(nextValue, 4)}
               />
             </div>
           </div>
@@ -1638,7 +1419,7 @@ export default function ListingsFilterSidebar({
                   <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <ValuePicker
+              <SearchableSingleSelect
                 detailsRef={desktopLoaMinDetailsRef}
                 value={loaMin}
                 onChange={setLoaMin}
@@ -1646,14 +1427,17 @@ export default function ListingsFilterSidebar({
                 placeholder={`${loaUnit.toUpperCase()} Min`}
                 ariaLabel={`Minimum LOA (${loaUnit})`}
                 summaryClassName={`${select} ${selectTextClass(loaMin)}`}
-                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
                 anchorValue={loaUnit === "m" ? "6" : "20"}
                 maxLength={3}
-                optionLabel={(option) => `${option} ${loaUnit}`}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                transformInput={(nextValue) => numericText(nextValue, 3)}
+                getOptionLabel={(option) => `${option} ${loaUnit}`}
               />
-              <ValuePicker
+              <SearchableSingleSelect
                 detailsRef={desktopLoaMaxDetailsRef}
                 value={loaMax}
                 onChange={setLoaMax}
@@ -1661,12 +1445,15 @@ export default function ListingsFilterSidebar({
                 placeholder={`${loaUnit.toUpperCase()} Max`}
                 ariaLabel={`Maximum LOA (${loaUnit})`}
                 summaryClassName={`${select} ${selectTextClass(loaMax)}`}
-                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
                 anchorValue={loaUnit === "m" ? "18" : "60"}
                 maxLength={3}
-                optionLabel={(option) => `${option} ${loaUnit}`}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                transformInput={(nextValue) => numericText(nextValue, 3)}
+                getOptionLabel={(option) => `${option} ${loaUnit}`}
               />
             </div>
           </div>
@@ -1703,7 +1490,7 @@ export default function ListingsFilterSidebar({
             </label>
 
             <div className="grid grid-cols-1 gap-2">
-              <SearchableMultiPicker
+              <SearchableMultiSelect
                 detailsRef={desktopCountryDetailsRef}
                 values={country}
                 onToggle={handleCountryToggle}
@@ -1715,24 +1502,26 @@ export default function ListingsFilterSidebar({
                 ariaLabel="Country"
                 summaryText={countrySummary}
                 summaryClassName={`${select} ${selectTextClass(country)}`}
-                panelClassName="mt-2 rounded-xl border border-slate-300 bg-white p-2 shadow-xl"
+                panelClassName="mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
               />
 
               {isUSA ? (
-                <select
-                  className={`${select} ${selectTextClass(usRegion)}`}
+                <SearchableSingleSelect
+                  detailsRef={desktopUsRegionDetailsRef}
                   value={usRegion}
-                  onChange={(e) => setUsRegion(e.target.value)}
-                  aria-label="USA Region"
-                >
-                  {US_REGION_OPTIONS.map((o) => (
-                    <option key={o.value || "all"} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setUsRegion}
+                  options={US_REGION_OPTIONS}
+                  placeholder="All USA regions"
+                  ariaLabel="USA Region"
+                  summaryClassName={`${select} ${selectTextClass(usRegion)}`}
+                  panelClassName="mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                  inputClassName={input}
+                  rowClassName={pickerRowClass}
+                  getOptionLabel={(option) => option.label}
+                  getOptionValue={(option) => option.value}
+                />
               ) : null}
             </div>
           </div>

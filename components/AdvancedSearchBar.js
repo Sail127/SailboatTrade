@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { usePathname, useSearchParams } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
 import { getBuilderGroups } from "@/lib/builders";
+import { SearchableMultiSelect, SearchableSingleSelect } from "@/components/search/FilterDropdown";
 
 // ✅ Match your listing form enum values (and add an "All" option for search)
 const US_REGION_OPTIONS = [
@@ -60,20 +61,6 @@ function formatPriceInput(value) {
 
 function numericText(value, maxLength = 4) {
   return digitsOnly(value).slice(0, maxLength);
-}
-
-function normalizeSearchText(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function getSearchScore(label, query) {
-  const haystack = normalizeSearchText(label);
-  const needle = normalizeSearchText(query);
-  if (!needle) return 0;
-  if (haystack === needle) return 3;
-  if (haystack.startsWith(needle)) return 2;
-  if (haystack.includes(needle)) return 1;
-  return -1;
 }
 
 function parseFiniteNumber(value) {
@@ -266,243 +253,6 @@ function HullTile({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-function ValuePicker({
-  detailsRef,
-  value,
-  onChange,
-  options,
-  placeholder,
-  ariaLabel,
-  summaryClassName,
-  panelClassName,
-  inputClassName,
-  rowClassName,
-  anchorValue,
-  maxLength = 4,
-  optionLabel = (option) => option,
-}) {
-  const scrollBoxRef = useRef(null);
-  const inputRef = useRef(null);
-  const optionRefs = useRef(new Map());
-  const typedQuery = normalizeSearchText(value);
-
-  const filteredOptions = useMemo(() => {
-    if (!typedQuery) return options;
-    return options
-      .map((option, index) => ({
-        option,
-        index,
-        score: getSearchScore(optionLabel(option), typedQuery),
-      }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map((entry) => entry.option);
-  }, [optionLabel, options, typedQuery]);
-
-  const bestMatch = typedQuery ? filteredOptions[0] ?? "" : "";
-
-  const centerOnValue = (targetValue) => {
-    const key = String(targetValue || "").trim();
-    if (!key) return;
-    const container = scrollBoxRef.current;
-    const node = optionRefs.current.get(key);
-    if (!container || !node) return;
-    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
-    container.scrollTop = Math.max(0, nextTop);
-  };
-
-  const handleToggle = (e) => {
-    if (!e.currentTarget.open) return;
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      centerOnValue(value || anchorValue);
-    });
-  };
-
-  const chooseValue = (nextValue) => {
-    onChange(String(nextValue || ""));
-    detailsRef?.current?.removeAttribute?.("open");
-  };
-
-  const handleInputKeyDown = (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (!bestMatch) return;
-    chooseValue(bestMatch);
-  };
-
-  return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
-      <summary
-        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-        aria-label={ariaLabel}
-      >
-        <span>{value || placeholder}</span>
-        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-          ▼
-        </span>
-      </summary>
-      <div className={panelClassName}>
-        <input
-          ref={inputRef}
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={value}
-          onChange={(e) => onChange(numericText(e.target.value, maxLength))}
-          onKeyDown={handleInputKeyDown}
-          placeholder={placeholder}
-          className={inputClassName}
-          aria-label={`${ariaLabel} value`}
-        />
-        <div ref={scrollBoxRef} className="mt-2 max-h-44 overflow-y-auto space-y-1">
-          <button type="button" onClick={() => chooseValue("")} className={rowClassName(!value)}>
-            {placeholder}
-          </button>
-          {filteredOptions.map((option) => (
-            <button
-              key={`${ariaLabel}-${option}`}
-              type="button"
-              ref={(node) => {
-                if (node) optionRefs.current.set(String(option), node);
-                else optionRefs.current.delete(String(option));
-              }}
-              onClick={() => chooseValue(option)}
-              className={[
-                rowClassName(String(value) === String(option)),
-                String(bestMatch) === String(option) ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
-              ].join(" ")}
-            >
-              {optionLabel(option)}
-            </button>
-          ))}
-          {!filteredOptions.length ? (
-            <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p>
-          ) : null}
-        </div>
-      </div>
-    </details>
-  );
-}
-
-function SearchableMultiPicker({
-  detailsRef,
-  values,
-  onToggle,
-  options,
-  placeholder,
-  ariaLabel,
-  summaryText,
-  summaryClassName,
-  panelClassName,
-  inputClassName,
-  rowClassName,
-}) {
-  const [query, setQuery] = useState("");
-  const scrollBoxRef = useRef(null);
-  const inputRef = useRef(null);
-  const optionRefs = useRef(new Map());
-
-  const filteredOptions = useMemo(() => {
-    if (!normalizeSearchText(query)) return options;
-    return options
-      .map((option, index) => ({
-        option,
-        index,
-        score: getSearchScore(option.label, query),
-      }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map((entry) => entry.option);
-  }, [options, query]);
-
-  const bestMatch = normalizeSearchText(query) ? filteredOptions[0] ?? null : null;
-
-  const centerOnValue = (targetValue) => {
-    const key = String(targetValue || "").trim();
-    if (!key) return;
-    const container = scrollBoxRef.current;
-    const node = optionRefs.current.get(key);
-    if (!container || !node) return;
-    const nextTop = node.offsetTop - container.clientHeight / 2 + node.offsetHeight / 2;
-    container.scrollTop = Math.max(0, nextTop);
-  };
-
-  const handleToggle = (e) => {
-    if (!e.currentTarget.open) {
-      setQuery("");
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      const selectedFirst = options.find((option) =>
-        values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value))
-      );
-      centerOnValue(selectedFirst?.value || bestMatch?.value);
-    });
-  };
-
-  const handleInputKeyDown = (e) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    if (!bestMatch) return;
-    onToggle(bestMatch.value);
-  };
-
-  return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
-      <summary
-        className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-        aria-label={ariaLabel}
-      >
-        <span>{summaryText}</span>
-        <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-          ▼
-        </span>
-      </summary>
-      <div className={panelClassName}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleInputKeyDown}
-          placeholder={`Type to search ${placeholder.toLowerCase()}`}
-          className={inputClassName}
-          aria-label={`${ariaLabel} search`}
-        />
-        <div ref={scrollBoxRef} className="mt-2 max-h-52 overflow-y-auto space-y-1">
-          {filteredOptions.map((option) => {
-            const isActive = values.some((value) => normalizeSearchText(value) === normalizeSearchText(option.value));
-            const isHighlighted = bestMatch?.value === option.value;
-
-            return (
-              <button
-                key={`${ariaLabel}-${option.value}`}
-                type="button"
-                ref={(node) => {
-                  if (node) optionRefs.current.set(String(option.value), node);
-                  else optionRefs.current.delete(String(option.value));
-                }}
-                onClick={() => onToggle(option.value)}
-                aria-pressed={isActive}
-                className={[
-                  rowClassName(isActive),
-                  isHighlighted ? "ring-2 ring-[#f3b23f]/55 ring-inset" : "",
-                ].join(" ")}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-          {!filteredOptions.length ? <p className="px-2 py-2 text-sm text-slate-500">No matches found.</p> : null}
-        </div>
-      </div>
-    </details>
-  );
-}
-
 export default function AdvancedSearchBar({ variant = "dark", submitPath = "/listings", initialValues = EMPTY_INITIAL_VALUES }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -530,12 +280,14 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const desktopHullMenuRef = useRef(null);
   const mobileBuilderDetailsRef = useRef(null);
   const mobileCountryDetailsRef = useRef(null);
+  const mobileUsRegionDetailsRef = useRef(null);
   const mobileYearMinDetailsRef = useRef(null);
   const mobileYearMaxDetailsRef = useRef(null);
   const mobileLoaMinDetailsRef = useRef(null);
   const mobileLoaMaxDetailsRef = useRef(null);
   const desktopBuilderDetailsRef = useRef(null);
   const desktopCountryDetailsRef = useRef(null);
+  const desktopUsRegionDetailsRef = useRef(null);
   const desktopYearMinDetailsRef = useRef(null);
   const desktopYearMaxDetailsRef = useRef(null);
   const desktopLoaMinDetailsRef = useRef(null);
@@ -660,12 +412,14 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     const detailRefs = [
       mobileBuilderDetailsRef,
       mobileCountryDetailsRef,
+      mobileUsRegionDetailsRef,
       mobileYearMinDetailsRef,
       mobileYearMaxDetailsRef,
       mobileLoaMinDetailsRef,
       mobileLoaMaxDetailsRef,
       desktopBuilderDetailsRef,
       desktopCountryDetailsRef,
+      desktopUsRegionDetailsRef,
       desktopYearMinDetailsRef,
       desktopYearMaxDetailsRef,
       desktopLoaMinDetailsRef,
@@ -731,14 +485,13 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   // ✅ Force white inputs regardless of globals.css
   const input =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
-    "!bg-white !text-[#0a2230] placeholder:!text-slate-500 " +
-    "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+    "h-10 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none [color-scheme:light] " +
+    "bg-white text-[#0a2230] placeholder:text-slate-500 " +
+    "focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
 
   const select =
-    "h-10 w-full rounded-full border border-white/20 px-3 text-sm outline-none [color-scheme:light] " +
-    "!bg-white !text-[#0a2230] " +
-    "focus:border-[#f3b23f]/60 focus:ring-2 focus:ring-[#f3b23f]/30";
+    "h-10 w-full rounded-xl border border-slate-300 px-3 text-sm outline-none [color-scheme:light] " +
+    "bg-white text-[#0a2230] focus:border-[#f3b23f]/70 focus:ring-2 focus:ring-[#f3b23f]/25";
 
   const selectTextClass = (value) =>
     Array.isArray(value)
@@ -748,13 +501,17 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       : String(value || "").trim()
       ? "!text-[#0a2230]"
       : "!text-slate-500";
-  const pickerRowClass = (active) =>
+  const pickerRowClass = (active, highlighted) =>
     [
-      "w-full rounded-md px-2 py-1.5 text-left text-[13px] transition",
-      active ? "bg-[#0a2230] text-white font-semibold" : "text-[#0a2230] hover:bg-slate-50",
+      "w-full rounded-lg px-3 py-2 text-left text-[13px] transition",
+      active
+        ? "bg-[#0a2230] text-white font-semibold"
+        : highlighted
+        ? "bg-amber-50 text-[#0a2230] ring-1 ring-[#f3b23f]/50"
+        : "text-[#0a2230] hover:bg-slate-100",
     ].join(" ");
   const pickerPanelClass =
-    "mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl";
+    "mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl";
 
   const mobileDrawerLabel = "block text-[12px] font-bold tracking-wide text-white";
   const mobileDrawerSection = "space-y-2 border-t border-white/15 pt-3";
@@ -916,7 +673,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>BUILDER</label>
-                <SearchableMultiPicker
+                <SearchableMultiSelect
                   detailsRef={mobileBuilderDetailsRef}
                   values={builder}
                   onToggle={handleBuilderToggle}
@@ -925,7 +682,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   ariaLabel="Builder"
                   summaryText={builderSummary}
                   summaryClassName={`${select} ${selectTextClass(builder)}`}
-                  panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2"
+                  panelClassName={pickerPanelClass}
                   inputClassName={input}
                   rowClassName={pickerRowClass}
                 />
@@ -934,7 +691,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               <div className={mobileDrawerSection}>
                 <label className={mobileDrawerLabel}>YEAR</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileYearMinDetailsRef}
                     value={yearMin}
                     onChange={setYearMin}
@@ -947,8 +704,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     rowClassName={pickerRowClass}
                     anchorValue="2000"
                     maxLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 4)}
                   />
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileYearMaxDetailsRef}
                     value={yearMax}
                     onChange={setYearMax}
@@ -961,6 +721,9 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     rowClassName={pickerRowClass}
                     anchorValue="2015"
                     maxLength={4}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 4)}
                   />
                 </div>
               </div>
@@ -971,7 +734,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   <SmallUnitToggle value={loaUnit} onChange={setLoaUnit} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileLoaMinDetailsRef}
                     value={loaMin}
                     onChange={setLoaMin}
@@ -984,9 +747,12 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     rowClassName={pickerRowClass}
                     anchorValue={loaUnit === "m" ? "6" : "20"}
                     maxLength={3}
-                    optionLabel={(option) => `${option} ${loaUnit}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 3)}
+                    getOptionLabel={(option) => `${option} ${loaUnit}`}
                   />
-                  <ValuePicker
+                  <SearchableSingleSelect
                     detailsRef={mobileLoaMaxDetailsRef}
                     value={loaMax}
                     onChange={setLoaMax}
@@ -999,7 +765,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     rowClassName={pickerRowClass}
                     anchorValue={loaUnit === "m" ? "18" : "60"}
                     maxLength={3}
-                    optionLabel={(option) => `${option} ${loaUnit}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    transformInput={(nextValue) => numericText(nextValue, 3)}
+                    getOptionLabel={(option) => `${option} ${loaUnit}`}
                   />
                 </div>
               </div>
@@ -1034,7 +803,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 <label className={mobileDrawerLabel}>{isUSA ? "COUNTRY / USA REGION" : "COUNTRY"}</label>
 
                 <div className="grid grid-cols-1 gap-2">
-                  <SearchableMultiPicker
+                  <SearchableMultiSelect
                     detailsRef={mobileCountryDetailsRef}
                     values={country}
                     onToggle={handleCountryToggle}
@@ -1046,24 +815,26 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     ariaLabel="Country"
                     summaryText={countrySummary}
                     summaryClassName={`${select} ${selectTextClass(country)}`}
-                    panelClassName="mt-2 rounded-xl border border-white/20 bg-white p-2"
+                    panelClassName={pickerPanelClass}
                     inputClassName={input}
                     rowClassName={pickerRowClass}
                   />
 
                   {isUSA ? (
-                    <select
-                      className={`${select} ${selectTextClass(usRegion)}`}
+                    <SearchableSingleSelect
+                      detailsRef={mobileUsRegionDetailsRef}
                       value={usRegion}
-                      onChange={(e) => setUsRegion(e.target.value)}
-                      aria-label="USA Region"
-                    >
-                      {US_REGION_OPTIONS.map((o) => (
-                        <option key={`mobile-home-us-region-${o.value || "all"}`} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setUsRegion}
+                      options={US_REGION_OPTIONS}
+                      placeholder="All USA regions"
+                      ariaLabel="USA Region"
+                      summaryClassName={`${select} ${selectTextClass(usRegion)}`}
+                      panelClassName={pickerPanelClass}
+                      inputClassName={input}
+                      rowClassName={pickerRowClass}
+                      getOptionLabel={(option) => option.label}
+                      getOptionValue={(option) => option.value}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -1206,7 +977,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 </button>
               </div>
               <label className={label}>Builder</label>
-              <SearchableMultiPicker
+              <SearchableMultiSelect
                 detailsRef={desktopBuilderDetailsRef}
                 values={builder}
                 onToggle={handleBuilderToggle}
@@ -1215,7 +986,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                 ariaLabel="Builder"
                 summaryText={builderSummary}
                 summaryClassName={`${select} mt-2 ${selectTextClass(builder)}`}
-                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                 inputClassName={input}
                 rowClassName={pickerRowClass}
               />
@@ -1227,7 +998,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <div className="min-w-0 relative z-[70]">
               <label className={label}>Year</label>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <ValuePicker
+                <SearchableSingleSelect
                   detailsRef={desktopYearMinDetailsRef}
                   value={yearMin}
                   onChange={setYearMin}
@@ -1240,8 +1011,11 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   rowClassName={pickerRowClass}
                   anchorValue="2000"
                   maxLength={4}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  transformInput={(nextValue) => numericText(nextValue, 4)}
                 />
-                <ValuePicker
+                <SearchableSingleSelect
                   detailsRef={desktopYearMaxDetailsRef}
                   value={yearMax}
                   onChange={setYearMax}
@@ -1254,6 +1028,9 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   rowClassName={pickerRowClass}
                   anchorValue="2015"
                   maxLength={4}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  transformInput={(nextValue) => numericText(nextValue, 4)}
                 />
               </div>
             </div>
@@ -1265,7 +1042,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               </label>
 
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <ValuePicker
+                <SearchableSingleSelect
                   detailsRef={desktopLoaMinDetailsRef}
                   value={loaMin}
                   onChange={setLoaMin}
@@ -1278,9 +1055,12 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   rowClassName={pickerRowClass}
                   anchorValue={loaUnit === "m" ? "6" : "20"}
                   maxLength={3}
-                  optionLabel={(option) => `${option} ${loaUnit}`}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  transformInput={(nextValue) => numericText(nextValue, 3)}
+                  getOptionLabel={(option) => `${option} ${loaUnit}`}
                 />
-                <ValuePicker
+                <SearchableSingleSelect
                   detailsRef={desktopLoaMaxDetailsRef}
                   value={loaMax}
                   onChange={setLoaMax}
@@ -1293,7 +1073,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   rowClassName={pickerRowClass}
                   anchorValue={loaUnit === "m" ? "18" : "60"}
                   maxLength={3}
-                  optionLabel={(option) => `${option} ${loaUnit}`}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  transformInput={(nextValue) => numericText(nextValue, 3)}
+                  getOptionLabel={(option) => `${option} ${loaUnit}`}
                 />
               </div>
             </div>
@@ -1330,7 +1113,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
             <div className="min-w-0">
               <label className={label}>Country</label>
               <div className="mt-2">
-                <SearchableMultiPicker
+                <SearchableMultiSelect
                   detailsRef={desktopCountryDetailsRef}
                   values={country}
                   onToggle={handleCountryToggle}
@@ -1342,7 +1125,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   ariaLabel="Country"
                   summaryText={countrySummary}
                   summaryClassName={`${select} w-full ${selectTextClass(country)}`}
-                  panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-xl border border-white/20 bg-white p-2 shadow-xl"
+                  panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
                   inputClassName={input}
                   rowClassName={pickerRowClass}
                 />
@@ -1355,18 +1138,20 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               </label>
               <div className="mt-2">
                 {isUSA ? (
-                  <select
-                    className={`${select} w-full ${selectTextClass(usRegion)}`}
+                  <SearchableSingleSelect
+                    detailsRef={desktopUsRegionDetailsRef}
                     value={usRegion}
-                    onChange={(e) => setUsRegion(e.target.value)}
-                    aria-label="USA Region"
-                  >
-                    {US_REGION_OPTIONS.map((o) => (
-                      <option key={o.value || "all"} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setUsRegion}
+                    options={US_REGION_OPTIONS}
+                    placeholder="All USA regions"
+                    ariaLabel="USA Region"
+                    summaryClassName={`${select} w-full ${selectTextClass(usRegion)}`}
+                    panelClassName="absolute left-0 right-0 top-full z-[90] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"
+                    inputClassName={input}
+                    rowClassName={pickerRowClass}
+                    getOptionLabel={(option) => option.label}
+                    getOptionValue={(option) => option.value}
+                  />
                 ) : (
                   <div className="h-10" aria-hidden="true" />
                 )}

@@ -456,28 +456,12 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    const min = parseFiniteNumber(yearMin);
-    const max = parseFiniteNumber(yearMax);
-    if (min == null || max == null || min <= max) return;
-    setYearMin(String(max));
-    setYearMax(String(min));
-  }, [yearMin, yearMax]);
-
-  useEffect(() => {
     const min = parseFiniteNumber(priceMin);
     const max = parseFiniteNumber(priceMax);
     if (min == null || max == null || min <= max) return;
     setPriceMin(String(max));
     setPriceMax(String(min));
   }, [priceMin, priceMax]);
-
-  useEffect(() => {
-    const min = parseFiniteNumber(loaMin);
-    const max = parseFiniteNumber(loaMax);
-    if (min == null || max == null || min <= max) return;
-    setLoaMin(String(max));
-    setLoaMax(String(min));
-  }, [loaMin, loaMax]);
 
   const shell = "w-full rounded-2xl bg-[#0a2230] px-4 pb-3 pt-1 shadow-lg ring-1 ring-white/15";
 

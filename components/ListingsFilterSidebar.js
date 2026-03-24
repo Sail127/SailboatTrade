@@ -379,28 +379,12 @@ export default function ListingsFilterSidebar({
   }, [initialSavedSearches]);
 
   useEffect(() => {
-    const min = parseFiniteNumber(yearMin);
-    const max = parseFiniteNumber(yearMax);
-    if (min == null || max == null || min <= max) return;
-    setYearMin(String(max));
-    setYearMax(String(min));
-  }, [yearMin, yearMax]);
-
-  useEffect(() => {
     const min = parseFiniteNumber(priceMin);
     const max = parseFiniteNumber(priceMax);
     if (min == null || max == null || min <= max) return;
     setPriceMin(String(max));
     setPriceMax(String(min));
   }, [priceMin, priceMax]);
-
-  useEffect(() => {
-    const min = parseFiniteNumber(loaMin);
-    const max = parseFiniteNumber(loaMax);
-    if (min == null || max == null || min <= max) return;
-    setLoaMin(String(max));
-    setLoaMax(String(min));
-  }, [loaMin, loaMax]);
 
   const isUSA = country.includes("US");
   const loaOptions = useMemo(() => buildLoaOptions(loaUnit), [loaUnit]);

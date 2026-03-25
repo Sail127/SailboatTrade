@@ -420,7 +420,6 @@ export default function NewListingForm() {
     ],
     []
   );
-  const yearSelectOptions = useMemo(() => yearOptions.map((value) => ({ label: value, value })), [yearOptions]);
   const builderSelectOptions = useMemo(
     () => [
       ...topBuilders.map((value) => ({ label: value, value })),
@@ -521,6 +520,7 @@ export default function NewListingForm() {
     for (let y = max; y >= min; y--) arr.push(String(y));
     return arr;
   }, [nowYear]);
+  const yearSelectOptions = useMemo(() => yearOptions.map((value) => ({ label: value, value })), [yearOptions]);
 
   const [boatCondition, setBoatCondition] = useState(""); // NEW | USED
   const [type, setType] = useState(""); // MONOHULL | CATAMARAN | TRIMARAN

@@ -630,15 +630,10 @@ export default function NewListingForm() {
   function addAdditionalEquipment(raw) {
     const v = normalizeEquipmentName(raw);
     if (!v) return;
-    let wasAdded = false;
-    setAdditionalEquipment((prev) => {
-      const exists = prev.some((item) => normalizeEquipmentName(item).toLowerCase() === v.toLowerCase());
-      if (exists) return prev;
-      wasAdded = true;
-      return dedupeStrings([...prev, v]);
-    });
+    const exists = installedEquipment.some((item) => normalizeEquipmentName(item).toLowerCase() === v.toLowerCase());
     setAdditionalEquipmentInput("");
-    if (!wasAdded) return;
+    if (exists) return;
+    setAdditionalEquipment((prev) => dedupeStrings([...prev, v]));
     setAdditionalEquipmentSuccessMsg(`"${v}" added`);
     if (additionalEquipmentSuccessTimerRef.current) clearTimeout(additionalEquipmentSuccessTimerRef.current);
     additionalEquipmentSuccessTimerRef.current = setTimeout(() => {
@@ -2265,7 +2260,9 @@ export default function NewListingForm() {
           </button>
         </div>
         {additionalEquipmentSuccessMsg ? (
-          <div className="mt-2 text-[12px] font-medium text-emerald-700">{additionalEquipmentSuccessMsg}</div>
+          <div className="mt-2 max-w-[520px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-medium text-emerald-700">
+            {additionalEquipmentSuccessMsg}
+          </div>
         ) : null}
 
         <div className="mt-6 border-t border-slate-200" />

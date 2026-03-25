@@ -158,6 +158,24 @@ function normalizeInitialValues(initialValues = {}) {
   };
 }
 
+function normalizeSavedSearchPath(path) {
+  const raw = String(path || "").trim();
+  if (!raw) return "";
+
+  const [basePart, queryPart = ""] = raw.split("?");
+  const params = new URLSearchParams(queryPart);
+  const pairs = Array.from(params.entries()).sort((a, b) => {
+    if (a[0] !== b[0]) return a[0].localeCompare(b[0]);
+    return a[1].localeCompare(b[1]);
+  });
+
+  const normalizedQuery = new URLSearchParams();
+  for (const [key, value] of pairs) normalizedQuery.append(key, value);
+
+  const query = normalizedQuery.toString();
+  return query ? `${basePart}?${query}` : basePart;
+}
+
 function SmallUnitToggle({ value, onChange }) {
   const btn =
     "px-1.5 py-0.5 rounded-md text-[11px] font-bold border transition " +
@@ -243,52 +261,6 @@ function HullButton({ active, onClick, label, imgSrc, isAll = false }) {
   );
 }
 
-function SavedSearchList({
-  items,
-  emptyLabel,
-  panelClassName,
-  rowButtonClassName,
-  deleteButtonClassName,
-  onApply,
-  onDelete,
-}) {
-  if (!items.length) {
-    return (
-      <div className={panelClassName}>
-        <p className="text-[12px] text-slate-500">{emptyLabel}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`${panelClassName} max-h-44 overflow-y-auto`}>
-      <div className="space-y-1">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onApply(item.path)}
-              className={rowButtonClassName}
-              title={item.name}
-            >
-              <span className="truncate">{item.name}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onDelete(item.id)}
-              className={deleteButtonClassName}
-              aria-label={`Delete saved search ${item.name}`}
-              title={`Delete ${item.name}`}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function ListingsFilterSidebar({
   submitPath = "/listings",
   initialValues = {},
@@ -316,6 +288,8 @@ export default function ListingsFilterSidebar({
   const [usRegion, setUsRegion] = useState(initial.usRegion);
   const [saveMsg, setSaveMsg] = useState("");
   const [savedSearches, setSavedSearches] = useState(initialSavedSearches);
+  const [mobileManageSavedSearches, setMobileManageSavedSearches] = useState(false);
+  const [desktopManageSavedSearches, setDesktopManageSavedSearches] = useState(false);
   const [showHullPicker, setShowHullPicker] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const readyRef = useRef(false);
@@ -791,7 +765,11 @@ export default function ListingsFilterSidebar({
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) throw new Error(data?.error || "Unable to delete saved search.");
 
+      const deletedActive = savedSearches.some(
+        (item) => item.id === targetId && normalizeSavedSearchPath(item.path) === normalizeSavedSearchPath(currentSearchPath())
+      );
       setSavedSearches((prev) => prev.filter((item) => item.id !== targetId));
+      if (deletedActive) clearFilters();
       showSaveMessage("Saved search deleted.");
     } catch {
       showSaveMessage("Unable to delete saved search.");
@@ -815,13 +793,79 @@ export default function ListingsFilterSidebar({
     if (type === "trimaran") return { label: "Trimaran", imgSrc: "/images/hulls/trimaran.png", isAll: false };
     return { label: "All", imgSrc: "", isAll: true };
   }, [type]);
+  const selectedSavedSearchName = useMemo(() => {
+    const activePath = normalizeSavedSearchPath(currentSearchPath());
+    if (!activePath) return "";
+    return savedSearches.find((item) => normalizeSavedSearchPath(item.path) === activePath)?.name || "";
+  }, [savedSearches, q, type, builder, yearMin, yearMax, priceMin, priceMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath]);
+  const selectedSavedSearchPath = useMemo(() => {
+    const activePath = normalizeSavedSearchPath(currentSearchPath());
+    if (!activePath) return "";
+    return savedSearches.find((item) => normalizeSavedSearchPath(item.path) === activePath)?.path || "";
+  }, [savedSearches, q, type, builder, yearMin, yearMax, priceMin, priceMax, loaUnit, loaMin, loaMax, country, usRegion, isUSA, submitPath]);
+  const savedSearchOptions = useMemo(
+    () => [
+      { label: "None", value: "__NONE__" },
+      ...savedSearches.map((item) => ({ label: item.name, value: item.path })),
+    ],
+    [savedSearches]
+  );
+  const savedSearchSelectValue = selectedSavedSearchPath || "__NONE__";
 
   const activeFilterCount = activeFilterPills.length;
-  const savedSearchPanelClass = "rounded-xl border border-slate-300 bg-white p-2";
-  const savedSearchRowClass =
-    "min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-[#0a2230] transition hover:bg-slate-50";
-  const savedSearchDeleteClass =
-    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600";
+
+  function handleSavedSearchSelect(nextValue) {
+    if (!viewerLoggedIn) {
+      redirectToLogin();
+      return;
+    }
+
+    const selected = String(nextValue || "").trim();
+    if (!selected || selected === "__NONE__") return;
+    if (selected === "__CLEAR__") {
+      clearFilters();
+      if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) setMobileDrawerOpen(false);
+      return;
+    }
+
+    applySavedSearch(selected);
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) setMobileDrawerOpen(false);
+  }
+
+  function SavedSearchManager({ tone = "desktop" }) {
+    if (!savedSearches.length) {
+      return <div className={`text-[12px] ${tone === "mobile" ? "text-white/75" : "text-slate-500"}`}>No saved searches yet.</div>;
+    }
+
+    return (
+      <div
+        className={
+          tone === "mobile"
+            ? "mt-2 rounded-xl border border-white/15 bg-white p-2"
+            : "mt-2 rounded-xl border border-slate-200 bg-white p-2"
+        }
+      >
+        <div className="space-y-1">
+          {savedSearches.map((item) => (
+            <div key={item.id} className="flex items-center gap-2">
+              <div className="min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-[12px] font-semibold text-[#0a2230]" title={item.name}>
+                {item.name}
+              </div>
+              <button
+                type="button"
+                onClick={() => deleteSavedSearch(item.id)}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                aria-label={`Delete saved search ${item.name}`}
+                title={`Delete ${item.name}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -936,36 +980,43 @@ export default function ListingsFilterSidebar({
 	                  onChange={(e) => setQ(e.target.value)}
 	                />
                   <div className="border-t border-white/15 pt-3">
-                    <label className={drawerLabel}>SAVED SEARCHES</label>
-                    {viewerLoggedIn ? (
-                      <details className="group mt-2">
-                        <summary
-                          className={`${drawerSelect} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                    <div className="flex items-center justify-between gap-2">
+                      <label className={drawerLabel}>SAVED SEARCHES</label>
+                      {viewerLoggedIn ? (
+                        <button
+                          type="button"
+                          onClick={() => setMobileManageSavedSearches((prev) => !prev)}
+                          className="text-[12px] font-semibold text-white/85 underline underline-offset-2 hover:text-white"
                         >
-                          <span>{savedSearches.length ? `${savedSearches.length} saved searches` : "Saved Searches"}</span>
-                          <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                            ▼
-                          </span>
-                        </summary>
-                        <div className="mt-2">
-                          <SavedSearchList
-                            items={savedSearches}
-                            emptyLabel="No saved searches yet."
-                            panelClassName="rounded-xl border border-white/15 bg-white p-2"
-                            rowButtonClassName="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-[#0a2230] transition hover:bg-slate-50"
-                            deleteButtonClassName="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-300 text-sm font-bold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
-                            onApply={applySavedSearch}
-                            onDelete={deleteSavedSearch}
-                          />
-                        </div>
-                      </details>
+                          {mobileManageSavedSearches ? "Done" : "Manage"}
+                        </button>
+                      ) : null}
+                    </div>
+                    {viewerLoggedIn ? (
+                      <>
+                        <select
+                          value={savedSearchSelectValue}
+                          onChange={(e) => handleSavedSearchSelect(e.target.value)}
+                          className={`${drawerSelect} !bg-white ${savedSearchSelectValue === "__NONE__" ? "!text-slate-500" : "!text-[#0a2230]"}`}
+                          aria-label="Saved Search"
+                        >
+                          <option value="__NONE__">Select search</option>
+                          <option value="__CLEAR__">None</option>
+                          {savedSearches.map((item) => (
+                            <option key={`mobile-saved-search-${item.id}`} value={item.path}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                        {mobileManageSavedSearches ? <SavedSearchManager tone="mobile" /> : null}
+                      </>
                     ) : (
                       <button
                         type="button"
                         onClick={redirectToLogin}
                         className={`${drawerSelect} mt-2 flex items-center justify-between`}
                       >
-                        <span>Saved Searches</span>
+                        <span>Select search</span>
                         <span aria-hidden="true" className="text-xs text-slate-500">
                           ▼
                         </span>
@@ -1262,36 +1313,43 @@ export default function ListingsFilterSidebar({
 	              onChange={(e) => setQ(e.target.value)}
 	            />
               <div className="border-t border-slate-300 pt-3">
-                <label className="block text-[12px] font-bold tracking-wide text-slate-700">SAVED SEARCHES</label>
-                {viewerLoggedIn ? (
-                  <details className="group mt-2">
-                    <summary
-                      className={`${select} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-[12px] font-bold tracking-wide text-slate-700">SAVED SEARCHES</label>
+                  {viewerLoggedIn ? (
+                    <button
+                      type="button"
+                      onClick={() => setDesktopManageSavedSearches((prev) => !prev)}
+                      className="text-[12px] font-semibold text-slate-600 underline underline-offset-2 hover:text-slate-800"
                     >
-                      <span>{savedSearches.length ? `${savedSearches.length} saved searches` : "Saved Searches"}</span>
-                      <span aria-hidden="true" className="text-xs text-slate-500 transition group-open:rotate-180">
-                        ▼
-                      </span>
-                    </summary>
-                    <div className="mt-2">
-                      <SavedSearchList
-                        items={savedSearches}
-                        emptyLabel="No saved searches yet."
-                        panelClassName={savedSearchPanelClass}
-                        rowButtonClassName={savedSearchRowClass}
-                        deleteButtonClassName={savedSearchDeleteClass}
-                        onApply={applySavedSearch}
-                        onDelete={deleteSavedSearch}
-                      />
-                    </div>
-                  </details>
+                      {desktopManageSavedSearches ? "Done" : "Manage"}
+                    </button>
+                  ) : null}
+                </div>
+                {viewerLoggedIn ? (
+                  <>
+                    <select
+                      value={savedSearchSelectValue}
+                      onChange={(e) => handleSavedSearchSelect(e.target.value)}
+                      className={`${select} bg-white ${savedSearchSelectValue === "__NONE__" ? "text-slate-500" : "text-[#0a2230]"}`}
+                      aria-label="Saved Search"
+                    >
+                      <option value="__NONE__">Select search</option>
+                      <option value="__CLEAR__">None</option>
+                      {savedSearches.map((item) => (
+                        <option key={`desktop-saved-search-${item.id}`} value={item.path}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                    {desktopManageSavedSearches ? <SavedSearchManager tone="desktop" /> : null}
+                  </>
                 ) : (
                   <button
                     type="button"
                     onClick={redirectToLogin}
                     className={`${select} mt-2 flex items-center justify-between`}
                   >
-                    <span>Saved Searches</span>
+                    <span>Select search</span>
                     <span aria-hidden="true" className="text-xs text-slate-500">
                       ▼
                     </span>

@@ -579,6 +579,7 @@ export default function NewListingForm() {
   const [equipmentSelected, setEquipmentSelected] = useState(() => new Set());
   const [additionalEquipmentInput, setAdditionalEquipmentInput] = useState("");
   const [additionalEquipment, setAdditionalEquipment] = useState([]);
+  const [additionalEquipmentSuccessMsg, setAdditionalEquipmentSuccessMsg] = useState("");
   const [riggingRemarks, setRiggingRemarks] = useState("");
 
   const [hasGenerator, setHasGenerator] = useState("NO");
@@ -589,6 +590,13 @@ export default function NewListingForm() {
 
   const [hasDinghy, setHasDinghy] = useState("NO");
   const [dinghyNotes, setDinghyNotes] = useState("");
+  const additionalEquipmentSuccessTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (additionalEquipmentSuccessTimerRef.current) clearTimeout(additionalEquipmentSuccessTimerRef.current);
+    };
+  }, []);
 
   function dedupeStrings(arr) {
     const seen = new Set();
@@ -622,8 +630,21 @@ export default function NewListingForm() {
   function addAdditionalEquipment(raw) {
     const v = normalizeEquipmentName(raw);
     if (!v) return;
-    setAdditionalEquipment((prev) => dedupeStrings([...prev, v]));
+    let wasAdded = false;
+    setAdditionalEquipment((prev) => {
+      const exists = prev.some((item) => normalizeEquipmentName(item).toLowerCase() === v.toLowerCase());
+      if (exists) return prev;
+      wasAdded = true;
+      return dedupeStrings([...prev, v]);
+    });
     setAdditionalEquipmentInput("");
+    if (!wasAdded) return;
+    setAdditionalEquipmentSuccessMsg(`"${v}" added`);
+    if (additionalEquipmentSuccessTimerRef.current) clearTimeout(additionalEquipmentSuccessTimerRef.current);
+    additionalEquipmentSuccessTimerRef.current = setTimeout(() => {
+      setAdditionalEquipmentSuccessMsg("");
+      additionalEquipmentSuccessTimerRef.current = null;
+    }, 2500);
   }
   function removeAdditionalEquipment(name) {
     const target = normalizeEquipmentName(name).toLowerCase();
@@ -2243,6 +2264,9 @@ export default function NewListingForm() {
             Add
           </button>
         </div>
+        {additionalEquipmentSuccessMsg ? (
+          <div className="mt-2 text-[12px] font-medium text-emerald-700">{additionalEquipmentSuccessMsg}</div>
+        ) : null}
 
         <div className="mt-6 border-t border-slate-200" />
 

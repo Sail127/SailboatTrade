@@ -230,6 +230,7 @@ model Listing {
   equipment    String[] @default([])
   heroImageUrl String?
   imageUrls    String[] @default([])
+  heroImageFrame Json?
 
   riggingRemarks String?
   additionalInfo String?

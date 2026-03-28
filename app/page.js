@@ -34,6 +34,11 @@ const SAMPLE_PLACEHOLDER_IMAGES = [
   "/boats/example-sailboat8.jpg",
 ];
 
+function isMissingHeroImageFrameColumn(error) {
+  const message = String(error?.message || "");
+  return message.includes("Listing.heroImageFrame") && message.includes("does not exist");
+}
+
 function shuffleInPlace(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -46,40 +51,54 @@ export default async function Home() {
   let poolRaw = [];
   try {
     const now = new Date();
-    poolRaw = await prisma.listing.findMany({
-      where: {
-        status: "PUBLISHED",
-        featuredHome: true,
-        AND: [
-          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    const where = {
+      status: "PUBLISHED",
+      featuredHome: true,
+      AND: [
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        { heroImageUrl: { not: null } },
+        { heroImageUrl: { not: "" } },
+        { NOT: { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } } },
+      ],
+    };
+    const baseSelect = {
+      id: true,
+      title: true,
+      price: true,
+      currency: true,
+      year: true,
+      builder: true,
+      model: true,
+      loa: true,
+      loaUnit: true,
+      locationCity: true,
+      locationState: true,
+      locationCountry: true,
+      locationUsRegion: true,
+      heroImageUrl: true,
+      updatedAt: true,
+    };
 
-          // ✅ Exclude seeded example hero images (safe + supported)
-          // NOTE: Prisma cannot do startsWith on elements inside the imageUrls string[] field.
-          { heroImageUrl: { not: null } },
-          { heroImageUrl: { not: "" } },
-          { NOT: { heroImageUrl: { startsWith: SAMPLE_IMAGE_PREFIX } } },
-        ],
-      },
-      orderBy: { updatedAt: "desc" },
-      take: ROTATION_POOL_TAKE,
-      select: {
-        id: true,
-        title: true,
-        price: true,
-        currency: true,
-        year: true,
-        builder: true,
-        model: true,
-        loa: true,
-        loaUnit: true,
-        locationCity: true,
-        locationState: true,
-        locationCountry: true,
-        locationUsRegion: true,
-        heroImageUrl: true,
-        updatedAt: true,
-      },
-    });
+    try {
+      poolRaw = await prisma.listing.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: ROTATION_POOL_TAKE,
+        select: {
+          ...baseSelect,
+          heroImageFrame: true,
+        },
+      });
+    } catch (error) {
+      if (!isMissingHeroImageFrameColumn(error)) throw error;
+
+      poolRaw = await prisma.listing.findMany({
+        where,
+        orderBy: { updatedAt: "desc" },
+        take: ROTATION_POOL_TAKE,
+        select: baseSelect,
+      });
+    }
   } catch (err) {
     console.error("Home page findMany error:", err);
     poolRaw = [];
@@ -178,9 +197,9 @@ export default async function Home() {
           </a>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {featuredReal.map((listing) => (
-            <ListingCard key={listing.id} listing={listing} variant="featured" imageFit="contain" hardNavigate />
+            <ListingCard key={listing.id} listing={listing} variant="featured" hardNavigate />
           ))}
 
           {samplePlaceholders.map((sample) => (
@@ -188,7 +207,6 @@ export default async function Home() {
               key={sample.id}
               listing={sample}
               variant="featured"
-              imageFit="contain"
               hrefOverride="/listings/new"
               hardNavigate
               samplePlaceholder

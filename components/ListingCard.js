@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { getCountryOptions } from "@/lib/countries";
+import { heroImageFrameStyle, normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 
 function resolveImage(listing) {
   const candidates = [listing?.heroImageUrl, listing?.imageUrl, listing?.image].filter(Boolean);
@@ -139,8 +140,11 @@ export default function ListingCard({
   imageFit = "cover",
   showPrice = variant !== "featured",
   showFavorite = false,
+  previewChrome = false,
+  previewUploaded = false,
   hrefOverride = null,
   hardNavigate = false,
+  interactive = true,
   imageTopLabel = "",
   sampleStampLines = [],
   samplePlaceholder = false,
@@ -193,13 +197,19 @@ export default function ListingCard({
   const regionText = countryUpper === "US" ? usRegionLabel(locationUsRegion) : "";
   const cityState = [locationCity, locationState].map((x) => String(x || "").trim()).filter(Boolean).join(", ");
   const countryText = countryFooterLabel(locationCountry);
-
-  const loc =
+  const isUsLocation = countryUpper === "US";
+  const locationPrimaryLine =
     location ||
-    (countryUpper === "US"
-      ? [cityState, [regionText, "USA"].filter(Boolean).join(", ")].filter(Boolean).join(" · ")
+    (isUsLocation
+      ? cityState || countryText
       : [locationCity, locationState, countryText].map((x) => String(x || "").trim()).filter(Boolean).join(", ")) ||
     null;
+  const locationSecondaryLine =
+    !location && isUsLocation && regionText ? `${regionText}, USA` : "";
+  const showSplitUsLocation = Boolean(locationSecondaryLine);
+  const locationBlockClass = showSplitUsLocation
+    ? "mt-1 text-[13px] leading-tight text-slate-700"
+    : "mt-2 text-[13px] leading-tight text-slate-700";
 
   const hull = hullLabel(type);
   const hasMetaPills = Boolean(hull);
@@ -209,9 +219,10 @@ export default function ListingCard({
     (Array.isArray(sampleStampLines) && sampleStampLines.length > 0);
   const useContain = imageFit === "contain";
   const canFavorite = showFavorite && Boolean(id);
+  const heroImageStyle = heroImageFrameStyle(normalizeHeroImageFrame(listing?.heroImageFrame));
   const imageClass = useContain
     ? "object-contain object-center bg-slate-100"
-    : "object-cover object-center transition-transform duration-300 group-hover:scale-105";
+    : "object-cover object-center transition-transform duration-300 scale-[var(--hero-scale)] group-hover:scale-[var(--hero-scale-hover)]";
   const featuredTitleText = isSamplePlaceholder ? "Sample Feature Listing" : topTitle;
   const currentSearch = searchParams?.toString() || "";
   const currentPath = pathname ? `${pathname}${currentSearch ? `?${currentSearch}` : ""}` : "";
@@ -291,12 +302,13 @@ export default function ListingCard({
         </div>
       ) : null}
 
-      <div className="relative h-56 sm:h-64">
+      <div className="relative h-56 overflow-hidden sm:h-64">
         <Image
           src={photo}
           alt={displayTitle}
           fill
           className={`${imageClass} ${isSamplePlaceholder ? "grayscale" : ""}`}
+          style={useContain ? undefined : heroImageStyle}
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
           unoptimized={isUnoptimized}
         />
@@ -338,9 +350,15 @@ export default function ListingCard({
             {favBusy ? "…" : <HeartIcon filled={favorited} />}
           </button>
         ) : null}
+
+        {previewChrome && previewUploaded ? (
+          <div className="absolute right-3 top-3 z-20 rounded-full bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white shadow-[0_6px_18px_rgba(2,6,23,0.18)]">
+            ✓
+          </div>
+        ) : null}
       </div>
 
-      <div className="px-4 pt-2.5 pb-2.5 flex flex-1 flex-col">
+      <div className={`px-4 pb-2.5 flex flex-1 flex-col ${isFeatured ? "pt-1.5" : "pt-2"}`}>
         {isFeatured ? (
           <div className="min-h-[30px] flex items-center justify-between gap-2">
             <h3
@@ -371,10 +389,22 @@ export default function ListingCard({
           </div>
         ) : null}
 
-        {loc ? (
-          <div className="mt-2 flex items-center gap-1.5 text-[13px] leading-tight text-slate-700">
-            <span className="text-slate-500"><PinIcon /></span>
-            <span className="line-clamp-1">{loc}</span>
+        {locationPrimaryLine ? (
+          <div className={locationBlockClass}>
+            {showSplitUsLocation ? (
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="shrink-0 text-slate-500"><PinIcon /></span>
+                  <span className="truncate">{locationPrimaryLine}</span>
+                </div>
+                <span className="shrink-0 whitespace-nowrap text-slate-700">{locationSecondaryLine}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="shrink-0 text-slate-500"><PinIcon /></span>
+                <span className="line-clamp-1">{locationPrimaryLine}</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-2 text-[13px] text-slate-500"> </div>
@@ -382,6 +412,10 @@ export default function ListingCard({
       </div>
     </>
   );
+
+  if (!interactive) {
+    return <div className={cardClass}>{cardBody}</div>;
+  }
 
   if (hardNavigate) {
     return (

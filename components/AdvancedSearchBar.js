@@ -45,7 +45,8 @@ function buildLoaOptions(unit) {
     return out;
   }
   const out = [];
-  for (let v = 10; v <= 100; v += 1) out.push(String(v));
+  for (let v = 10; v <= 60; v += 1) out.push(String(v));
+  for (let v = 65; v <= 200; v += 5) out.push(String(v));
   return out;
 }
 
@@ -292,6 +293,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
   const desktopYearMaxDetailsRef = useRef(null);
   const desktopLoaMinDetailsRef = useRef(null);
   const desktopLoaMaxDetailsRef = useRef(null);
+  const yearMaxAnchorValue = useMemo(() => String(new Date().getFullYear()), []);
 
   useEffect(() => {
     setQ(initial.q);
@@ -703,7 +705,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                     panelClassName={pickerPanelClass}
                     inputClassName={input}
                     rowClassName={pickerRowClass}
-                    anchorValue="2015"
+                    anchorValue={yearMaxAnchorValue}
                     maxLength={4}
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -1010,7 +1012,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   panelClassName={`absolute left-0 right-0 top-full z-[90] ${pickerPanelClass}`}
                   inputClassName={input}
                   rowClassName={pickerRowClass}
-                  anchorValue="2015"
+                  anchorValue={yearMaxAnchorValue}
                   maxLength={4}
                   inputMode="numeric"
                   pattern="[0-9]*"

@@ -181,7 +181,6 @@ export function SearchableSingleSelect({
           <button
             type="button"
             onClick={() => chooseValue("")}
-            onMouseEnter={() => setHighlightedIndex(0)}
             className={rowClassName(!value)}
           >
             {placeholder}
@@ -200,7 +199,6 @@ export function SearchableSingleSelect({
                   else optionRefs.current.delete(optionValue);
                 }}
                 onClick={() => chooseValue(optionValue)}
-                onMouseEnter={() => setHighlightedIndex(index)}
                 className={rowClassName(isSelected, isHighlighted)}
               >
                 {getOptionLabel(option)}
@@ -365,7 +363,6 @@ export function SearchableMultiSelect({
                   else optionRefs.current.delete(optionValue);
                 }}
                 onClick={() => chooseValue(optionValue)}
-                onMouseEnter={() => setHighlightedIndex(index)}
                 aria-pressed={isActive}
                 className={rowClassName(isActive, isHighlighted)}
               >

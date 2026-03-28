@@ -7,6 +7,7 @@ import {
   normalizeStateName,
   normalizeListingTitle,
 } from "@/lib/textFormat";
+import { normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -234,6 +235,9 @@ export async function PUT(req, { params }) {
           .filter((x) => x.length > 0)
           .slice(0, 30)
       : undefined;
+  const nextHeroImageFrame = has(body, "heroImageFrame")
+    ? normalizeHeroImageFrame(body.heroImageFrame)
+    : undefined;
 
   // --------- MINOR updates: apply immediately even if published ----------
   const minorData = {
@@ -257,6 +261,7 @@ export async function PUT(req, { params }) {
 
   if (nextHeroImageUrl !== undefined) data.heroImageUrl = nextHeroImageUrl;
   if (nextImageUrls !== undefined) data.imageUrls = nextImageUrls;
+  if (nextHeroImageFrame !== undefined) data.heroImageFrame = nextHeroImageFrame;
 
   const updated = await prisma.listing.update({
     where: { id: listing.id },

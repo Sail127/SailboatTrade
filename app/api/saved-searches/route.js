@@ -64,3 +64,28 @@ export async function POST(req) {
 
   return NextResponse.json({ ok: true, savedSearch });
 }
+
+export async function DELETE(req) {
+  const session = await requireUser().catch(() => null);
+  if (!session?.uid) {
+    return NextResponse.json({ ok: false, error: "Authentication required" }, { status: 401 });
+  }
+
+  const idFromQuery = req?.nextUrl?.searchParams?.get("id");
+  const id = String(idFromQuery || "").trim();
+  if (!id) {
+    return NextResponse.json({ ok: false, error: "Saved search id is required" }, { status: 400 });
+  }
+
+  const existing = await prisma.savedSearch.findFirst({
+    where: { id, userId: String(session.uid) },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return NextResponse.json({ ok: false, error: "Saved search not found" }, { status: 404 });
+  }
+
+  await prisma.savedSearch.delete({ where: { id: existing.id } });
+  return NextResponse.json({ ok: true });
+}

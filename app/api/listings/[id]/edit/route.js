@@ -15,6 +15,7 @@ import {
   normalizePersonName,
   normalizeStateName,
 } from "@/lib/textFormat";
+import { normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -122,6 +123,7 @@ const editResponseSelect = {
   model: true,
   heroImageUrl: true,
   imageUrls: true,
+  heroImageFrame: true,
   updatedAt: true,
 };
 
@@ -235,10 +237,14 @@ export async function PATCH(req, { params }) {
 
     const nextImageUrls = cleanStringArray(body.imageUrls, MAX_PHOTOS).slice(0, MAX_PHOTOS);
     const nextHeroImageUrl = cleanString(body.heroImageUrl);
+    const nextHeroImageFrame = normalizeHeroImageFrame(body.heroImageFrame);
     const orderedNextPhotos = normalizePhotoOrder(nextImageUrls, nextHeroImageUrl || nextImageUrls[0] || "");
 
     const existingOrderedPhotos = normalizePhotoOrder(listing.imageUrls || [], listing.heroImageUrl || "");
     const uploadedPhotosChanged = !arraysEqual(orderedNextPhotos, existingOrderedPhotos);
+    const heroImageFrameChanged =
+      JSON.stringify(normalizeHeroImageFrame(listing.heroImageFrame)) !== JSON.stringify(nextHeroImageFrame);
+    const photoPresentationChanged = uploadedPhotosChanged || heroImageFrameChanged;
     const removedPhotoKeys = normalizeDraftUploadKeys(existingOrderedPhotos.filter((key) => !orderedNextPhotos.includes(key)));
     const addedPhotoKeys = normalizeDraftUploadKeys(orderedNextPhotos);
 
@@ -252,7 +258,7 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    if (status === "PUBLISHED" && uploadedPhotosChanged && !submitForPhotoReview) {
+    if (status === "PUBLISHED" && photoPresentationChanged && !submitForPhotoReview) {
       return NextResponse.json(
         {
           ok: false,
@@ -321,6 +327,7 @@ export async function PATCH(req, { params }) {
 
       heroImageUrl: orderedNextPhotos[0] || null,
       imageUrls: orderedNextPhotos,
+      heroImageFrame: nextHeroImageFrame,
 
       riggingRemarks: cleanString(body.riggingRemarks),
       additionalInfo: cleanString(body.additionalInfo),
@@ -336,7 +343,7 @@ export async function PATCH(req, { params }) {
     };
     const changedSections = collectChangedSections(listing, data);
 
-    if (status === "PUBLISHED" && submitForPhotoReview && uploadedPhotosChanged) {
+    if (status === "PUBLISHED" && submitForPhotoReview && photoPresentationChanged) {
       const now = new Date();
       data.status = "PENDING_REVIEW";
       data.contentReviewStatus = "PENDING";
@@ -417,7 +424,7 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    if (status === "PUBLISHED" && submitForPhotoReview && uploadedPhotosChanged) {
+    if (status === "PUBLISHED" && submitForPhotoReview && photoPresentationChanged) {
       try {
         await prisma.adminAuditLog.create({
           data: {

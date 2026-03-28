@@ -13,6 +13,7 @@ import {
   revokeBlobUrl,
   uploadLocalPhotoItems,
 } from "@/lib/photoUploader";
+import { HERO_IMAGE_FRAME_DEFAULT, normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 import { PhoneInput } from "react-international-phone";
 import "react-international-phone/style.css";
 
@@ -79,6 +80,21 @@ function arraysEqual(a = [], b = []) {
   return true;
 }
 
+function orderPhotoItems(items = []) {
+  const hero = [];
+  const album = [];
+  for (const item of items || []) {
+    if (!item) continue;
+    if (item.role === "hero" && hero.length === 0) hero.push(item);
+    else album.push({ ...item, role: "album" });
+  }
+  return [...hero, ...album];
+}
+
+function getHeroPhotoItem(items = []) {
+  return (items || []).find((item) => item?.role === "hero") || null;
+}
+
 function toUploadedPhotoItems(imageUrls = []) {
   return (Array.isArray(imageUrls) ? imageUrls : [])
     .filter(Boolean)
@@ -89,6 +105,7 @@ function toUploadedPhotoItems(imageUrls = []) {
       previewUrl: String(key),
       file: null,
       isPersisted: true,
+      role: idx === 0 ? "hero" : "album",
     }));
 }
 
@@ -434,8 +451,14 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   }, [form.year, form.builder, form.model, form.title]);
 
   const draggingPhotoIdRef = useRef("");
-  const [photoItems, setPhotoItems] = useState(() => toUploadedPhotoItems(form.imageUrls));
+  const [photoItems, setPhotoItems] = useState(() => orderPhotoItems(toUploadedPhotoItems(form.imageUrls)));
   const photoItemsRef = useRef(photoItems);
+  const [heroImageFrameByPhotoId, setHeroImageFrameByPhotoId] = useState(() => {
+    const initialHeroId = getHeroPhotoItem(photoItems)?.id || "";
+    return initialHeroId
+      ? { [initialHeroId]: normalizeHeroImageFrame(initialListing?.heroImageFrame || HERO_IMAGE_FRAME_DEFAULT) }
+      : {};
+  });
   const pendingPhotoCount = useMemo(
     () => photoItems.reduce((acc, p) => (p?.status === "local" ? acc + 1 : acc), 0),
     [photoItems]
@@ -444,27 +467,46 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
   const atPhotoLimit = photoCount >= maxAllowedPhotos;
   const overMax = photoCount > maxAllowedPhotos;
   const hasPendingLocalPhotos = pendingPhotoCount > 0;
-  const uploadedPhotoKeys = useMemo(
+  const uploadedHeroKey = useMemo(() => {
+    const hero = getHeroPhotoItem(photoItems);
+    return hero?.status === "uploaded" && hero?.uploadedKey ? String(hero.uploadedKey) : "";
+  }, [photoItems]);
+  const uploadedAlbumKeys = useMemo(
     () =>
-      normalizePhotoOrder(
-        photoItems
-          .filter((p) => p?.status === "uploaded" && p?.uploadedKey)
-          .map((p) => String(p.uploadedKey)),
-        ""
-      ),
+      photoItems
+        .filter((p) => p?.role !== "hero" && p?.status === "uploaded" && p?.uploadedKey)
+        .map((p) => String(p.uploadedKey)),
     [photoItems]
+  );
+  const uploadedPhotoKeys = useMemo(
+    () => normalizePhotoOrder(uploadedAlbumKeys, uploadedHeroKey),
+    [uploadedAlbumKeys, uploadedHeroKey]
   );
   const initialUploadedPhotoKeys = useMemo(
     () => normalizePhotoOrder(initialListing?.imageUrls || [], initialListing?.heroImageUrl || ""),
     [initialListing]
   );
+  const initialHeroImageFrame = useMemo(
+    () => normalizeHeroImageFrame(initialListing?.heroImageFrame || HERO_IMAGE_FRAME_DEFAULT),
+    [initialListing]
+  );
+  const currentHeroPhotoId = getHeroPhotoItem(photoItems)?.id || "";
+  const currentHeroImageFrame = useMemo(
+    () => normalizeHeroImageFrame(heroImageFrameByPhotoId[currentHeroPhotoId]),
+    [currentHeroPhotoId, heroImageFrameByPhotoId]
+  );
   const uploadedPhotosChanged = useMemo(
     () => !arraysEqual(uploadedPhotoKeys, initialUploadedPhotoKeys),
     [uploadedPhotoKeys, initialUploadedPhotoKeys]
   );
+  const heroImageFrameChanged = useMemo(
+    () => JSON.stringify(currentHeroImageFrame) !== JSON.stringify(initialHeroImageFrame),
+    [currentHeroImageFrame, initialHeroImageFrame]
+  );
+  const photoPresentationChanged = uploadedPhotosChanged || heroImageFrameChanged;
   const gallerySources = useMemo(
     () =>
-      photoItems
+      orderPhotoItems(photoItems)
         .map((p) => (p?.status === "local" ? p?.previewUrl : p?.previewUrl || p?.uploadedKey))
         .filter(Boolean),
     [photoItems]
@@ -498,11 +540,10 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
   useEffect(() => {
     setForm((p) => {
-      const nextHero = uploadedPhotoKeys[0] || "";
-      if (arraysEqual(p.imageUrls, uploadedPhotoKeys) && String(p.heroImageUrl || "") === nextHero) return p;
-      return { ...p, imageUrls: uploadedPhotoKeys, heroImageUrl: nextHero };
+      if (arraysEqual(p.imageUrls, uploadedPhotoKeys) && String(p.heroImageUrl || "") === uploadedHeroKey) return p;
+      return { ...p, imageUrls: uploadedPhotoKeys, heroImageUrl: uploadedHeroKey };
     });
-  }, [uploadedPhotoKeys]);
+  }, [uploadedPhotoKeys, uploadedHeroKey]);
 
   useEffect(() => {
     return () => {
@@ -539,28 +580,36 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setField("builder", nextValue);
   }
 
-  function movePhoto(from, to) {
+  function cleanupPhotoItem(item) {
+    revokeBlobUrl(item?.previewUrl);
+    if (item?.uploadedKey && !item?.isPersisted) {
+      void deleteDraftUploadKeys([item.uploadedKey]);
+    }
+  }
+
+  function moveAlbumPhoto(from, to) {
     setPhotoItems((prev) => {
-      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
-      const next = prev.slice();
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
+      const hero = getHeroPhotoItem(prev);
+      const album = (prev || []).filter((item) => item?.role !== "hero");
+      if (from < 0 || to < 0 || from >= album.length || to >= album.length) return prev;
+      const nextAlbum = album.slice();
+      const [item] = nextAlbum.splice(from, 1);
+      nextAlbum.splice(to, 0, item);
+      return orderPhotoItems(hero ? [hero, ...nextAlbum] : nextAlbum);
     });
   }
 
-  function removePhoto(i) {
-    const target = (photoItemsRef.current || [])[i];
-    if (target?.previewUrl) revokeBlobUrl(target.previewUrl);
-    if (target?.uploadedKey && !target?.isPersisted) {
-      void deleteDraftUploadsByKeys([target.uploadedKey]);
+  function removePhotoById(id) {
+    const target = (photoItemsRef.current || []).find((item) => item.id === id);
+    cleanupPhotoItem(target);
+    setPhotoItems((prev) => orderPhotoItems(prev.filter((item) => item.id !== id)));
+    if (target?.id) {
+      setHeroImageFrameByPhotoId((prev) => {
+        const next = { ...prev };
+        delete next[target.id];
+        return next;
+      });
     }
-    setPhotoItems((prev) => prev.filter((_, idx) => idx !== i));
-  }
-
-  function movePhotoByIndex(i, direction) {
-    const to = direction === "up" ? i - 1 : i + 1;
-    movePhoto(i, to);
   }
 
   function onPhotoDragStart(e, id) {
@@ -583,18 +632,58 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     const fromId = draggingPhotoIdRef.current || "";
     draggingPhotoIdRef.current = "";
     if (!fromId || fromId === dropId) return;
-    const currentItems = photoItemsRef.current || [];
+    const currentItems = (photoItemsRef.current || []).filter((item) => item?.role !== "hero");
     const fromIdx = currentItems.findIndex((item) => item.id === fromId);
     const toIdx = currentItems.findIndex((item) => item.id === dropId);
     if (fromIdx < 0 || toIdx < 0) return;
-    movePhoto(fromIdx, toIdx);
+    moveAlbumPhoto(fromIdx, toIdx);
   }
 
   function onPhotoDragEnd() {
     draggingPhotoIdRef.current = "";
   }
 
-  async function addPhotosFromFiles(files) {
+  async function addFeaturedPhotoFromFiles(files) {
+    setPhotoErr("");
+    if (!files?.length) return;
+
+    const incoming = Array.from(files).filter((f) => /^image\//i.test(String(f?.type || "")));
+    if (!incoming.length) return;
+
+    const nextHero = createLocalPhotoItems([incoming[0]], {
+      idPrefix: "hero",
+      extra: { isPersisted: false, role: "hero" },
+    })[0];
+    if (!nextHero) return;
+
+    const currentItems = photoItemsRef.current || [];
+    const currentHero = getHeroPhotoItem(currentItems);
+    const albumItems = currentItems.filter((item) => item?.role !== "hero");
+
+    if (!currentHero && currentItems.length >= maxAllowedPhotos) {
+      setPhotoErr(`Max ${maxAllowedPhotos} photos.`);
+      cleanupPhotoItem(nextHero);
+      return;
+    }
+
+    cleanupPhotoItem(currentHero);
+    const nextSnapshot = orderPhotoItems([nextHero, ...albumItems]);
+    setPhotoItems(nextSnapshot);
+    setHeroImageFrameByPhotoId((prev) => {
+      const next = { ...prev };
+      if (currentHero?.id) delete next[currentHero.id];
+      next[nextHero.id] = HERO_IMAGE_FRAME_DEFAULT;
+      return next;
+    });
+
+    try {
+      await uploadQueuedPhotos(nextSnapshot);
+    } catch (e) {
+      setPhotoErr(e?.message || "Upload failed.");
+    }
+  }
+
+  async function addAlbumPhotosFromFiles(files) {
     setPhotoErr("");
     if (!files?.length) return;
 
@@ -610,8 +699,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     const accepted = incoming.slice(0, remaining);
     const rejected = incoming.length - accepted.length;
     if (accepted.length) {
-      const localItems = createLocalPhotoItems(accepted, { idPrefix: "local", extra: { isPersisted: false } });
-      const nextSnapshot = [...(photoItemsRef.current || []), ...localItems];
+      const localItems = createLocalPhotoItems(accepted, { idPrefix: "album", extra: { isPersisted: false, role: "album" } });
+      const nextSnapshot = orderPhotoItems([...(photoItemsRef.current || []), ...localItems]);
       setPhotoItems(nextSnapshot);
       try {
         await uploadQueuedPhotos(nextSnapshot);
@@ -628,14 +717,18 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
     setPhotoErr("");
     try {
       const next = await uploadLocalPhotoItems({
-        items: itemsSnapshot ?? photoItemsRef.current ?? [],
+        items: orderPhotoItems(itemsSnapshot ?? photoItemsRef.current ?? []),
         maxPhotos: maxAllowedPhotos,
         uploadFile: uploadOneFile,
         toPreviewUrl: (key, uploaded) => String(uploaded?.previewUrl || key),
         onBefore: () => setPhotoBusy(true),
         onAfter: () => setPhotoBusy(false),
       });
-      setPhotoItems(next.map((item) => (item.status === "uploaded" ? { ...item, isPersisted: item.isPersisted ?? false } : item)));
+      setPhotoItems(
+        orderPhotoItems(
+          next.map((item) => (item.status === "uploaded" ? { ...item, isPersisted: item.isPersisted ?? false } : item))
+        )
+      );
     } catch (e) {
       setPhotoErr(e?.message || "Upload failed.");
     }
@@ -678,6 +771,10 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
       showNotice("error", "Please wait for photo uploads to finish before saving.");
       return false;
     }
+    if (!uploadedHeroKey) {
+      showNotice("error", "Please upload a listing card photo before saving.");
+      return false;
+    }
 
     setSaving(true);
     try {
@@ -709,6 +806,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
         heroImageUrl: orderedPhotos[0] || null,
         imageUrls: orderedPhotos,
+        heroImageFrame: currentHeroImageFrame,
 
         description: strOrNull(form.description),
         riggingRemarks: strOrNull(form.riggingRemarks),
@@ -824,8 +922,8 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
 
   async function submitPhotoChanges() {
     if (!isPublished) return;
-    if (!uploadedPhotosChanged) {
-      showNotice("error", "No uploaded photo changes to submit.");
+    if (!photoPresentationChanged) {
+      showNotice("error", "No photo changes to submit.");
       return;
     }
     const confirmed = window.confirm(
@@ -853,7 +951,7 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
           {saving ? "Saving…" : "Save changes"}
         </button>
 
-        {isPublished && (uploadedPhotosChanged || hasPendingLocalPhotos) ? (
+        {isPublished && (photoPresentationChanged || hasPendingLocalPhotos) ? (
           <button
             type="button"
             onClick={submitPhotoChanges}
@@ -957,9 +1055,9 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                   id: item.id,
                   imageSrc: photoSrc(item),
                   alt: photoLabel(index),
-                  isHero: index === 0,
+                  isHero: item.role === "hero",
                   isUploaded: item.status === "uploaded",
-                  label: photoLabel(index),
+                  label: item.role === "hero" ? "Listing card image" : photoLabel(index),
                 }))}
                 maxPhotos={maxAllowedPhotos}
                 isBusy={photoBusy}
@@ -985,25 +1083,34 @@ export default function ListingEditClient({ initialListing, previewToken = "" })
                     </div>
                   ) : null
                 }
-                onFilesSelected={addPhotosFromFiles}
-                addButtonDisabled={photoBusy || atPhotoLimit}
-                addButtonLabel={photoBusy ? "Uploading…" : atPhotoLimit ? "Photo limit reached" : "Add photos"}
+                onFeaturedFilesSelected={addFeaturedPhotoFromFiles}
+                onAlbumFilesSelected={addAlbumPhotosFromFiles}
+                featuredButtonDisabled={photoBusy || (atPhotoLimit && !currentHeroPhotoId)}
+                albumButtonDisabled={photoBusy || atPhotoLimit}
+                featuredButtonLabel={photoBusy ? "Uploading..." : "Upload"}
+                albumButtonLabel={photoBusy ? "Uploading..." : "Upload"}
+                previewListing={{
+                  id,
+                  title: titleLine,
+                  year: form.year ?? "",
+                  builder: form.builder ?? "",
+                  model: form.model ?? "",
+                  type: form.type ?? "",
+                  loa: form.loa ?? "",
+                  loaUnit: form.loaUnit ?? "ft",
+                  price: form.price ?? "",
+                  currency: form.currency ?? "USD",
+                  locationCity: form.locationCity ?? "",
+                  locationState: form.locationState ?? "",
+                  locationCountry: form.locationCountry ?? "",
+                  locationUsRegion: form.locationUsRegion ?? "",
+                }}
+                heroImageFrame={currentHeroImageFrame}
                 onDragStart={onPhotoDragStart}
                 onDragOver={onPhotoDragOver}
                 onDrop={onPhotoDrop}
                 onDragEnd={onPhotoDragEnd}
-                onMove={(photoId, direction) => {
-                  const currentItems = photoItemsRef.current || [];
-                  const index = currentItems.findIndex((item) => item.id === photoId);
-                  if (index < 0) return;
-                  movePhotoByIndex(index, direction);
-                }}
-                onRemove={(photoId) => {
-                  const currentItems = photoItemsRef.current || [];
-                  const index = currentItems.findIndex((item) => item.id === photoId);
-                  if (index < 0) return;
-                  removePhoto(index);
-                }}
+                onRemove={removePhotoById}
               />
             </div>
           </div>

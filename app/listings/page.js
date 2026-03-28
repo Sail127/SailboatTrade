@@ -34,6 +34,11 @@ const US_REGION_ENUMS = new Set([
   "OTHER_INLAND_WATERS",
 ]);
 
+function isMissingHeroImageFrameColumn(error) {
+  const message = String(error?.message || "");
+  return message.includes("Listing.heroImageFrame") && message.includes("does not exist");
+}
+
 function toInt(v, fb = null) {
   const n = Number.parseInt(v ?? "", 10);
   return Number.isFinite(n) ? n : fb;
@@ -328,34 +333,51 @@ export default async function Browse({ searchParams }) {
   const safePage = Math.min(page, totalPages);
   const skip = (safePage - 1) * PAGE_SIZE;
 
-  // ✅ NEW schema-safe select (NO make/length)
-  const rows = await prisma.listing.findMany({
-    where,
-    orderBy,
-    skip,
-    take: PAGE_SIZE,
-    select: {
-      id: true,
-      title: true,
-      price: true,
-      currency: true,
-      year: true,
-      builder: true, // ✅ replaces make
-      model: true,
-      loa: true, // ✅ replaces length
-      loaUnit: true,
-      cabins: true,
-      heads: true,
-      type: true,
-      locationCity: true,
-      locationState: true,
-      locationCountry: true,
-      locationUsRegion: true,
-      featuredHome: true,
-      heroImageUrl: true,
-      updatedAt: true,
-    },
-  });
+  const baseSelect = {
+    id: true,
+    title: true,
+    price: true,
+    currency: true,
+    year: true,
+    builder: true,
+    model: true,
+    loa: true,
+    loaUnit: true,
+    cabins: true,
+    heads: true,
+    type: true,
+    locationCity: true,
+    locationState: true,
+    locationCountry: true,
+    locationUsRegion: true,
+    featuredHome: true,
+    heroImageUrl: true,
+    updatedAt: true,
+  };
+
+  let rows;
+  try {
+    rows = await prisma.listing.findMany({
+      where,
+      orderBy,
+      skip,
+      take: PAGE_SIZE,
+      select: {
+        ...baseSelect,
+        heroImageFrame: true,
+      },
+    });
+  } catch (error) {
+    if (!isMissingHeroImageFrameColumn(error)) throw error;
+
+    rows = await prisma.listing.findMany({
+      where,
+      orderBy,
+      skip,
+      take: PAGE_SIZE,
+      select: baseSelect,
+    });
+  }
 
   const rowIds = rows.map((r) => String(r.id || "")).filter(Boolean);
   let favoritedIds = new Set();
@@ -450,7 +472,7 @@ export default async function Browse({ searchParams }) {
             {featuredListings.length ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {featuredListings.map((l) => (
-                  <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showPrice showFavorite />
+                  <ListingCard key={l.id} listing={l} variant="featured" showPrice showFavorite />
                 ))}
               </div>
             ) : null}
@@ -468,7 +490,7 @@ export default async function Browse({ searchParams }) {
             {standardListings.length ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {standardListings.map((l) => (
-                  <ListingCard key={l.id} listing={l} variant="featured" imageFit="contain" showPrice showFavorite />
+                  <ListingCard key={l.id} listing={l} variant="featured" showPrice showFavorite />
                 ))}
               </div>
             ) : null}

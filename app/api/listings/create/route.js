@@ -11,6 +11,7 @@ import {
   normalizePersonName,
   normalizeStateName,
 } from "@/lib/textFormat";
+import { normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -182,6 +183,7 @@ export async function POST(req) {
 
     const imageUrls = imageUrlsRaw.slice(0, MAX_PHOTOS_AT_CREATE);
     const heroImageUrl = toStringOrNull(body.heroImageUrl) || imageUrls[0] || null;
+    const heroImageFrame = normalizeHeroImageFrame(body.heroImageFrame);
 
     const brokerHeroImageUrl = sellerRole === "BROKER" ? toStringOrNull(body.brokerHeroImageUrl) : null;
 
@@ -259,6 +261,7 @@ export async function POST(req) {
         equipment,
         heroImageUrl,
         imageUrls,
+        heroImageFrame,
 
         riggingRemarks: toStringOrNull(body.riggingRemarks),
         additionalInfo: toStringOrNull(body.additionalInfo),

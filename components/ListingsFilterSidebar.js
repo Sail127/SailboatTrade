@@ -65,7 +65,8 @@ function buildLoaOptions(unit) {
     return out;
   }
   const out = [];
-  for (let v = 10; v <= 100; v += 1) out.push(String(v));
+  for (let v = 10; v <= 60; v += 1) out.push(String(v));
+  for (let v = 65; v <= 200; v += 5) out.push(String(v));
   return out;
 }
 
@@ -753,7 +754,7 @@ export default function ListingsFilterSidebar({
     if (!targetId) return;
 
     try {
-      const res = await fetch(`/api/saved-searches/${encodeURIComponent(targetId)}`, {
+      const res = await fetch(`/api/saved-searches?id=${encodeURIComponent(targetId)}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -994,20 +995,23 @@ export default function ListingsFilterSidebar({
                     </div>
                     {viewerLoggedIn ? (
                       <>
-                        <select
-                          value={savedSearchSelectValue}
-                          onChange={(e) => handleSavedSearchSelect(e.target.value)}
-                          className={`${drawerSelect} !bg-white ${savedSearchSelectValue === "__NONE__" ? "!text-slate-500" : "!text-[#0a2230]"}`}
-                          aria-label="Saved Search"
-                        >
-                          <option value="__NONE__">Select search</option>
-                          <option value="__CLEAR__">None</option>
-                          {savedSearches.map((item) => (
-                            <option key={`mobile-saved-search-${item.id}`} value={item.path}>
-                              {item.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="relative">
+                          <select
+                            value={savedSearchSelectValue}
+                            onChange={(e) => handleSavedSearchSelect(e.target.value)}
+                            className={`${drawerSelect} !bg-white appearance-none pr-9 ${savedSearchSelectValue === "__NONE__" ? "!text-slate-500" : "!text-[#0a2230]"}`}
+                            aria-label="Saved Search"
+                          >
+                            <option value="__NONE__">Select search</option>
+                            <option value="__CLEAR__">None</option>
+                            {savedSearches.map((item) => (
+                              <option key={`mobile-saved-search-${item.id}`} value={item.path}>
+                                {item.name}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-500">▼</span>
+                        </div>
                         {mobileManageSavedSearches ? <SavedSearchManager tone="mobile" /> : null}
                       </>
                     ) : (
@@ -1327,20 +1331,23 @@ export default function ListingsFilterSidebar({
                 </div>
                 {viewerLoggedIn ? (
                   <>
-                    <select
-                      value={savedSearchSelectValue}
-                      onChange={(e) => handleSavedSearchSelect(e.target.value)}
-                      className={`${select} bg-white ${savedSearchSelectValue === "__NONE__" ? "text-slate-500" : "text-[#0a2230]"}`}
-                      aria-label="Saved Search"
-                    >
-                      <option value="__NONE__">Select search</option>
-                      <option value="__CLEAR__">None</option>
-                      {savedSearches.map((item) => (
-                        <option key={`desktop-saved-search-${item.id}`} value={item.path}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={savedSearchSelectValue}
+                        onChange={(e) => handleSavedSearchSelect(e.target.value)}
+                        className={`${select} bg-white appearance-none pr-9 ${savedSearchSelectValue === "__NONE__" ? "text-slate-500" : "text-[#0a2230]"}`}
+                        aria-label="Saved Search"
+                      >
+                        <option value="__NONE__">Select search</option>
+                        <option value="__CLEAR__">None</option>
+                        {savedSearches.map((item) => (
+                          <option key={`desktop-saved-search-${item.id}`} value={item.path}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-slate-500">▼</span>
+                    </div>
                     {desktopManageSavedSearches ? <SavedSearchManager tone="desktop" /> : null}
                   </>
                 ) : (

@@ -19,6 +19,7 @@ import {
   touchDraftUploadKeys,
   uploadLocalPhotoItems,
 } from "@/lib/photoUploader";
+import { HERO_IMAGE_FRAME_DEFAULT, normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 import { guessDefaultPhoneCountry, normalizePhoneToE164, toPhoneIso2Lower } from "@/lib/phone";
 
 /**
@@ -392,7 +393,7 @@ function FormSearchSelect({
       placeholder={placeholder}
       ariaLabel={ariaLabel}
       summaryClassName={`${className} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
-      panelClassName={`mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ${panelClassName}`.trim()}
+      panelClassName={`absolute left-0 right-0 top-full z-[120] mt-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl ${panelClassName}`.trim()}
       inputClassName={inputClassName}
       rowClassName={rowClassName}
       inputMode={inputMode}
@@ -639,7 +640,7 @@ export default function NewListingForm() {
     additionalEquipmentSuccessTimerRef.current = setTimeout(() => {
       setAdditionalEquipmentSuccessMsg("");
       additionalEquipmentSuccessTimerRef.current = null;
-    }, 2500);
+    }, 3500);
   }
   function removeAdditionalEquipment(name) {
     const target = normalizeEquipmentName(name).toLowerCase();
@@ -663,17 +664,79 @@ export default function NewListingForm() {
   const [photoItems, setPhotoItems] = useState([]);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [photoLimitMsg, setPhotoLimitMsg] = useState("");
+  const [heroImageFrameByPhotoId, setHeroImageFrameByPhotoId] = useState({});
 
   const photoItemsRef = useRef([]);
   useEffect(() => {
     photoItemsRef.current = photoItems;
   }, [photoItems]);
   const draggingPhotoIdRef = useRef("");
+  const currentHeroPhotoId = photoItems.find((item) => item?.role === "hero")?.id || "";
+  const currentHeroImageFrame = useMemo(
+    () => normalizeHeroImageFrame(heroImageFrameByPhotoId[currentHeroPhotoId]),
+    [currentHeroPhotoId, heroImageFrameByPhotoId]
+  );
 
   const getUploadedDraftKeys = useCallback((items) => normalizeDraftUploadKeys((items || []).map((item) => item?.uploadedKey)), []);
 
-  async function addPhotos(filesList) {
-    const next = createLocalPhotoItems(filesList, { idPrefix: "local" });
+  function orderPhotoItems(items = []) {
+    const hero = [];
+    const album = [];
+    for (const item of items || []) {
+      if (!item) continue;
+      if (item.role === "hero" && hero.length === 0) hero.push(item);
+      else album.push({ ...item, role: "album" });
+    }
+    return [...hero, ...album];
+  }
+
+  function getHeroPhotoItem(items = []) {
+    return (items || []).find((item) => item?.role === "hero") || null;
+  }
+
+  function cleanupPhotoItem(item) {
+    if (item?.previewUrl) revokeBlobUrl(item.previewUrl);
+    if (item?.uploadedKey) void deleteDraftUploadKeys([item.uploadedKey]);
+  }
+
+  async function addFeaturedPhoto(filesList) {
+    const firstImageFile = Array.from(filesList || []).find((file) => /^image\//i.test(String(file?.type || "")));
+    const incoming = createLocalPhotoItems(firstImageFile ? [firstImageFile] : [], { idPrefix: "hero", extra: { role: "hero" } });
+    const nextHero = incoming[0];
+    if (!nextHero) return;
+
+    const currentItems = photoItemsRef.current || [];
+    const currentHero = getHeroPhotoItem(currentItems);
+    const albums = currentItems.filter((item) => item?.role !== "hero");
+
+    if (!currentHero && currentItems.length >= MAX_PHOTO_LIMIT) {
+      setPhotoLimitMsg(`This listing is limited to ${MAX_PHOTO_LIMIT} photos. Remove an album photo to add a listing card photo.`);
+      cleanupPhotoItem(nextHero);
+      return;
+    }
+
+    setDraftSessionReady(true);
+    setPhotoLimitMsg("");
+    cleanupPhotoItem(currentHero);
+
+    const nextSnapshot = orderPhotoItems([nextHero, ...albums]);
+    setPhotoItems(nextSnapshot);
+    setHeroImageFrameByPhotoId((prev) => {
+      const next = { ...prev };
+      if (currentHero?.id) delete next[currentHero.id];
+      next[nextHero.id] = HERO_IMAGE_FRAME_DEFAULT;
+      return next;
+    });
+
+    try {
+      await uploadAllPhotosIfNeeded(nextSnapshot);
+    } catch (err) {
+      setFormError(err?.message || "Could not upload photos.");
+    }
+  }
+
+  async function addAlbumPhotos(filesList) {
+    const next = createLocalPhotoItems(filesList, { idPrefix: "album", extra: { role: "album" } });
     if (!next.length) return;
 
     setDraftSessionReady(true);
@@ -684,13 +747,13 @@ export default function NewListingForm() {
 
     if (remaining <= 0) {
       setPhotoLimitMsg(`This listing is limited to ${MAX_PHOTO_LIMIT} photos. Remove a photo to add another.`);
+      next.forEach(cleanupPhotoItem);
       return;
     }
 
     const accepted = next.slice(0, remaining);
     const rejectedCount = next.length - accepted.length;
-
-    const nextSnapshot = [...(photoItemsRef.current || []), ...accepted];
+    const nextSnapshot = orderPhotoItems([...(photoItemsRef.current || []), ...accepted]);
     setPhotoItems(nextSnapshot);
 
     if (rejectedCount > 0) {
@@ -699,6 +762,7 @@ export default function NewListingForm() {
           rejectedCount === 1 ? "file was" : "files were"
         } not added (max ${MAX_PHOTO_LIMIT}).`
       );
+      next.slice(remaining).forEach(cleanupPhotoItem);
     }
 
     try {
@@ -710,42 +774,34 @@ export default function NewListingForm() {
 
   function removePhoto(id) {
     const item = (photoItemsRef.current || []).find((p) => p.id === id);
-    if (item?.previewUrl) {
-      try {
-        if (String(item.previewUrl).startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
-      } catch {}
-    }
-    if (item?.uploadedKey) {
-      void deleteDraftUploadKeys([item.uploadedKey]);
-    }
-    setPhotoItems((prev) => prev.filter((p) => p.id !== id));
+    cleanupPhotoItem(item);
+    setPhotoItems((prev) => orderPhotoItems(prev.filter((p) => p.id !== id)));
+    setHeroImageFrameByPhotoId((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     setPhotoLimitMsg("");
   }
 
-  function reorderPhotos(fromIndex, toIndex) {
+  function reorderAlbumPhotos(fromIndex, toIndex) {
     if (fromIndex === toIndex) return;
 
     setPhotoItems((prev) => {
-      const len = Array.isArray(prev) ? prev.length : 0;
+      const hero = getHeroPhotoItem(prev);
+      const albums = (prev || []).filter((item) => item?.role !== "hero");
+      const len = albums.length;
       if (!len) return prev;
       if (fromIndex < 0 || fromIndex >= len) return prev;
       if (toIndex < 0 || toIndex >= len) return prev;
 
-      const next = [...prev];
-      const [moved] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, moved);
-      return next;
+      const nextAlbums = [...albums];
+      const [moved] = nextAlbums.splice(fromIndex, 1);
+      nextAlbums.splice(toIndex, 0, moved);
+      return orderPhotoItems(hero ? [hero, ...nextAlbums] : nextAlbums);
     });
     setDraftSessionReady(true);
     setPhotoLimitMsg("");
-  }
-
-  function movePhotoById(id, direction) {
-    const list = photoItemsRef.current || [];
-    const from = list.findIndex((p) => p.id === id);
-    if (from < 0) return;
-    const to = direction === "up" ? from - 1 : from + 1;
-    reorderPhotos(from, to);
   }
 
   function onPhotoDragStart(e, id) {
@@ -768,10 +824,10 @@ export default function NewListingForm() {
     const fromId = draggingPhotoIdRef.current || "";
     if (!fromId || fromId === dropId) return;
 
-    const list = photoItemsRef.current || [];
+    const list = (photoItemsRef.current || []).filter((item) => item?.role !== "hero");
     const fromIndex = list.findIndex((p) => p.id === fromId);
     const toIndex = list.findIndex((p) => p.id === dropId);
-    reorderPhotos(fromIndex, toIndex);
+    reorderAlbumPhotos(fromIndex, toIndex);
   }
 
   function onPhotoDragEnd() {
@@ -781,7 +837,7 @@ export default function NewListingForm() {
   async function uploadAllPhotosIfNeeded(itemsSnapshot = null) {
     setFormError("");
     const next = await uploadLocalPhotoItems({
-      items: itemsSnapshot ?? photoItems,
+      items: orderPhotoItems(itemsSnapshot ?? photoItems),
       maxPhotos: MAX_PHOTO_LIMIT,
       uploadFile: async (file) => {
         const formData = new FormData();
@@ -994,7 +1050,8 @@ export default function NewListingForm() {
       photoItemsUploaded: (photoItems || [])
         .filter((p) => p?.status === "uploaded" && p?.uploadedKey)
         .slice(0, MAX_PHOTO_LIMIT)
-        .map((p) => ({ id: p.id, uploadedKey: p.uploadedKey })),
+        .map((p) => ({ id: p.id, uploadedKey: p.uploadedKey, role: p.role === "hero" ? "hero" : "album" })),
+      heroImageFrameByPhotoId,
 
       accountBrokerHero: accountBrokerHero || "",
     };
@@ -1053,6 +1110,7 @@ export default function NewListingForm() {
     brokerageCountrySel,
     brokerageCountryOther,
     photoItems,
+    heroImageFrameByPhotoId,
     accountBrokerHero,
   ]);
 
@@ -1150,6 +1208,7 @@ export default function NewListingForm() {
       } catch {}
       return [];
     });
+    setHeroImageFrameByPhotoId({});
     if (draftPhotoKeys.length) {
       void deleteDraftUploadKeys(draftPhotoKeys);
     }
@@ -1284,7 +1343,7 @@ export default function NewListingForm() {
       if (Array.isArray(d.photoItemsUploaded)) {
         const restored = d.photoItemsUploaded
           .slice(0, MAX_PHOTO_LIMIT)
-          .map((x) => {
+          .map((x, index) => {
             const key = String(x?.uploadedKey || "").trim();
             if (!key) return null;
             return {
@@ -1293,12 +1352,24 @@ export default function NewListingForm() {
               previewUrl: toPhotoPreviewUrl(key),
               status: "uploaded",
               uploadedKey: key,
+              role: x?.role === "hero" || (!x?.role && index === 0) ? "hero" : "album",
             };
           })
           .filter(Boolean);
 
-        setPhotoItems(restored);
+        setPhotoItems(orderPhotoItems(restored));
         void touchDraftUploadKeys(restored.map((item) => item?.uploadedKey));
+      }
+
+      if (d.heroImageFrameByPhotoId && typeof d.heroImageFrameByPhotoId === "object") {
+        const nextFrames = {};
+        for (const [key, value] of Object.entries(d.heroImageFrameByPhotoId)) {
+          if (!String(key || "").trim()) continue;
+          nextFrames[key] = normalizeHeroImageFrame(value);
+        }
+        setHeroImageFrameByPhotoId(nextFrames);
+      } else {
+        setHeroImageFrameByPhotoId({});
       }
 
       if (typeof d.accountBrokerHero === "string") setAccountBrokerHero(d.accountBrokerHero);
@@ -1567,8 +1638,9 @@ export default function NewListingForm() {
       return;
     }
 
-    if (photoItems.length < 1) {
-      setFormError("Please add at least 1 photo before submitting your listing.");
+    const hasHeroPhoto = (photoItems || []).some((p) => p?.role === "hero");
+    if (!hasHeroPhoto) {
+      setFormError("Please add a listing card photo before submitting your listing.");
       window.scrollTo?.({ top: 0, behavior: "smooth" });
       return;
     }
@@ -1581,7 +1653,9 @@ export default function NewListingForm() {
     setSubmitting(true);
     try {
       const photosAfterUpload = await uploadAllPhotosIfNeeded(photoItems);
-      const orderedKeys = (photosAfterUpload || []).map((p) => p.uploadedKey).filter(Boolean);
+      const orderedKeys = orderPhotoItems(photosAfterUpload || [])
+        .map((p) => p.uploadedKey)
+        .filter(Boolean);
 
       const cabinsInt = toInt(cabins);
       const headsInt = toInt(heads);
@@ -1642,6 +1716,7 @@ export default function NewListingForm() {
 
         heroImageUrl: orderedKeys[0] || null,
         imageUrls: orderedKeys,
+        heroImageFrame: currentHeroImageFrame,
 
         sellerRole,
         listingContactName: `${listingContactFirstName} ${listingContactLastName}`.trim(),
@@ -1770,15 +1845,15 @@ export default function NewListingForm() {
                 <span className="inline-flex items-center rounded-lg bg-[#f3b23f] px-2 py-0.5 text-[#0a2230]">free to list*</span>.
               </div>
               <div className="mt-1.5 text-[13px] sm:text-[14px] text-slate-600 max-w-2xl">
-                *Free Basic Listing includeds up to {FREE_PHOTO_LIMIT} high quality photos!
+                *Free Basic Listing includeds up to {FREE_PHOTO_LIMIT}  photos!
               </div>
             </div>
 
             <div className="w-full lg:w-[320px] rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
-              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Please help support or site by upgrading your listing with:</div>
+              <div className="text-[12px] font-extrabold tracking-wide text-slate-700">Please help support or site, upgrade your listing today with:</div>
               <div className="mt-1.5 space-y-1 text-[12px] text-slate-700">
-                <div>• Photo Plus (up to {MAX_PHOTO_LIMIT})</div>
-                <div>• Featured Home placement</div>
+                <div>• More photos! (up to {MAX_PHOTO_LIMIT} high quality images)</div>
+                <div>• Feature your listing on homepage & search results!</div>
               </div>
             </div>
           </div>
@@ -2240,7 +2315,15 @@ export default function NewListingForm() {
           })}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-4">
+          {additionalEquipmentSuccessMsg ? (
+            <div className="mb-3 max-w-[520px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-medium text-emerald-700">
+              {additionalEquipmentSuccessMsg}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
           <div className="w-full max-w-[520px]">
             <input
               className={`${fieldBase} border-slate-300 bg-white`}
@@ -2259,11 +2342,6 @@ export default function NewListingForm() {
             Add
           </button>
         </div>
-        {additionalEquipmentSuccessMsg ? (
-          <div className="mt-2 max-w-[520px] rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-medium text-emerald-700">
-            {additionalEquipmentSuccessMsg}
-          </div>
-        ) : null}
 
         <div className="mt-6 border-t border-slate-200" />
 
@@ -2377,23 +2455,40 @@ export default function NewListingForm() {
             id: item.id,
             imageSrc: item.previewUrl,
             alt: "Photo preview",
-            isHero: index === 0,
+            isHero: item.role === "hero",
             isUploaded: item.status === "uploaded",
-            label: item.status === "uploaded" ? "Uploaded" : "Local",
+            label: item.role === "hero" ? "Listing card image" : `Album photo ${index + 1}`,
           }))}
           maxPhotos={MAX_PHOTO_LIMIT}
           isBusy={uploadingPhotos}
           limitMessage={photoLimitMsg}
           onDismissLimitMessage={() => setPhotoLimitMsg("")}
-          onFilesSelected={addPhotos}
-          addButtonDisabled={photoItems.length >= MAX_PHOTO_LIMIT || uploadingPhotos}
-          addButtonLabel={uploadingPhotos ? "Uploading…" : "Add photos"}
-          counterSecondaryText="Minimum 1 required"
+          onFeaturedFilesSelected={addFeaturedPhoto}
+          onAlbumFilesSelected={addAlbumPhotos}
+          featuredButtonDisabled={uploadingPhotos || (photoItems.length >= MAX_PHOTO_LIMIT && !currentHeroPhotoId)}
+          albumButtonDisabled={photoItems.length >= MAX_PHOTO_LIMIT || uploadingPhotos}
+          featuredButtonLabel={uploadingPhotos ? "Uploading..." : "Upload"}
+          albumButtonLabel={uploadingPhotos ? "Uploading..." : "Upload"}
+          previewListing={{
+            title: autoTitle(),
+            year: year || "",
+            builder: effectiveBuilder,
+            model: model.trim(),
+            type: type || "",
+            loa: loa || "",
+            loaUnit: unitSystem === "METRIC" ? "m" : "ft",
+            price: priceNum ?? "",
+            currency,
+            locationCity: locationCity.trim(),
+            locationState: isUSA ? locationState || "" : "",
+            locationCountry: effectiveCountry || "",
+            locationUsRegion: isUSA ? locationUsRegion || "" : "",
+          }}
+          heroImageFrame={currentHeroImageFrame}
           onDragStart={onPhotoDragStart}
           onDragOver={onPhotoDragOver}
           onDrop={onPhotoDrop}
           onDragEnd={onPhotoDragEnd}
-          onMove={movePhotoById}
           onRemove={removePhoto}
         />
       </SectionCard>

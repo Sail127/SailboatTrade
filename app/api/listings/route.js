@@ -11,6 +11,7 @@ import {
   normalizePersonName,
   normalizeStateName,
 } from "@/lib/textFormat";
+import { normalizeHeroImageFrame } from "@/lib/heroImageFrame";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -309,6 +310,7 @@ export async function POST(req) {
     const imageUrls = normalizeStringArray(body.imageUrls);
 
     const heroImageUrl = isNonEmpty(body.heroImageUrl) ? toStr(body.heroImageUrl) : null;
+    const heroImageFrame = normalizeHeroImageFrame(body.heroImageFrame);
 
     const contactPhone = isNonEmpty(body.contactPhone) ? toStr(body.contactPhone) : null;
 
@@ -387,6 +389,7 @@ export async function POST(req) {
         equipment,
         heroImageUrl,
         imageUrls,
+        heroImageFrame,
 
         sellerRole,
         listingContactName,

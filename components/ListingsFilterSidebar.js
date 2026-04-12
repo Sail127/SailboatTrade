@@ -674,7 +674,7 @@ export default function ListingsFilterSidebar({
       desktopLoaMaxDetailsRef,
     ];
 
-    const onMouseDown = (e) => {
+    const onDocumentClick = (e) => {
       for (const ref of detailRefs) {
         const node = ref.current;
         if (!node?.hasAttribute?.("open")) continue;
@@ -690,10 +690,10 @@ export default function ListingsFilterSidebar({
       }
     };
 
-    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("click", onDocumentClick);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("click", onDocumentClick);
       document.removeEventListener("keydown", onKey);
     };
   }, []);

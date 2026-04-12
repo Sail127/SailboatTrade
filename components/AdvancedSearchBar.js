@@ -392,7 +392,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
 
   useEffect(() => {
     if (!desktopHullMenuOpen || typeof document === "undefined") return;
-    const onMouseDown = (e) => {
+    const onDocumentClick = (e) => {
       if (desktopHullMenuRef.current && !desktopHullMenuRef.current.contains(e.target)) {
         setDesktopHullMenuOpen(false);
       }
@@ -400,10 +400,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
     const onKey = (e) => {
       if (e.key === "Escape") setDesktopHullMenuOpen(false);
     };
-    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("click", onDocumentClick);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("click", onDocumentClick);
       document.removeEventListener("keydown", onKey);
     };
   }, [desktopHullMenuOpen]);
@@ -428,7 +428,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       desktopLoaMaxDetailsRef,
     ];
 
-    const onMouseDown = (e) => {
+    const onDocumentClick = (e) => {
       for (const ref of detailRefs) {
         const node = ref.current;
         if (!node?.hasAttribute?.("open")) continue;
@@ -444,10 +444,10 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       }
     };
 
-    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("click", onDocumentClick);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("click", onDocumentClick);
       document.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -857,7 +857,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
         </div>
       ) : null}
 
-      <form onSubmit={submit} className={`${shell} relative z-[40] max-[900px]:hidden`}>
+      <form onSubmit={submit} noValidate className={`${shell} relative z-[40] max-[900px]:hidden`}>
         <div className="mx-auto w-full max-w-[900px]">
           {/* ROW 1 */}
           <div className="mt-0 grid grid-cols-[270px_120px_270px] items-end justify-center gap-3">

@@ -66,6 +66,7 @@ function Badge({ children, tone = "slate" }) {
     slate: "border-slate-300 bg-white text-slate-800 hover:bg-slate-50",
     navy: "border-[#0a2230] bg-[#0a2230] text-white",
     gold: "border-[#c8a44d] bg-[#c8a44d] text-[#0a2230]",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     red: "border-red-200 bg-red-50 text-red-700",
   };
   return (
@@ -291,6 +292,13 @@ function statusMeta(status) {
         tone: "slate",
         title: "Archived",
         msg: "This listing is not public.",
+        style: "neutral",
+      };
+    case "SOLD":
+      return {
+        tone: "emerald",
+        title: "Sold",
+        msg: "This listing is no longer public.",
         style: "neutral",
       };
     case "REMOVED":

@@ -99,6 +99,8 @@ export default function RowActions({
 
   const s = upper(status);
   const isArchived = s === "ARCHIVED";
+  const isSold = s === "SOLD";
+  const isFinalized = isArchived || isSold;
   const isRejected = s === "REJECTED";
 
   const editHref = `/dashboard/listings/${encodeURIComponent(id)}/edit`;
@@ -405,7 +407,7 @@ export default function RowActions({
     </div>
   ) : null;
 
-  const archiveConfirm = archiveConfirmOpen && !isArchived ? (
+  const archiveConfirm = archiveConfirmOpen && !isFinalized ? (
     <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-left">
       <div className="text-sm font-semibold text-[#0a2230]">
         Did your boat sell? If it did please use the "Boat is SOLD" button.
@@ -437,7 +439,7 @@ export default function RowActions({
   ) : null;
 
   const dangerAction = showDangerAction ? (
-    !isArchived ? (
+    !isFinalized ? (
       <button
         type="button"
         onClick={() => {

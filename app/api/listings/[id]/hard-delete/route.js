@@ -68,7 +68,7 @@ async function deleteR2Keys(keys) {
 /**
  * Hard delete:
  * - Only owner can delete
- * - Require listing to be ARCHIVED (prevents accidental nukes)
+ * - Require listing to be ARCHIVED or SOLD (prevents accidental nukes)
  * - Blocks delete if billing is ACTIVE/PAST_DUE
  * - Deletes favorites first to avoid FK constraint errors
  *
@@ -103,9 +103,9 @@ export async function POST(req, { params }) {
       return NextResponse.json({ ok: false, error: "Listing not found." }, { status: 404 });
     }
 
-    if (listing.status !== "ARCHIVED") {
+    if (!["ARCHIVED", "SOLD"].includes(String(listing.status || "").toUpperCase())) {
       return NextResponse.json(
-        { ok: false, error: "Please archive the listing first before permanently deleting it." },
+        { ok: false, error: "Please archive the listing (or mark it sold) before permanently deleting it." },
         { status: 400 }
       );
     }

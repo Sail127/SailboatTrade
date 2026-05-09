@@ -87,7 +87,7 @@ export async function POST(req, { params }) {
     prisma.listing.update({
       where: { id: listing.id },
       data: {
-        status: "ARCHIVED",
+        status: "SOLD",
         featuredHome: false,
         archivedAt: now,
       },
@@ -111,9 +111,9 @@ export async function POST(req, { params }) {
 
   return NextResponse.json({
     ok: true,
-    archived: true,
+    sold: true,
     emailNotified: Boolean(emailResult?.ok),
     ownerEmailNotified: Boolean(ownerEmailResult?.ok),
-    note: "Thanks for letting us know. Your listing has been moved to archived listings.",
+    note: "Thanks for letting us know. Your listing has been moved to sold listings.",
   });
 }

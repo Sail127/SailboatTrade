@@ -171,7 +171,7 @@ export default async function ListingDetailPage({ params, searchParams }) {
   const tokenOk = !!token && !!listing.previewToken && token === String(listing.previewToken);
 
   // View rules
-  const tokenAllowed = tokenOk && !["ARCHIVED", "REMOVED"].includes(status);
+  const tokenAllowed = tokenOk && !["ARCHIVED", "SOLD", "REMOVED"].includes(status);
   const canView = isPublished || viewerIsOwner || tokenAllowed;
   if (!canView) return notFound();
 

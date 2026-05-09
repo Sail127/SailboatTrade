@@ -41,6 +41,11 @@ export default async function AdminActiveListingsPage({ searchParams }) {
       updatedAt: true,
       reviewedAt: true,
       expiresAt: true,
+      saleReport: {
+        select: {
+          createdAt: true,
+        },
+      },
       owner: {
         select: {
           email: true,
@@ -70,6 +75,7 @@ export default async function AdminActiveListingsPage({ searchParams }) {
     updatedAt: listing.updatedAt,
     reviewedAt: listing.reviewedAt,
     expiresAt: listing.expiresAt,
+    soldAt: listing.saleReport?.createdAt || null,
     ownerEmail: listing.owner?.email || "",
     ownerName:
       `${String(listing.owner?.firstName || "").trim()} ${String(listing.owner?.lastName || "").trim()}`.trim() ||

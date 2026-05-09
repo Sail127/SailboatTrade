@@ -82,7 +82,7 @@ export async function GET(req) {
 
     const listings = await prisma.listing.findMany({
       where: {
-        status: "ARCHIVED",
+        status: { in: ["ARCHIVED", "SOLD"] },
         archivedAt: { not: null, lt: cutoff },
         archivedImagesPrunedAt: null,
       },

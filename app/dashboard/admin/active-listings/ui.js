@@ -18,6 +18,7 @@ const SORT_OPTIONS = [
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Statuses" },
   { value: "PUBLISHED", label: "Published" },
+  { value: "SOLD", label: "Sold" },
   { value: "PENDING_REVIEW", label: "Pending Review" },
   { value: "DRAFT", label: "Draft" },
   { value: "REJECTED", label: "Changes Requested" },
@@ -92,6 +93,7 @@ function statusLabel(status) {
   if (value === "DRAFT") return "Draft";
   if (value === "PENDING_REVIEW") return "Pending Review";
   if (value === "REJECTED") return "Changes Requested";
+  if (value === "SOLD") return "Sold";
   if (value === "ARCHIVED") return "Archived";
   if (value === "REMOVED") return "Removed";
   if (value === "PUBLISHED") return "Published";
@@ -101,11 +103,39 @@ function statusLabel(status) {
 function statusTone(status) {
   const value = String(status || "").toUpperCase();
   if (value === "PUBLISHED") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (value === "SOLD") return "border-teal-300 bg-teal-50 text-teal-800";
   if (value === "PENDING_REVIEW") return "border-amber-300 bg-amber-50 text-amber-900";
   if (value === "REJECTED") return "border-red-300 bg-red-50 text-red-700";
   if (value === "ARCHIVED") return "border-sky-300 bg-sky-50 text-sky-900";
   if (value === "REMOVED") return "border-zinc-300 bg-zinc-100 text-zinc-700";
   return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function daysBetween(startDate, endDate) {
+  const start = new Date(startDate).getTime();
+  const end = new Date(endDate).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  const ms = Math.max(0, end - start);
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}
+
+function pluralize(value, singular) {
+  return `${value} ${singular}${value === 1 ? "" : "s"}`;
+}
+
+function formatDaysAsMonthsAndDays(days) {
+  const safeDays = Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
+  if (safeDays <= 30) return pluralize(safeDays, "day");
+  const months = Math.floor(safeDays / 30);
+  const remainingDays = safeDays % 30;
+  if (remainingDays === 0) return pluralize(months, "month");
+  return `${pluralize(months, "month")} ${pluralize(remainingDays, "day")}`;
+}
+
+function activeTimeOnMarketLabel(listing) {
+  const end = listing?.soldAt ? new Date(listing.soldAt) : new Date();
+  const totalDays = daysBetween(listing?.createdAt, end);
+  return formatDaysAsMonthsAndDays(totalDays);
 }
 
 function daysUntil(date) {
@@ -497,6 +527,7 @@ export default function AdminActiveListingsClient({ initialListings, initialFilt
               const expirationValue = expirationDrafts[listing.id] ?? "";
               const upgrade = upgradeDrafts[listing.id] || { photoPlus: false, featuredHome: false, termMonths: "1" };
               const expirationCountdown = expirationCountdownLabel(listing.expiresAt);
+              const activeTimeLabel = activeTimeOnMarketLabel(listing);
 
               return (
                 <div
@@ -541,6 +572,11 @@ export default function AdminActiveListingsClient({ initialListings, initialFilt
                             {fmtDate(listing.expiresAt) || "Not set"}
                             {expirationCountdown ? <span className="ml-2">{expirationCountdown}</span> : null}
                           </div>
+                        </div>
+
+                        <div>
+                          <div className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">Active Time On Market</div>
+                          <div className="mt-1 text-[13px] font-semibold text-[#0a2230]">{activeTimeLabel}</div>
                         </div>
                       </div>
 
@@ -631,6 +667,7 @@ export default function AdminActiveListingsClient({ initialListings, initialFilt
                                 <span>Created: {fmtDate(listing.createdAt)}</span>
                                 <span>Updated: {fmtDate(listing.updatedAt)}</span>
                                 <span>Approved: {fmtDate(listing.reviewedAt) || "Not reviewed"}</span>
+                                <span>Active time on market: {activeTimeLabel}</span>
                               </div>
                             </div>
                           </div>

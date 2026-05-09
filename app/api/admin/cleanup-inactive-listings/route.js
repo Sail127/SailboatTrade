@@ -27,6 +27,7 @@ export async function POST(req) {
       PENDING_REVIEW: cutoff(process.env.PENDING_REVIEW_RETENTION_DAYS || 45),
       REJECTED: cutoff(process.env.REJECTED_RETENTION_DAYS || 60),
       ARCHIVED: cutoff(process.env.ARCHIVED_LISTING_RETENTION_DAYS || 180),
+      SOLD: cutoff(process.env.SOLD_LISTING_RETENTION_DAYS || process.env.ARCHIVED_LISTING_RETENTION_DAYS || 180),
       REMOVED: cutoff(process.env.REMOVED_LISTING_RETENTION_DAYS || 30),
     };
 
@@ -43,6 +44,7 @@ export async function POST(req) {
               { status: "PENDING_REVIEW", updatedAt: { lt: policies.PENDING_REVIEW } },
               { status: "REJECTED", updatedAt: { lt: policies.REJECTED } },
               { status: "ARCHIVED", archivedAt: { not: null, lt: policies.ARCHIVED } },
+              { status: "SOLD", archivedAt: { not: null, lt: policies.SOLD } },
               { status: "REMOVED", updatedAt: { lt: policies.REMOVED } },
             ],
           },

@@ -32,6 +32,7 @@ function statusLabel(status) {
   if (value === "DRAFT") return "Draft";
   if (value === "PENDING_REVIEW") return "Pending Review";
   if (value === "REJECTED") return "Changes Requested";
+  if (value === "SOLD") return "Sold";
   if (value === "ARCHIVED") return "Archived";
   if (value === "REMOVED") return "Removed";
   return value || "Unknown";

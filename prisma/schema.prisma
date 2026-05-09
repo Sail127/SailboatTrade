@@ -21,6 +21,7 @@ enum ListingStatus {
   PENDING_REVIEW
   REJECTED
   PUBLISHED
+  SOLD
   ARCHIVED
   REMOVED
 }

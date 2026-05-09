@@ -88,6 +88,7 @@ function statusLabel(status) {
   if (s === "REJECTED") return "Changes requested";
   if (s === "DRAFT") return "Draft";
   if (s === "PUBLISHED") return "Active";
+  if (s === "SOLD") return "Sold";
   if (s === "ARCHIVED") return "Archived";
   if (s === "REMOVED") return "Removed";
   return s || "—";
@@ -99,6 +100,7 @@ function statusTone(status) {
   if (s === "REJECTED") return "red";
   if (s === "DRAFT") return "slate";
   if (s === "PUBLISHED") return "emerald";
+  if (s === "SOLD") return "emerald";
   if (s === "ARCHIVED") return "slate";
   return "slate";
 }
@@ -169,6 +171,21 @@ function daysUntil(date) {
 function daysSince(date) {
   const ms = Date.now() - new Date(date).getTime();
   return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
+}
+
+function pluralize(value, singular) {
+  return `${value} ${singular}${value === 1 ? "" : "s"}`;
+}
+
+function formatDaysOnMarket(days) {
+  const safeDays = Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
+  if (safeDays <= 30) return pluralize(safeDays, "day");
+
+  const months = Math.floor(safeDays / 30);
+  const remainingDays = safeDays % 30;
+  if (remainingDays === 0) return pluralize(months, "month");
+
+  return `${pluralize(months, "month")} ${pluralize(remainingDays, "day")}`;
 }
 
 function expirationToneClass(date) {
@@ -272,9 +289,10 @@ export default async function MyListings() {
     },
   });
 
+  const soldListings = listings.filter((l) => l.status === "SOLD");
   const archivedListings = listings.filter((l) => l.status === "ARCHIVED");
   const activeListings = listings.filter((l) => l.status === "PUBLISHED");
-  const pendingListings = listings.filter((l) => l.status !== "ARCHIVED" && l.status !== "PUBLISHED");
+  const pendingListings = listings.filter((l) => !["ARCHIVED", "PUBLISHED", "SOLD"].includes(String(l.status || "").toUpperCase()));
 
   const Row = (l) => {
     const plan = planLabel(l);
@@ -291,11 +309,12 @@ export default async function MyListings() {
     const expiresLabel = fmtDateShort(expiresAt);
     const dLeft = daysUntil(expiresAt);
     const daysOnMarket = daysSince(l.createdAt);
+    const daysOnMarketLabel = formatDaysOnMarket(daysOnMarket);
     const createdLabel = fmtDateCompact(l.createdAt);
     const updatedLabel = fmtDateCompact(l.updatedAt);
 
     const isPaid = l.photoPlan === "PHOTO_PLUS_25" || !!l.featuredHome;
-    const isSold = Boolean(l.saleReport?.id);
+    const isSold = statusUpper === "SOLD" || Boolean(l.saleReport?.id);
     const statusUpper = String(l.status || "").toUpperCase();
     const previewHref =
       statusUpper === "PUBLISHED"
@@ -309,7 +328,7 @@ export default async function MyListings() {
       (statusUpper === "ARCHIVED" || dLeft <= RENEW_WINDOW_DAYS);
 
     const canEdit = statusUpper !== "PENDING_REVIEW";
-    const showUpgrade = !l.featuredHome && statusUpper !== "ARCHIVED" && statusUpper !== "REMOVED";
+    const showUpgrade = !l.featuredHome && !["ARCHIVED", "SOLD", "REMOVED"].includes(statusUpper);
     const expiresUrgent = dLeft <= 5;
     const expiringSoonLabel =
       statusUpper === "PUBLISHED" && showRenew && dLeft > 0
@@ -374,7 +393,7 @@ export default async function MyListings() {
               </span>
 
               <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[12px] font-semibold text-slate-700">
-                Days on market: {daysOnMarket}
+                Days on market: {daysOnMarketLabel}
               </span>
             </div>
 
@@ -441,6 +460,15 @@ export default async function MyListings() {
 
           <Section title="Active listings" tone="green" subtitle="Published and visible on SailboatTrade.com." items={activeListings}>
             {activeListings.map(Row)}
+          </Section>
+
+          <Section
+            title="Sold listings"
+            tone="green"
+            subtitle="Sold listings stay private. Photos are retained for 30 days, then all but the hero image are removed."
+            items={soldListings}
+          >
+            {soldListings.map(Row)}
           </Section>
 
           <Section

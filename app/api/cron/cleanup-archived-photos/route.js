@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getR2, getR2Bucket } from "@/lib/r2";
+import { isAuthorizedCronRequest } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,12 +72,7 @@ async function deleteR2Keys(keys) {
 }
 
 export async function GET(req) {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret") || "";
-  const expected = String(process.env.CRON_SECRET || "").trim();
-
-  if (!isVercelCron && (!expected || secret !== expected)) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
   }
 

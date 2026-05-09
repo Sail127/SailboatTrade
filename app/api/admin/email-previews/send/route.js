@@ -23,7 +23,7 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status || 403 });
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "admin_email_previews_send"),
     limit: 30,
     windowMs: 60 * 60 * 1000,

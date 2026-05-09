@@ -27,7 +27,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ ok: false, error: guard.error }, { status: guard.status || 403 });
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, `admin_user_send_message:${guard.me.id}`),
     limit: 40,
     windowMs: 60 * 60 * 1000,

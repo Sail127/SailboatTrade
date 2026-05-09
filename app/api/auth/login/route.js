@@ -40,7 +40,7 @@ export async function POST(req) {
     );
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "auth_login", email),
     limit: 10,
     windowMs: 10 * 60 * 1000,

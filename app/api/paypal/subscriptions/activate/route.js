@@ -49,7 +49,7 @@ export async function POST(req) {
       return NextResponse.json({ ok: false, error: "Invalid origin." }, { status: 403 });
     }
 
-    const rl = rateLimit({
+    const rl = await rateLimit({
       key: makeRateLimitKey(req, "paypal_subscription_activate"),
       limit: 40,
       windowMs: 10 * 60 * 1000,

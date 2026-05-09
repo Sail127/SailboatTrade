@@ -386,3 +386,13 @@ model AdminAuditLog {
   reason String?
   meta   Json?
 }
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
+}

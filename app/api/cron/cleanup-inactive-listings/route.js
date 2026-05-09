@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { deleteListingCompletely } from "@/lib/adminListings";
+import { isAuthorizedCronRequest } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,11 +9,7 @@ export const dynamic = "force-dynamic";
 const MAX_DELETE_PER_RUN = 50;
 
 function isAuthorized(req) {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret") || req.headers.get("x-cron-secret") || "";
-  const expected = String(process.env.CRON_SECRET || "").trim();
-  return isVercelCron || (expected && secret === expected);
+  return isAuthorizedCronRequest(req);
 }
 
 function cutoff(days) {

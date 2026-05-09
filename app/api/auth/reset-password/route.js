@@ -1,7 +1,7 @@
 // app/api/auth/reset-password/route.js
 import prisma from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
-import { verifyResetToken } from "@/lib/passwordResetToken";
+import { peekResetTokenEmail, verifyResetToken } from "@/lib/passwordResetToken";
 import { makeRateLimitKey, rateLimit } from "@/lib/rateLimit";
 import { isTrustedOrigin } from "@/lib/requestSecurity";
 
@@ -12,7 +12,7 @@ export async function POST(req) {
     return Response.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "auth_reset_password"),
     limit: 12,
     windowMs: 30 * 60 * 1000,
@@ -35,13 +35,21 @@ export async function POST(req) {
     return Response.json({ ok: false, error: "Password must be at least 8 characters." }, { status: 400 });
   }
 
-  const payload = verifyResetToken(token);
-  if (!payload?.email) {
+  const tokenEmail = peekResetTokenEmail(token);
+  if (!tokenEmail) {
     return Response.json({ ok: false, error: "Reset link is invalid or expired." }, { status: 400 });
   }
 
-  const user = await prisma.user.findUnique({ where: { email: payload.email } });
+  const user = await prisma.user.findUnique({
+    where: { email: tokenEmail },
+    select: { id: true, passwordHash: true },
+  });
   if (!user) {
+    return Response.json({ ok: false, error: "Reset link is invalid or expired." }, { status: 400 });
+  }
+
+  const payload = verifyResetToken(token, { passwordHash: user.passwordHash });
+  if (!payload?.email) {
     return Response.json({ ok: false, error: "Reset link is invalid or expired." }, { status: 400 });
   }
 

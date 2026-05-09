@@ -24,7 +24,7 @@ export async function POST(req) {
     return NextResponse.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "auth_resend_verification"),
     limit: 10,
     windowMs: 30 * 60 * 1000,

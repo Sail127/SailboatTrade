@@ -13,7 +13,7 @@ const CSP = [
   "object-src 'none'",
   "frame-ancestors 'self'",
   "img-src 'self' data: blob: https:",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.paypal.com https://www.paypalobjects.com https://va.vercel-scripts.com",
+  "script-src 'self' https://www.paypal.com https://www.paypalobjects.com https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data: https:",
   "connect-src 'self' https://www.paypal.com https://*.paypal.com https://vitals.vercel-insights.com",

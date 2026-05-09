@@ -13,7 +13,7 @@ export async function POST(req) {
     return Response.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   }
 
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "auth_forgot_password"),
     limit: 8,
     windowMs: 30 * 60 * 1000,
@@ -33,10 +33,22 @@ export async function POST(req) {
     return Response.json({ ok: true });
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: {
+      id: true,
+      firstName: true,
+      name: true,
+      passwordHash: true,
+    },
+  });
 
   if (user) {
-    const token = createResetToken({ email, ttlMinutes: 30 });
+    const token = createResetToken({
+      email,
+      passwordHash: user.passwordHash,
+      ttlMinutes: 30,
+    });
     const resetUrl = `${getAppUrl(req)}/reset-password?token=${encodeURIComponent(token)}`;
     const { subject, html, text } = buildPasswordResetMessage({
       appUrl: getAppUrl(req),

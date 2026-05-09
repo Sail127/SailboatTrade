@@ -4,16 +4,13 @@ import prisma from "@/lib/prisma";
 import { ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getR2, getR2Bucket } from "@/lib/r2";
 import { DRAFT_UPLOAD_TTL_MINUTES, getDraftUploadCutoffDate } from "@/lib/draftUploads";
+import { isAuthorizedCronRequest } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function isAuthorized(req) {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret") || req.headers.get("x-cron-secret") || "";
-  const expected = String(process.env.CRON_SECRET || "").trim();
-  return isVercelCron || (expected && secret === expected);
+  return isAuthorizedCronRequest(req);
 }
 
 function isSafeR2Key(key) {

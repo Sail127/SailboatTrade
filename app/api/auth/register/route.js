@@ -80,7 +80,7 @@ export async function POST(req) {
     return Response.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   }
 
-  const ipLimit = rateLimit({
+  const ipLimit = await rateLimit({
     key: makeRateLimitKey(req, "auth_register"),
     limit: 8,
     windowMs: 30 * 60 * 1000,

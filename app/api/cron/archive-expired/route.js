@@ -5,6 +5,7 @@ import {
   notifyOwnerListingExpired,
   notifyOwnerListingRenewalReminder,
 } from "@/lib/adminReviewNotifications";
+import { isAuthorizedCronRequest } from "@/lib/requestSecurity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,12 +33,7 @@ function sentToday(sentAt, now) {
 }
 
 export async function GET(req) {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const url = new URL(req.url);
-  const secret = url.searchParams.get("secret") || "";
-  const expected = String(process.env.CRON_SECRET || "").trim();
-
-  if (!isVercelCron && (!expected || secret !== expected)) {
+  if (!isAuthorizedCronRequest(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized." }, { status: 401 });
   }
 

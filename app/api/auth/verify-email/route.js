@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
-  const rl = rateLimit({
+  const rl = await rateLimit({
     key: makeRateLimitKey(req, "auth_verify_email"),
     limit: 20,
     windowMs: 10 * 60 * 1000,

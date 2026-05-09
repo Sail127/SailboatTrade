@@ -313,9 +313,9 @@ export default async function MyListings() {
     const createdLabel = fmtDateCompact(l.createdAt);
     const updatedLabel = fmtDateCompact(l.updatedAt);
 
+    const statusUpper = String(l.status || "").toUpperCase();
     const isPaid = l.photoPlan === "PHOTO_PLUS_25" || !!l.featuredHome;
     const isSold = statusUpper === "SOLD" || Boolean(l.saleReport?.id);
-    const statusUpper = String(l.status || "").toUpperCase();
     const previewHref =
       statusUpper === "PUBLISHED"
         ? `/listings/${encodeURIComponent(l.id)}`

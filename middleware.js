@@ -7,27 +7,41 @@ const IS_PROD = process.env.NODE_ENV === "production";
 const FORCE_HTTPS = String(process.env.FORCE_HTTPS || "true").toLowerCase() !== "false";
 const CANONICAL_HOST = String(process.env.CANONICAL_HOST || "").trim().toLowerCase();
 
-const CSP = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'self'",
-  "img-src 'self' data: blob: https:",
-  "script-src 'self' https://www.paypal.com https://www.paypalobjects.com https://va.vercel-scripts.com",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data: https:",
-  "connect-src 'self' https://www.paypal.com https://*.paypal.com https://vitals.vercel-insights.com",
-  "frame-src 'self' https://*.paypal.com https://www.paypal.com",
-  "worker-src 'self' blob:",
-  "form-action 'self'",
-].join("; ");
+function buildCsp() {
+  const scriptSrc = [
+    "'self'",
+    // Next.js injects small inline bootstrap/runtime scripts needed for hydration.
+    "'unsafe-inline'",
+    !IS_PROD ? "'unsafe-eval'" : "",
+    "https://www.paypal.com",
+    "https://www.paypalobjects.com",
+    "https://va.vercel-scripts.com",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "img-src 'self' data: blob: https:",
+    `script-src ${scriptSrc}`,
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data: https:",
+    "connect-src 'self' https://www.paypal.com https://*.paypal.com https://vitals.vercel-insights.com",
+    "frame-src 'self' https://*.paypal.com https://www.paypal.com",
+    "worker-src 'self' blob:",
+    "form-action 'self'",
+  ].join("; ");
+}
 
 function withSecurityHeaders(res) {
   res.headers.set("X-Content-Type-Options", "nosniff");
   res.headers.set("X-Frame-Options", "SAMEORIGIN");
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
-  res.headers.set("Content-Security-Policy", CSP);
+  res.headers.set("Content-Security-Policy", buildCsp());
 
   if (IS_PROD) {
     res.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");

@@ -22,6 +22,20 @@ function centerNode(container, node) {
   container.scrollTop = Math.max(0, nextTop);
 }
 
+function closeDetailsNode(node) {
+  if (!node) return;
+  node.open = false;
+}
+
+function closeOtherFilterDropdowns(currentNode) {
+  if (typeof document === "undefined" || !currentNode) return;
+  const openDetails = document.querySelectorAll("details[data-filter-dropdown='1'][open]");
+  for (const node of openDetails) {
+    if (node === currentNode) continue;
+    closeDetailsNode(node);
+  }
+}
+
 export function SearchableSingleSelect({
   detailsRef,
   value,
@@ -90,7 +104,7 @@ export function SearchableSingleSelect({
     onChange(normalizedValue);
     const matching = options.find((option) => String(getOptionValue(option)) === normalizedValue) ?? null;
     setQuery(matching ? getOptionLabel(matching) : "");
-    detailsRef?.current?.removeAttribute?.("open");
+    closeDetailsNode(detailsRef?.current);
   };
 
   const handleToggle = (event) => {
@@ -100,6 +114,7 @@ export function SearchableSingleSelect({
       return;
     }
 
+    closeOtherFilterDropdowns(event.currentTarget);
     setQuery(selectedLabel);
 
     requestAnimationFrame(() => {
@@ -149,12 +164,12 @@ export function SearchableSingleSelect({
 
     if (event.key === "Escape") {
       event.preventDefault();
-      detailsRef?.current?.removeAttribute?.("open");
+      closeDetailsNode(detailsRef?.current);
     }
   };
 
   return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+    <details data-filter-dropdown="1" className="group relative" ref={detailsRef} onToggle={handleToggle}>
       <summary
         className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
         aria-label={ariaLabel}
@@ -282,6 +297,8 @@ export function SearchableMultiSelect({
       return;
     }
 
+    closeOtherFilterDropdowns(event.currentTarget);
+
     requestAnimationFrame(() => {
       inputRef.current?.focus();
       const selectedFirst = options.find((option) =>
@@ -319,12 +336,12 @@ export function SearchableMultiSelect({
 
     if (event.key === "Escape") {
       event.preventDefault();
-      detailsRef?.current?.removeAttribute?.("open");
+      closeDetailsNode(detailsRef?.current);
     }
   };
 
   return (
-    <details className="group relative" ref={detailsRef} onToggle={handleToggle}>
+    <details data-filter-dropdown="1" className="group relative" ref={detailsRef} onToggle={handleToggle}>
       <summary
         className={`${summaryClassName} list-none cursor-pointer select-none flex items-center justify-between [&::-webkit-details-marker]:hidden`}
         aria-label={ariaLabel}

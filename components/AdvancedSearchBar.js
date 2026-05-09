@@ -116,6 +116,20 @@ function formatSelectionSummary(values, { fallback, maxLength = 18 } = {}) {
   return `${list.length} (${truncateWithEllipsis(list.join(", "), maxLength)})`;
 }
 
+function closeDetailsNode(node) {
+  if (!node) return;
+  node.open = false;
+}
+
+function eventInsideNode(event, node) {
+  if (!event || !node) return false;
+  if (node.contains(event.target)) return true;
+  if (typeof event.composedPath === "function") {
+    return event.composedPath().includes(node);
+  }
+  return false;
+}
+
 function CompassIcon({ className = "h-4 w-4" }) {
   return (
     <svg
@@ -432,22 +446,33 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
       for (const ref of detailRefs) {
         const node = ref.current;
         if (!node?.hasAttribute?.("open")) continue;
-        if (node.contains(e.target)) continue;
-        node.removeAttribute("open");
+        if (eventInsideNode(e, node)) continue;
+        closeDetailsNode(node);
+      }
+    };
+
+    const onFocusIn = (e) => {
+      for (const ref of detailRefs) {
+        const node = ref.current;
+        if (!node?.hasAttribute?.("open")) continue;
+        if (eventInsideNode(e, node)) continue;
+        closeDetailsNode(node);
       }
     };
 
     const onKey = (e) => {
       if (e.key !== "Escape") return;
       for (const ref of detailRefs) {
-        ref.current?.removeAttribute?.("open");
+        closeDetailsNode(ref.current);
       }
     };
 
     document.addEventListener("click", onDocumentClick);
+    document.addEventListener("focusin", onFocusIn);
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -875,7 +900,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
               />
             </div>
 
-            <div className="min-w-0 relative z-[70]" ref={desktopHullMenuRef}>
+            <div className="min-w-0 relative z-[130]" ref={desktopHullMenuRef}>
               <label className={`${label} text-center`}>Hull type</label>
               <div className="relative mt-2 flex justify-center">
                 {type === "both" ? (
@@ -908,7 +933,7 @@ export default function AdvancedSearchBar({ variant = "dark", submitPath = "/lis
                   />
                 )}
                 {desktopHullMenuOpen ? (
-                  <div className="absolute left-1/2 top-[calc(100%+8px)] z-[90] -translate-x-1/2 rounded-xl border border-white/20 bg-[#0f2a3b]/98 p-2 shadow-xl">
+                  <div className="absolute left-1/2 top-[calc(100%+8px)] z-[150] -translate-x-1/2 rounded-xl border border-white/20 bg-[#0f2a3b]/98 p-2 shadow-xl">
                     <div className="flex items-center gap-2">
                       <HullTile
                         active={type === "both"}

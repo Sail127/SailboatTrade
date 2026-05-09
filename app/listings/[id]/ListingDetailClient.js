@@ -893,7 +893,9 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                 setIdx(i);
               }}
               className={`relative h-16 w-24 flex-none overflow-hidden rounded-xl border ${
-                i === idx ? "border-[#c8a44d]" : "border-slate-200"
+                i === idx
+                  ? "border-[#c8a44d] ring-2 ring-[#c8a44d]/70 ring-offset-1 ring-offset-white shadow-[0_0_0_1px_rgba(10,34,48,0.18)]"
+                  : "border-slate-200"
               } bg-white`}
               aria-label={`View photo ${i + 1}`}
             >
@@ -1043,12 +1045,12 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                 isTouchLandscape ? "px-0" : "px-0 sm:px-10"
               }`}
             >
-              {images.length > 1 && !isTouchDevice ? (
+              {images.length > 1 ? (
                 <>
                   <button
                     type="button"
                     onClick={prev}
-                    className="hidden sm:grid absolute left-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-40 h-12 w-12 place-items-center rounded-full border border-white/35 bg-black/55 text-white text-2xl shadow-[0_10px_24px_rgba(0,0,0,0.45)] hover:bg-black/70 hidden sm:grid"
                     aria-label="Previous photo"
                   >
                     ‹
@@ -1056,7 +1058,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   <button
                     type="button"
                     onClick={next}
-                    className="hidden sm:grid absolute right-3 top-1/2 -translate-y-1/2 z-30 h-12 w-12 place-items-center rounded-full border border-white/15 bg-white/10 text-white text-2xl hover:bg-white/15"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-40 h-12 w-12 place-items-center rounded-full border border-white/35 bg-black/55 text-white text-2xl shadow-[0_10px_24px_rgba(0,0,0,0.45)] hover:bg-black/70 hidden sm:grid"
                     aria-label="Next photo"
                   >
                     ›
@@ -1084,7 +1086,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                   <AnimatePresence initial={false} custom={slideDirection} mode="sync">
                     <motion.div
                       key={`gallery-lightbox-${idx}`}
-                      className="absolute inset-0 grid place-items-center"
+                      className="absolute inset-0 flex items-center justify-center"
                       custom={slideDirection}
                       variants={gallerySlideVariants}
                       initial="enter"
@@ -1100,7 +1102,7 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                         alt={`Fullscreen ${idx + 1}`}
                         className={`${
                           isTouchLandscape
-                            ? "h-auto w-auto object-contain"
+                            ? "h-auto w-auto max-h-full max-w-full object-contain"
                             : "max-h-full max-w-full h-auto w-auto object-contain"
                         } select-none`}
                         draggable={false}
@@ -1117,9 +1119,9 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                               ? `${touchLandscapeFit.h}px`
                               : undefined,
                           transform:
-                            zoom > 1.001 || pan.x || pan.y
+                            zoom > 1.001
                               ? `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoom})`
-                              : "none",
+                              : "translate3d(0, 0, 0) scale(1)",
                           transformOrigin: "center center",
                         }}
                       />
@@ -1148,7 +1150,9 @@ function Gallery({ keys = [], token = "", title = "Listing photos" }) {
                       className={`${
                         isTouchDevice ? "h-9 w-12" : "h-14 w-20"
                       } flex-none overflow-hidden rounded-xl border ${
-                        i === idx ? "border-[#c8a44d]" : "border-white/20"
+                        i === idx
+                          ? "border-[#f3c969] ring-2 ring-[#f3c969]/90 ring-offset-1 ring-offset-black shadow-[0_0_0_1px_rgba(243,201,105,0.7)]"
+                          : "border-white/20"
                       } bg-black/30`}
                       aria-label={`Select photo ${i + 1}`}
                     >
